@@ -4,6 +4,12 @@ obj/
 *.user
 *.suo
 
+# Worktrees e artefatos locais do Kanban
+.worktrees/
+
 # Artefatos locais do gerador de fixture
 tools/report-v1-fixturegen/bin/
 tools/report-v1-fixturegen/obj/
+
+# Ferramentas locais
+.repowise/
