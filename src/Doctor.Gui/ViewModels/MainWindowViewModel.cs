@@ -157,7 +157,22 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentScreen = Screen.ChooseAction;
     }
 
-    [RelayCommand]
+    /// <summary>Enfileira caminho para mover para a quarentena (ADR-0002), sem duplicar.</summary>
+    internal void QueueForQuarantineInternal(string filePath)
+    {
+        if (!string.IsNullOrEmpty(filePath) && !QuarantineQueue.Contains(filePath))
+        {
+            QuarantineQueue.Add(filePath);
+            OnPropertyChanged(nameof(QuarantineCount));
+            ConfirmQuarantineCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool HasQuarantineItems() => QuarantineQueue.Count > 0;
+
+    /// <summary>Executa a movimentação. No esqueleto, o motor falso não toca em arquivo
+    /// real: apenas registra a fila e avança para a tela de quarentena.</summary>
+    [RelayCommand(CanExecute = nameof(HasQuarantineItems))]
     private void ConfirmQuarantine() => CurrentScreen = Screen.Quarantine;
 
     [RelayCommand]

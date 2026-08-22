@@ -18,4 +18,9 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
   </ItemGroup>
 
+  <!-- Testes de ViewModel exercitam membros internos (sugestão determinística, fila). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Doctor.Tests" />
+  </ItemGroup>
+
 </Project>
