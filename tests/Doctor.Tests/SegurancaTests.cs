@@ -17,10 +17,10 @@ public class SegurancaTests
     public void Fila_de_quarentena_nao_duplica_item_repetido()
     {
         var vm = NovoVm();
-        vm.QueueForQuarantineInternal("C:/demo/a.txt");
-        vm.QueueForQuarantineInternal("C:/demo/a.txt");
+        vm.Quarantine.Queue("C:/demo/a.txt");
+        vm.Quarantine.Queue("C:/demo/a.txt");
 
-        Assert.Equal(["C:/demo/a.txt"], vm.QuarantineQueue.ToArray());
+        Assert.Equal(["C:/demo/a.txt"], vm.Quarantine.Paths.ToArray());
     }
 
     [Fact]
@@ -74,7 +74,7 @@ public class SegurancaTests
         var vm = NovoVm();
         Assert.False(vm.ConfirmQuarantineCommand.CanExecute(null)); // vazia: desabilitado
 
-        vm.QueueForQuarantineInternal("C:/demo/a.txt");
+        vm.Quarantine.Queue("C:/demo/a.txt");
         Assert.True(vm.ConfirmQuarantineCommand.CanExecute(null));
     }
 
@@ -90,12 +90,12 @@ public class SegurancaTests
         vm.QueueOtherVersionsForQuarantineCommand.Execute(null);
 
         // Mantida = versão com mtime mais recente (13/08); as outras 2 entram na fila.
-        Assert.Equal(2, vm.QuarantineCount);
-        Assert.DoesNotContain(vm.SelectedVersionToKeep!.Path, vm.QuarantineQueue);
-        Assert.All(vm.QuarantineQueue, p => Assert.NotEqual(vm.SelectedVersionToKeep!.Path, p));
+        Assert.Equal(2, vm.Quarantine.Count);
+        Assert.DoesNotContain(vm.SelectedVersionToKeep!.Path, vm.Quarantine.Paths);
+        Assert.All(vm.Quarantine.Paths, p => Assert.NotEqual(vm.SelectedVersionToKeep!.Path, p));
 
         // Repetir a operação não duplica itens na fila.
         vm.QueueOtherVersionsForQuarantineCommand.Execute(null);
-        Assert.Equal(2, vm.QuarantineCount);
+        Assert.Equal(2, vm.Quarantine.Count);
     }
 }

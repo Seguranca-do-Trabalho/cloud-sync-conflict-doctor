@@ -38,7 +38,7 @@ public class MainWindowViewModelTests
 
         vm.QueueOtherVersionsForQuarantineCommand.Execute(null);
         Assert.Equal(MainWindowViewModel.Screen.ChooseAction, vm.CurrentScreen);
-        Assert.Equal(2, vm.QuarantineCount); // 3 versões − 1 mantida
+        Assert.Equal(2, vm.Quarantine.Count); // 3 versões − 1 mantida
 
         vm.ConfirmQuarantineCommand.Execute(null);
         Assert.Equal(MainWindowViewModel.Screen.Quarantine, vm.CurrentScreen);
