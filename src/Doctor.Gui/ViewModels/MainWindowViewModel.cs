@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -53,6 +54,48 @@ public partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<string> QuarantineQueue { get; } = [];
 
     public int QuarantineCount => QuarantineQueue.Count;
+
+    // --- Resumo §15: as 5 perguntas da primeira tela pós-scan ---
+    // Contagens em dígitos crus (invariantes); espaço com separador decimal pt-BR fixo,
+    // independente do locale da máquina (determinismo §3).
+
+    public string SummaryFilesFound =>
+        (Report?.Telemetry.FilesEnumerated ?? 0).ToString(CultureInfo.InvariantCulture);
+
+    public string SummaryIdenticalDuplicates =>
+        (Report?.IdenticalDuplicateCount ?? 0).ToString(CultureInfo.InvariantCulture);
+
+    public string SummaryRealConflicts =>
+        (Report?.RealConflicts.Count ?? 0).ToString(CultureInfo.InvariantCulture);
+
+    public string SummaryPlaceholdersIgnored =>
+        (Report?.Telemetry.FilesPlaceholder ?? 0).ToString(CultureInfo.InvariantCulture);
+
+    public string SummaryRecoverableSpace => FormatBytes(Report?.RecoverableBytes ?? 0);
+
+    public bool HasResults => Report is not null;
+
+    partial void OnReportChanged(ScanReport? value)
+    {
+        OnPropertyChanged(nameof(SummaryFilesFound));
+        OnPropertyChanged(nameof(SummaryIdenticalDuplicates));
+        OnPropertyChanged(nameof(SummaryRealConflicts));
+        OnPropertyChanged(nameof(SummaryPlaceholdersIgnored));
+        OnPropertyChanged(nameof(SummaryRecoverableSpace));
+        OnPropertyChanged(nameof(HasResults));
+    }
+
+    /// <summary>Unidades legíveis; separador decimal vírgula fixo (pt-BR), nunca o locale da máquina.</summary>
+    public static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1_073_741_824 => ComVirgula(bytes / 1_073_741_824.0) + " GB",
+        >= 1_048_576 => ComVirgula(bytes / 1_048_576.0) + " MB",
+        >= 1_024 => ComVirgula(bytes / 1_024.0) + " KB",
+        _ => $"{bytes} B",
+    };
+
+    private static string ComVirgula(double valor) =>
+        valor.ToString("0.##", CultureInfo.InvariantCulture).Replace('.', ',');
 
     [RelayCommand]
     private void StartScan()
