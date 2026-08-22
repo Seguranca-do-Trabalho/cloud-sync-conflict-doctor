@@ -179,16 +179,29 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Button Classes="primary" Content="Registrar movimentação" Command="{Binding OpenConfirmationFromQuarantineCommand}" />
-                    <Button Content="Voltar" Command="{Binding GoBackCommand}" />
+                    <Button Classes="primary" Content="Registrar movimentação para a quarentena"
+                            Command="{Binding OpenConfirmationFromQuarantineCommand}" />
+                    <Button Classes="secondary" Content="Voltar" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
-            <!-- 9. Confirmação -->
+            <!-- 9. Confirmação: manifesto fake §18 exibido ANTES da ação final.
+                 operation_id determinístico, contagem e caminho previsto. -->
             <StackPanel IsVisible="{Binding ShowConfirmation}" Spacing="12" VerticalAlignment="Center">
                 <TextBlock Classes="titulo" Text="Pronto" />
                 <TextBlock TextWrapping="Wrap"
                            Text="A movimentação para a quarentena foi registrada. Um manifesto permite restaurar qualquer item depois." />
+                <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontWeight="SemiBold" Text="Manifesto desta operação (demonstração):" />
+                        <TextBlock FontSize="12"
+                                   Text="{Binding OperationIdPrevisto, StringFormat='operation_id: {0}'}" />
+                        <TextBlock FontSize="12"
+                                   Text="{Binding ConfirmacaoContagemItens, StringFormat='itens na fila: {0}'}" />
+                        <TextBlock FontSize="12"
+                                   Text="{x:Static vm:MainWindowViewModel.CaminhoQuarentenaPrevistoLabel}" />
+                    </StackPanel>
+                </Border>
                 <TextBlock Foreground="Green" Text="Nenhum arquivo foi descartado — tudo permanece recuperável na quarentena." TextWrapping="Wrap" />
                 <Button Classes="primary" Content="Examinar outra pasta" Command="{Binding RestartCommand}" HorizontalAlignment="Left" />
             </StackPanel>
