@@ -35,10 +35,8 @@ public class ResumoTests
         Assert.Equal("2", vm.SummaryPlaceholdersIgnored);
 
         // 5. Quanto espaço pode ser recuperado com segurança?
-        long bytesRedundantes =
-            2 * 1_048_576L   // grupo docx: 3 cópias − 1 mantida
-            + 1 * 2_458_912L; // grupo jpg:  2 cópias − 1 mantida
-        // 4.556.064 B / 1.048.576 = 4,3457... MiB
+        // 2×1MiB (docx: 3 cópias − 1 mantida) + 2.458.912 B (jpg: 2 cópias − 1 mantida)
+        // = 4.556.064 B / 1.048.576 = 4,3457... MiB
         Assert.Equal("4,35 MB", vm.SummaryRecoverableSpace);
     }
 }
