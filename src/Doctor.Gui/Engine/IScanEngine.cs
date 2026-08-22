@@ -42,7 +42,7 @@ public sealed class ScanReport
         IdenticalDuplicates.Sum(g =>
             (long)(g.Files.Count - 1)
             * g.SizeBytes)
-        + RealConflicts.Sum(g => g.TotalBytes - SuggestVersionToKeep(g).SizeBytes);
+        + RealConflicts.Sum(g => g.SumVersionsBytes() - SuggestVersionToKeep(g).SizeBytes);
 
     /// <summary>Sugestão determinística (SPEC §17): mtime → size → path em bytes UTF-8.</summary>
     internal static ConflictVersion SuggestVersionToKeep(ConflictGroup group) =>
