@@ -75,6 +75,31 @@ public partial class MainWindowViewModel : ObservableObject
 
     public bool HasResults => Report is not null;
 
+    // --- Visibilidade por tela (evita conversor enum→bool no XAML compilado) ---
+
+    public bool ShowChooseFolder => CurrentScreen == Screen.ChooseFolder;
+    public bool ShowScanning => CurrentScreen == Screen.Scanning;
+    public bool ShowSummary => CurrentScreen == Screen.Summary;
+    public bool ShowDuplicates => CurrentScreen == Screen.Duplicates;
+    public bool ShowConflicts => CurrentScreen == Screen.Conflicts;
+    public bool ShowCompare => CurrentScreen == Screen.Compare;
+    public bool ShowChooseAction => CurrentScreen == Screen.ChooseAction;
+    public bool ShowQuarantine => CurrentScreen == Screen.Quarantine;
+    public bool ShowConfirmation => CurrentScreen == Screen.Confirmation;
+
+    partial void OnCurrentScreenChanged(Screen value)
+    {
+        OnPropertyChanged(nameof(ShowChooseFolder));
+        OnPropertyChanged(nameof(ShowScanning));
+        OnPropertyChanged(nameof(ShowSummary));
+        OnPropertyChanged(nameof(ShowDuplicates));
+        OnPropertyChanged(nameof(ShowConflicts));
+        OnPropertyChanged(nameof(ShowCompare));
+        OnPropertyChanged(nameof(ShowChooseAction));
+        OnPropertyChanged(nameof(ShowQuarantine));
+        OnPropertyChanged(nameof(ShowConfirmation));
+    }
+
     partial void OnReportChanged(ScanReport? value)
     {
         OnPropertyChanged(nameof(SummaryFilesFound));
