@@ -1,20 +1,35 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Doctor.Gui.Engine;
+using Doctor.Gui.Flow;
 
 namespace Doctor.Gui.ViewModels;
 
 /// <summary>
 /// Fluxo mínimo do §15 da SPEC: Escolher pasta → Escanear → Resumo → Duplicatas
 /// → Conflitos reais → Comparar → Escolher ação → Quarentena → Confirmação.
-/// Navegação por tela corrente; o esqueleto prova o fluxo ponta a ponta com motor falso.
+///
+/// G3 (t_8d08c08b): TODA a navegação é DELEGADA à <see cref="FlowStateMachine"/>
+/// (pura, sem Avalonia). Aqui restam apresentação e orquestração: cada comando
+/// espelha os dados visíveis nas guardas da máquina e dispara o gatilho — nenhum
+/// comando muda de tela por conta própria.
+///
+/// DECISÃO DOCUMENTADA (lança × fica):
+/// - Gatilho de avanço disparado fora da ordem válida LANÇA
+///   TransicaoInvalidaException: um clique que atravessa o fluxo é bug de ligação
+///   de botão, e silenciá-lo esconderia o erro (corretidade precede UX na SPEC).
+/// - O botão Voltar consulta CanFire e PERMANECE onde está quando o mapa da
+///   máquina bloqueia (Escolher pasta, Escaneando, Resumo e Confirmação):
+///   comportamento equivalente a botão desabilitado — voltar jamais surpreende.
 /// </summary>
 public partial class MainWindowViewModel : ObservableObject
 {
     private readonly IScanEngine _engine;
+
+    /// <summary>Máquina de estados do fluxo §15 — única autoridade de navegação.</summary>
+    private readonly FlowStateMachine _flow = new();
 
     public enum Screen
     {
@@ -68,8 +83,39 @@ public partial class MainWindowViewModel : ObservableObject
                                  or nameof(QuarantineViewModel.Count))
             {
                 ConfirmQuarantineCommand.NotifyCanExecuteChanged();
+                OpenConfirmationFromQuarantineCommand.NotifyCanExecuteChanged();
             }
         };
+    }
+
+    /// <summary>Mapeamento FlowScreen → Screen desta VM (mesmos nove valores).</summary>
+    private static Screen Mapear(FlowScreen tela) => tela switch
+    {
+        FlowScreen.ChooseFolder => Screen.ChooseFolder,
+        FlowScreen.Scanning => Screen.Scanning,
+        FlowScreen.Summary => Screen.Summary,
+        FlowScreen.Duplicates => Screen.Duplicates,
+        FlowScreen.Conflicts => Screen.Conflicts,
+        FlowScreen.Compare => Screen.Compare,
+        FlowScreen.ChooseAction => Screen.ChooseAction,
+        FlowScreen.Quarantine => Screen.Quarantine,
+        FlowScreen.Confirmation => Screen.Confirmation,
+        _ => throw new ArgumentOutOfRangeException(nameof(tela), tela, null),
+    };
+
+    /// <summary>
+    /// Espelha os dados visíveis da análise nas guardas da máquina. Chamado no
+    /// início de TODO comando de navegação: a máquina decide sempre sobre o
+    /// estado real da análise, nunca sobre bandeira velha.
+    /// operation_id (§18): o id fake DERIVA do conteúdo da fila — sem fila não
+    /// há id atribuível,logo Confirmação exige fila por construção.
+    /// </summary>
+    private void EspelharGuardas()
+    {
+        _flow.HasReport = Report is not null;
+        _flow.HasSelectedConflict = SelectedConflict is not null;
+        _flow.HasQueuedItems = Quarantine.HasItems;
+        _flow.HasOperationId = Quarantine.HasItems;
     }
 
     // --- Tela "Escolher ação": estratégias do §17 como APRESENTAÇÃO VISUAL ---
@@ -192,21 +238,41 @@ public partial class MainWindowViewModel : ObservableObject
     private static string ComVirgula(double valor) =>
         valor.ToString("0.##", CultureInfo.InvariantCulture).Replace('.', ',');
 
+    /// <summary>
+    /// Caminho comum dos comandos simples: espelha os dados visíveis nas guardas,
+    /// dispara o gatilho na máquina e publica a tela resultante. Comandos que
+    /// precisam ajustar uma guarda entre o espelho e o disparo (Comparar,
+    /// enfileirar) ou tratar recusa (Voltar) fazem os passos à mão.
+    /// </summary>
+    private void Navegar(FlowTrigger gatilho)
+    {
+        EspelharGuardas();
+        _flow.Fire(gatilho);
+        CurrentScreen = Mapear(_flow.Current);
+    }
+
     [RelayCommand]
     private void StartScan()
     {
+        // Recusado fora de Escolher pasta: reinício só pelo caminho válido (Restart).
+        _flow.Fire(FlowTrigger.StartScan);
+
+        // Nova análise começa do zero — nenhum resíduo da execução anterior.
         Report = null;
         ScanProgressPercent = 0;
         Quarantine.Clear();
         Confirmation.ItemsMoved = 0;
-        CurrentScreen = Screen.Scanning;
+        CurrentScreen = Mapear(_flow.Current);   // Escaneando
 
         // Motor falso: execução síncrona; o progresso é simulado pelo próprio motor.
         Report = _engine.Scan(ChosenFolder, p => ScanProgressPercent = p);
 
         SelectedConflict = Report.RealConflicts.FirstOrDefault();
         SelectedVersionToKeep = SuggestVersionToKeep(SelectedConflict);
-        CurrentScreen = Screen.Summary;
+
+        EspelharGuardas();
+        _flow.Fire(FlowTrigger.ScanCompleted);   // só sai de Escanear com relatório completo
+        CurrentScreen = Mapear(_flow.Current);   // Resumo
     }
 
     /// <summary>Sugestão determinística (ADR-0003): mtime → size → path; nunca "first seen".
@@ -220,26 +286,49 @@ public partial class MainWindowViewModel : ObservableObject
             .FirstOrDefault();
 
     [RelayCommand]
-    private void OpenDuplicates() => CurrentScreen = Screen.Duplicates;
+    private void OpenDuplicates()
+    {
+        EspelharGuardas();
+        _flow.Fire(FlowTrigger.OpenDuplicates);  // exige relatório presente
+        CurrentScreen = Mapear(_flow.Current);
+    }
 
     [RelayCommand]
-    private void OpenConflicts() => CurrentScreen = Screen.Conflicts;
+    private void OpenConflicts()
+    {
+        EspelharGuardas();
+        _flow.Fire(FlowTrigger.OpenConflicts);   // exige relatório presente
+        CurrentScreen = Mapear(_flow.Current);
+    }
 
     /// <summary>Tela Conflitos: abre a comparação do grupo escolhido.</summary>
     [RelayCommand]
     private void CompareConflict(ConflictGroup? group)
     {
-        SelectedConflict = group ?? Report?.RealConflicts.FirstOrDefault();
-        SelectedVersionToKeep = SuggestVersionToKeep(SelectedConflict);
-        CurrentScreen = Screen.Compare;
+        var grupo = group ?? Report?.RealConflicts.FirstOrDefault();
+
+        EspelharGuardas();
+        _flow.HasSelectedConflict = grupo is not null;
+        _flow.Fire(FlowTrigger.CompareConflict); // exige item selecionado em Conflitos
+
+        SelectedConflict = grupo;
+        SelectedVersionToKeep = SuggestVersionToKeep(grupo);
+        CurrentScreen = Mapear(_flow.Current);
     }
 
     /// <summary>Comparar: enfileira todas as versões exceto a que será mantida.
-    /// Única operação sobre conteúdo do usuário: mover para quarentena (ADR-0002).</summary>
+    /// Única operação sobre conteúdo do usuário: mover para quarentena (ADR-0002).
+    /// Sem contexto válido o botão estaria desabilitado na UI; aqui vira no-op —
+    /// a máquina jamais recebe este gatilho com fila vazia.</summary>
     [RelayCommand]
     private void QueueOtherVersionsForQuarantine()
     {
-        foreach (var version in SelectedConflict?.Versions ?? [])
+        if (SelectedConflict is null || SelectedVersionToKeep is null)
+        {
+            return;
+        }
+
+        foreach (var version in SelectedConflict.Versions)
         {
             if (!ReferenceEquals(version, SelectedVersionToKeep))
             {
@@ -247,7 +336,9 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
 
-        CurrentScreen = Screen.ChooseAction;
+        EspelharGuardas();
+        _flow.Fire(FlowTrigger.QueueOtherVersions); // exige fila não vazia
+        CurrentScreen = Mapear(_flow.Current);
     }
 
     private bool HasQuarantineItems() => Quarantine.HasItems;
@@ -257,26 +348,67 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(HasQuarantineItems))]
     private void ConfirmQuarantine()
     {
+        EspelharGuardas();
+        _flow.Fire(FlowTrigger.ConfirmQuarantine); // exige fila não vazia
+
         Confirmation.Complete(Quarantine.Paths);
-        CurrentScreen = Screen.Quarantine;
+        CurrentScreen = Mapear(_flow.Current);
     }
 
     [RelayCommand(CanExecute = nameof(HasQuarantineItems))]
-    private void OpenConfirmationFromQuarantine() => CurrentScreen = Screen.Confirmation;
+    private void OpenConfirmationFromQuarantine()
+    {
+        EspelharGuardas();
+        _flow.Fire(FlowTrigger.OpenConfirmation);  // exige operation_id atribuído (§18)
+        CurrentScreen = Mapear(_flow.Current);
+    }
 
     [RelayCommand]
     private void Restart()
     {
-        // Novo exame começa do zero: fila e confirmação voltam ao estado inicial.
+        // Só parte da Confirmação; a máquina zera todas as guardas sozinha.
+        _flow.Fire(FlowTrigger.Restart);
+
+        // Reinício seguro: nenhuma análise contamina a seguinte.
         Quarantine.Clear();
         Confirmation.ItemsMoved = 0;
-        CurrentScreen = Screen.ChooseFolder;
+        Report = null;
+        SelectedConflict = null;
+        SelectedVersionToKeep = null;
+        ScanProgressPercent = 0;
+        CurrentScreen = Mapear(_flow.Current);     // Escolher pasta
     }
 
+    /// <summary>
+    /// Botão Voltar/"Repensar" — mapa definido NA máquina (ver FlowStateMachine):
+    /// Duplicatas→Resumo; Conflitos→Duplicatas; Comparar→Conflitos;
+    /// Escolher ação→Comparar ("Repensar": a escolha anterior deixa de valer —
+    /// fila e seleção somem); Quarentena→Escolher ação preservando a fila.
+    /// Bloqueado em Escolher pasta, Escaneando, Resumo e Confirmação: CanFire
+    /// falso mantém a tela onde está (equivalente a botão desabilitado).
+    /// </summary>
     [RelayCommand]
-    private void GoBack() => CurrentScreen = CurrentScreen switch
+    private void GoBack()
     {
-        Screen.Duplicates => Screen.Summary,
-        _ => Screen.ChooseFolder,
-    };
+        EspelharGuardas();
+
+        if (!_flow.CanFire(FlowTrigger.Back))
+        {
+            return;
+        }
+
+        var repensando = _flow.Current == FlowScreen.ChooseAction;
+        _flow.Fire(FlowTrigger.Back);
+
+        if (repensando)
+        {
+            // "Repensar": a ESCOLHA ENFILEIRADA deixa de valer — só a fila some.
+            // O grupo em comparação permanece (a tela Comparar segue coerente) e
+            // o usuário pode decidir de novo; limpar seleção aqui é papel do
+            // Restart, que zera a análise inteira.
+            Quarantine.Clear();
+        }
+
+        CurrentScreen = Mapear(_flow.Current);
+    }
 }
