@@ -81,6 +81,29 @@ public class RegraVisualSegurancaTests
     }
 
     [Fact]
+    public void Todo_botao_de_todas_as_telas_usa_o_vocabulario_de_classes()
+    {
+        // G2: nenhuma tela pode usar botão sem classe — o vocabulário
+        // primário/destrutivo/secundário é único e completo (ADR-0009, §37).
+        var linhas = LerMainWindowAxaml().Split('\n');
+
+        for (var i = 0; i < linhas.Length; i++)
+        {
+            if (!linhas[i].Contains("<Button", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var usaVocabulario = linhas[i].Contains("Classes=\"primary\"", StringComparison.Ordinal)
+                || linhas[i].Contains("Classes=\"destructive\"", StringComparison.Ordinal)
+                || linhas[i].Contains("Classes=\"secondary\"", StringComparison.Ordinal);
+
+            Assert.True(usaVocabulario,
+                $"Botão sem classe de segurança na linha {i + 1}: {linhas[i].Trim()}");
+        }
+    }
+
+    [Fact]
     public void Affordance_destrutiva_nao_e_compartilhada_com_navegacao_ou_comparacao()
     {
         // ADR-0009 (consequências) + §37: "Apagar" não pode se parecer com "comparar".

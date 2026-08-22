@@ -51,7 +51,7 @@
                            Text="Nenhum byte de arquivo da nuvem foi lido: placeholders ficam intocados." TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,12,0,0">
                     <Button Classes="primary" Content="Ver duplicatas" Command="{Binding OpenDuplicatesCommand}" />
-                    <Button Content="Ver conflitos reais" Command="{Binding OpenConflictsCommand}" />
+                    <Button Classes="secondary" Content="Ver conflitos reais" Command="{Binding OpenConflictsCommand}" />
                 </StackPanel>
             </StackPanel>
 
@@ -81,7 +81,7 @@
                 </ItemsControl>
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Button Classes="primary" Content="Continuar" Command="{Binding OpenConflictsCommand}" />
-                    <Button Content="Voltar ao resumo" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Voltar ao resumo" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
@@ -103,7 +103,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <Button Content="Voltar às duplicatas" Command="{Binding GoBackCommand}" HorizontalAlignment="Left" />
+                <Button Classes="secondary" Content="Voltar às duplicatas" Command="{Binding GoBackCommand}" HorizontalAlignment="Left" />
             </StackPanel>
 
             <!-- 6. Comparar -->
@@ -131,7 +131,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Button Classes="destructive" Content="Mover para quarentena as outras versões"
                             Command="{Binding QueueOtherVersionsForQuarantineCommand}" />
-                    <Button Content="Voltar aos conflitos" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Voltar aos conflitos" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
