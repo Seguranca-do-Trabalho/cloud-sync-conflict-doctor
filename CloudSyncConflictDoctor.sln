@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F6C3A345-D0ED-4DA5-93FF-4C51FEDA0BB3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Doctor.Core", "src\Doctor.Core\Doctor.Core.csproj", "{C83CC329-78AB-4414-9D29-3E11547060EA}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Doctor.Gui", "src\Doctor.Gui\Doctor.Gui.csproj", "{7AA94DAA-1A69-4DC0-B1E2-DCB8AD146498}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{F97717D0-F417-4FB2-A224-13C47AAF4117}"
