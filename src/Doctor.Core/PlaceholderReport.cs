@@ -47,18 +47,39 @@ public static class PlaceholderReport
         .OrderBy(r => r.Path, StringComparer.Ordinal)
         .ToArray();
 
-    /// <summary>Rótulos sem duplicatas, na ordem canônica declarada do schema.</summary>
+    /// <summary>
+    /// Rótulos sem duplicatas, na ordem canônica declarada do schema. Fonte dupla,
+    /// porque o motivo pode vir de dois lugares: dos bits crus (Windows nativo) ou
+    /// da classificação já feita na origem (<see cref="FileEntry.PlaceholderKind"/> —
+    /// inclui a simulação por sidecar da convenção T04).
+    /// </summary>
     private static IReadOnlyList<string> Kinds(FileEntry entry)
     {
-        var rotulos = new List<string>(4);
+        var selecionados = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (bit, rotulo) in OrdemCanonica)
         {
             if ((entry.Attributes & bit) == bit)
             {
-                rotulos.Add(rotulo);
+                selecionados.Add(rotulo);
             }
         }
 
-        return rotulos;
+        if (entry.PlaceholderKind is { } kind)
+        {
+            selecionados.Add(Rotulo(kind));
+        }
+
+        return OrdemCanonica
+            .Where(linha => selecionados.Contains(linha.Rotulo))
+            .Select(linha => linha.Rotulo)
+            .ToArray();
     }
+
+    private static string Rotulo(PlaceholderKind kind) => kind switch
+    {
+        PlaceholderKind.Offline => "offline",
+        PlaceholderKind.RecallOnOpen => "recall_on_open",
+        PlaceholderKind.RecallOnDataAccess => "recall_on_data_access",
+        _ => "reparse_point",
+    };
 }
