@@ -70,8 +70,8 @@ Filtros canônicos:
 
 ```bash
 # job Linux (e qualquer dev em Unix):
-dotnet test --filter "Category!=WindowsNative"
-# equivalente: tudo com Trait "OS=Windows" fica fora
+dotnet test --filter "OS!=Windows"
+# tudo com Trait "OS=Windows" (nativos) fica fora; demais categorias rodam
 
 # job Windows:
 dotnet test  # completo, incluindo native-windows
@@ -342,13 +342,18 @@ jobs:
         with: { dotnet-version: 8.0.x }
       - run: dotnet build CloudSyncConflictDoctor.sln -c Release
       - run: dotnet test tests/Doctor.Tests -c Release --no-build
-             --filter "Category!=WindowsNative"
+             --filter "OS!=Windows"
              --collect:"XPlat Code Coverage"
              --logger "trx;LogFileName=linux.trx"
       - run: dotnet test tests/Doctor.Tests -c Release --no-build
              --filter "Category=Determinism"     # determinismo EXPLICITO no Linux tb
       - uses: actions/upload-artifact@v4
-        with: { name: linux-results, path: | tests/**/TestResults/**, coverage }
+        with:
+          name: linux-results
+          path: |
+            tests/**/TestResults/**
+            **/coverage.cobertura.xml
+            determinism-hashes.txt
 
   windows:
     runs-on: windows-latest      # job onde roda o nativo
