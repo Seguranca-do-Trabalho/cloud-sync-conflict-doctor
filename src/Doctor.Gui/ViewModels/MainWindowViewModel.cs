@@ -55,6 +55,22 @@ public partial class MainWindowViewModel : ObservableObject
 
     public int QuarantineCount => QuarantineQueue.Count;
 
+    // --- Tela "Escolher ação": estratégias do §17 como APRESENTAÇÃO VISUAL ---
+    // Lista FIXA e ordenada conforme docs/SPEC.md §17. Somente apresentação: a
+    // lógica de resolução por estratégia é do EPIC 07 (Resolution Engine, scheduled).
+    // PONTO DE EXTENSÃO: quando o EPIC 07 entregar IResolutionStrategy, esta tela
+    // passa a receber as opções do motor; os rótulos aqui são o contrato visual.
+    public static IReadOnlyList<string> EstrategiasResolucao { get; } =
+    [
+        "Manter mais recente",
+        "Manter maior",
+        "Manter versão de determinada máquina",
+        "Escolher manualmente",
+    ];
+
+    /// <summary>Regra obrigatória de desempate do §17, exibida ao usuário.</summary>
+    public static string RegraDeEmpate => "mtime → size → path";
+
     // --- Resumo §15: as 5 perguntas da primeira tela pós-scan ---
     // Contagens em dígitos crus (invariantes); espaço com separador decimal pt-BR fixo,
     // independente do locale da máquina (determinismo §3).
