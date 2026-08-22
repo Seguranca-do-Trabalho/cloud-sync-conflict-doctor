@@ -1,0 +1,106 @@
+{
+  "report_schema_version": 1,
+  "algorithm": "BLAKE3",
+  "hash_version": 1,
+  "normalization_rules_version": 1,
+  "generated_from": {
+    "root_path": "fixtures/report-v1-tree",
+    "scan_started_utc": "2026-08-22T19:40:00.000Z",
+    "scan_finished_utc": "2026-08-22T19:40:00.041Z"
+  },
+  "telemetry": {
+    "files_enumerated": 10,
+    "files_placeholder": 2,
+    "files_skipped": 1,
+    "files_partial_hashed": 7,
+    "files_full_hashed": 5,
+    "bytes_read": 787496,
+    "bytes_read_partial": 262632,
+    "bytes_read_full": 524864,
+    "placeholder_bytes_read": 0
+  },
+  "groups": [
+    {
+      "normalized_base_name": "foto-reuniao.jpg",
+      "size_bytes": 96,
+      "members": [
+        {
+          "path": "docs/backup/foto-reuniao.jpg"
+        },
+        {
+          "path": "docs/foto-reuniao.jpg"
+        },
+        {
+          "path": "fotos/foto-reuniao.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orcamento.xlsx",
+      "size_bytes": 262144,
+      "members": [
+        {
+          "path": "projetos/orcamento-DESKTOP-ABC123 (conflicted copy).xlsx"
+        },
+        {
+          "path": "projetos/orcamento.xlsx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "reuniao.txt",
+      "size_bytes": 44,
+      "members": [
+        {
+          "path": "notas/arquivo morto/reuniao.txt"
+        },
+        {
+          "path": "notas/reuniao.txt"
+        }
+      ]
+    }
+  ],
+  "identical_duplicates": [
+    {
+      "hash": "821a7efb8d49dad09c77ff47e829a28db9a9642ed33b83fd55b640e364137a89",
+      "size_bytes": 96,
+      "files": [
+        "docs/backup/foto-reuniao.jpg",
+        "docs/foto-reuniao.jpg",
+        "fotos/foto-reuniao.jpg"
+      ]
+    }
+  ],
+  "real_conflicts": [
+    {
+      "normalized_base_name": "orcamento.xlsx",
+      "size_bytes": 262144,
+      "files": [
+        {
+          "path": "projetos/orcamento-DESKTOP-ABC123 (conflicted copy).xlsx",
+          "hash": "1675a7b3e7abab3d2c3ebc80b226ff05955abf309fec605c7e9e7d5df91eb032"
+        },
+        {
+          "path": "projetos/orcamento.xlsx",
+          "hash": "a231b86dbb971a220623d3b5bddf06548f74ac3efed175489f3b22c9a735ec20"
+        }
+      ]
+    }
+  ],
+  "placeholders": [
+    {
+      "path": "arquivo morto/relatorio antigo.docx",
+      "kinds": [
+        "offline"
+      ],
+      "size_bytes": 10485760
+    },
+    {
+      "path": "arquivos grandes/video-aula.mp4",
+      "kinds": [
+        "recall_on_data_access"
+      ],
+      "size_bytes": 524288000
+    }
+  ]
+}

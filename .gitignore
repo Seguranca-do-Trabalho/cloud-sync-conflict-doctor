@@ -1,0 +1,9 @@
+# Build artifacts .NET
+bin/
+obj/
+*.user
+*.suo
+
+# Artefatos locais do gerador de fixture
+tools/report-v1-fixturegen/bin/
+tools/report-v1-fixturegen/obj/
