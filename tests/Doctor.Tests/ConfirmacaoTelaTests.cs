@@ -20,8 +20,8 @@ public class ConfirmacaoTelaTests
     private static MainWindowViewModel VmComFila()
     {
         var vm = NovoVm();
-        vm.QueueForQuarantineInternal(@"C:\demo\orcamento (Notebook-Office).xlsx");
-        vm.QueueForQuarantineInternal(@"C:\demo\praia.jpg");
+        vm.Quarantine.Queue(@"C:\demo\orcamento (Notebook-Office).xlsx");
+        vm.Quarantine.Queue(@"C:\demo\praia.jpg");
         return vm;
     }
 
@@ -49,7 +49,7 @@ public class ConfirmacaoTelaTests
 
         // Filas diferentes → ids diferentes.
         var vm3 = NovoVm();
-        vm3.QueueForQuarantineInternal(@"C:\outro\arquivo.txt");
+        vm3.Quarantine.Queue(@"C:\outro\arquivo.txt");
         Assert.NotEqual(vm1.OperationIdPrevisto, vm3.OperationIdPrevisto);
     }
 
@@ -59,7 +59,7 @@ public class ConfirmacaoTelaTests
         var vm = NovoVm();
         Assert.False(vm.OpenConfirmationFromQuarantineCommand.CanExecute(null));
 
-        vm.QueueForQuarantineInternal(@"C:\demo\a.txt");
+        vm.Quarantine.Queue(@"C:\demo\a.txt");
         Assert.True(vm.OpenConfirmationFromQuarantineCommand.CanExecute(null));
     }
 
@@ -70,7 +70,7 @@ public class ConfirmacaoTelaTests
 
         // Os três dados do manifesto fake existem ANTES de abrir a tela Confirmação.
         Assert.False(string.IsNullOrWhiteSpace(vm.OperationIdPrevisto));
-        Assert.Equal(2, vm.QuarantineCount);
+        Assert.Equal(2, vm.Quarantine.Count);
         var caminho = MainWindowViewModel.CaminhoQuarentenaPrevisto();
         Assert.Contains("quarantine", caminho, StringComparison.Ordinal);
     }

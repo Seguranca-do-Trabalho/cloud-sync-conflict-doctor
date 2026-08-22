@@ -110,7 +110,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         get
         {
-            var conteudo = string.Join("\n", QuarantineQueue);
+            var conteudo = string.Join("\n", Quarantine.Paths);
             var bytes = System.Security.Cryptography.SHA256.HashData(
                 Encoding.UTF8.GetBytes(conteudo));
             var hex = Convert.ToHexString(bytes).ToLowerInvariant();
@@ -119,7 +119,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>Contagem exibida na Confirmação antes de habilitar o botão final.</summary>
-    public int ConfirmacaoContagemItens => QuarantineQueue.Count;
+    public int ConfirmacaoContagemItens => Quarantine.Count;
 
     /// <summary>Rótulo do caminho previsto §18 para a tela Confirmação (x:Static).</summary>
     public static string CaminhoQuarentenaPrevistoLabel =>
