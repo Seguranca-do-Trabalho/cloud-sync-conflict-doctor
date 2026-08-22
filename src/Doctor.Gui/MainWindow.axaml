@@ -8,30 +8,8 @@
         Width="860" Height="600">
 
     <Window.Styles>
-        <!-- Botão primário: ação segura e recomendada (azul). -->
-        <Style Selector="Button.primary">
-            <Setter Property="Background" Value="#1F6FEB" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Padding" Value="16,8" />
-        </Style>
-        <!-- Botão destrutivo: move conteúdo do usuário para a quarentena (vermelho).
-             Nunca representa remoção definitiva — apenas movimentação auditável. -->
-        <Style Selector="Button.destructive">
-            <Setter Property="Background" Value="#C93C37" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Padding" Value="16,8" />
-        </Style>
-        <Style Selector="TextBlock.titulo">
-            <Setter Property="FontSize" Value="22" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Margin" Value="0,0,0,12" />
-        </Style>
-        <Style Selector="TextBlock.resposta">
-            <Setter Property="FontSize" Value="18" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
+        <!-- Estilos de segurança (primary/destructive/secondary) são CENTRALIZADOS
+             no App.axaml (G2 — t_87f625aa): todas as telas herdam o mesmo vocabulário. -->
     </Window.Styles>
 
     <Grid RowDefinitions="*,Auto" Margin="24">
