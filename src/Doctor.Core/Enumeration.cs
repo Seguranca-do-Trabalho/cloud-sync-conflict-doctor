@@ -2,25 +2,9 @@ namespace Doctor.Core;
 
 using System.Diagnostics;
 
-/// <summary>
-/// Telemetria do scan (SPEC §10/§13). <see cref="PlaceholderBytesRead"/> é a métrica
-/// de segurança crítica: deve permanecer 0 em qualquer execução (SPEC §6).
-/// Campos derivam da lista final ordenada — nunca de contadores incrementais dependentes
-/// de ordem física ou de threads.
-/// </summary>
-public sealed record ScanTelemetry
-{
-    public long FilesEnumerated { get; init; }
-
-    public long FilesSkipped { get; init; }
-
-    public long FilesPlaceholder { get; init; }
-
-    public long BytesRead { get; init; }
-
-    /// <summary>Invariante de segurança: sempre 0. Coberto por teste automatizado (SPEC §6/§21).</summary>
-    public long PlaceholderBytesRead { get; init; }
-}
+// ScanTelemetry mudou de lugar: fonte única em Telemetry.cs (contrato do T06,
+// SPEC §10 completo + gate placeholder_bytes_read). Este arquivo mantém apenas
+// os tipos de enumeração Level 0.
 
 /// <summary>
 /// Erro individual de scan (permissão, caminho longo, etc.). Nunca aborta o scan:
