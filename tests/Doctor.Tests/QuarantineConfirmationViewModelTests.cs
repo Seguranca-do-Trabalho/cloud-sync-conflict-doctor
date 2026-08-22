@@ -73,6 +73,8 @@ public class QuarantineConfirmationViewModelTests
         var vm = new MainWindowViewModel(new FakeScanEngine());
         vm.ChosenFolder = @"C:\Users\demo\OneDrive";
         vm.StartScanCommand.Execute(null);
+        vm.OpenDuplicatesCommand.Execute(null);   // §15: Resumo → Duplicatas
+        vm.OpenConflictsCommand.Execute(null);    // §15: Duplicatas → Conflitos
 
         // Comparação enfileira as não mantidas na sub-VM de quarentena.
         vm.CompareConflictCommand.Execute(vm.Report!.RealConflicts[0]);
