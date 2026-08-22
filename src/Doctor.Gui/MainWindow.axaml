@@ -162,7 +162,7 @@
                 <TextBlock Classes="titulo" Text="Escolher ação" />
                 <TextBlock TextWrapping="Wrap"
                            Text="As versões que não serão mantidas vão para uma pasta de quarentena datada, com manifesto para restauração. Nada é descartado de imediato." />
-                <TextBlock Text="{Binding QuarantineCount, StringFormat='{}{0} itens na fila'}" />
+                <TextBlock Text="{Binding Quarantine.CountLabel, StringFormat='{}{0} itens na fila'}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Button Classes="destructive" Content="Mover para quarentena agora"
                             Command="{Binding ConfirmQuarantineCommand}" />
@@ -175,7 +175,7 @@
                 <TextBlock Classes="titulo" Text="Quarentena" />
                 <TextBlock TextWrapping="Wrap"
                            Text="Itens preparados para a movimentação para a quarentena (esqueleto: nenhum arquivo real é tocado):" />
-                <ItemsControl ItemsSource="{Binding QuarantineQueue}">
+                <ItemsControl ItemsSource="{Binding Quarantine.Paths}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
                             <TextBlock Text="{Binding}" FontSize="12" />

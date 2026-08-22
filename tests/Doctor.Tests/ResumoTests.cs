@@ -23,7 +23,9 @@ public class ResumoTests
         var vm = NovoVmAposScan();
 
         // 1. Quantos arquivos foram encontrados? (inteiro invariante, sem separador de milhar)
-        Assert.Equal("1849", vm.SummaryFilesFound); // 1847 comuns + 2 placeholders (DEMO)
+        // Adaptado ao schema v1 (t_2a116a88): files_enumerated do dataset DEMO
+        // (2 placeholders + 4 únicos + 10 parcialmente hasheados = 16).
+        Assert.Equal("16", vm.SummaryFilesFound);
 
         // 2. Quantas duplicatas idênticas? (cópias redundantes: (3-1) + (2-1))
         Assert.Equal("3", vm.SummaryIdenticalDuplicates);
@@ -35,9 +37,10 @@ public class ResumoTests
         Assert.Equal("2", vm.SummaryPlaceholdersIgnored);
 
         // 5. Quanto espaço pode ser recuperado com segurança?
-        // 2×1MiB (docx: 3 cópias − 1 mantida) + 2.458.912 B (jpg: 2 cópias − 1 mantida)
-        // = 4.556.064 B / 1.048.576 = 4,3457... MiB
-        Assert.Equal("4,35 MB", vm.SummaryRecoverableSpace);
+        // Fórmula do card t_2a116a88: perdedoras das duplicatas idênticas
+        // (2×1MiB + 2.458.912 B = 4.556.064) + versões dos conflitos que não serão
+        // mantidas (88.412 + 91.077 = 179.489) = 4.735.553 B / 1.048.576 = 4,52 MiB.
+        Assert.Equal("4,52 MB", vm.SummaryRecoverableSpace);
     }
 }
 

@@ -16,8 +16,6 @@ public partial class MainWindowViewModel : ObservableObject
 {
     private readonly IScanEngine _engine;
 
-    public MainWindowViewModel(IScanEngine engine) => _engine = engine;
-
     public enum Screen
     {
         ChooseFolder,
@@ -50,10 +48,29 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private ConflictVersion? _selectedVersionToKeep;
 
-    /// <summary>Fila de itens marcados para mover para a quarentena.</summary>
-    public ObservableCollection<string> QuarantineQueue { get; } = [];
+    // --- Sub-ViewModels por tela; aqui restam só navegação e orquestração ---
 
-    public int QuarantineCount => QuarantineQueue.Count;
+    /// <summary>Tela Quarentena: fila de itens marcados para mover.</summary>
+    public QuarantineViewModel Quarantine { get; } = new();
+
+    /// <summary>Tela Confirmação: registro da movimentação concluída.</summary>
+    public ConfirmationViewModel Confirmation { get; } = new();
+
+    public MainWindowViewModel(IScanEngine engine)
+    {
+        _engine = engine;
+
+        // O comando de confirmação é orquestração da MainWindow, mas o estado
+        // (fila) é da sub-VM: CanExecute acompanha a contagem dela.
+        Quarantine.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(QuarantineViewModel.HasItems)
+                                 or nameof(QuarantineViewModel.Count))
+            {
+                ConfirmQuarantineCommand.NotifyCanExecuteChanged();
+            }
+        };
+    }
 
     // --- Resumo §15: as 5 perguntas da primeira tela pós-scan ---
     // Contagens em dígitos crus (invariantes); espaço com separador decimal pt-BR fixo,
@@ -127,7 +144,8 @@ public partial class MainWindowViewModel : ObservableObject
     {
         Report = null;
         ScanProgressPercent = 0;
-        QuarantineQueue.Clear();
+        Quarantine.Clear();
+        Confirmation.ItemsMoved = 0;
         CurrentScreen = Screen.Scanning;
 
         // Motor falso: execução síncrona; o progresso é simulado pelo próprio motor.
@@ -172,39 +190,35 @@ public partial class MainWindowViewModel : ObservableObject
         {
             if (!ReferenceEquals(version, SelectedVersionToKeep))
             {
-                if (!QuarantineQueue.Contains(version.Path))
-                {
-                    QuarantineQueue.Add(version.Path);
-                }
+                Quarantine.Queue(version.Path);
             }
         }
 
         CurrentScreen = Screen.ChooseAction;
     }
 
-    /// <summary>Enfileira caminho para mover para a quarentena (ADR-0002), sem duplicar.</summary>
-    internal void QueueForQuarantineInternal(string filePath)
-    {
-        if (!string.IsNullOrEmpty(filePath) && !QuarantineQueue.Contains(filePath))
-        {
-            QuarantineQueue.Add(filePath);
-            OnPropertyChanged(nameof(QuarantineCount));
-            ConfirmQuarantineCommand.NotifyCanExecuteChanged();
-        }
-    }
-
-    private bool HasQuarantineItems() => QuarantineQueue.Count > 0;
+    private bool HasQuarantineItems() => Quarantine.HasItems;
 
     /// <summary>Executa a movimentação. No esqueleto, o motor falso não toca em arquivo
-    /// real: apenas registra a fila e avança para a tela de quarentena.</summary>
+    /// real: registra a fila na tela de confirmação e avança para a quarentena.</summary>
     [RelayCommand(CanExecute = nameof(HasQuarantineItems))]
-    private void ConfirmQuarantine() => CurrentScreen = Screen.Quarantine;
+    private void ConfirmQuarantine()
+    {
+        Confirmation.Complete(Quarantine.Paths);
+        CurrentScreen = Screen.Quarantine;
+    }
 
     [RelayCommand]
     private void OpenConfirmationFromQuarantine() => CurrentScreen = Screen.Confirmation;
 
     [RelayCommand]
-    private void Restart() => CurrentScreen = Screen.ChooseFolder;
+    private void Restart()
+    {
+        // Novo exame começa do zero: fila e confirmação voltam ao estado inicial.
+        Quarantine.Clear();
+        Confirmation.ItemsMoved = 0;
+        CurrentScreen = Screen.ChooseFolder;
+    }
 
     [RelayCommand]
     private void GoBack() => CurrentScreen = CurrentScreen switch
