@@ -72,6 +72,59 @@ public partial class MainWindowViewModel : ObservableObject
         };
     }
 
+    // --- Tela "Escolher ação": estratégias do §17 como APRESENTAÇÃO VISUAL ---
+    // Lista FIXA e ordenada conforme docs/SPEC.md §17. Somente apresentação: a
+    // lógica de resolução por estratégia é do EPIC 07 (Resolution Engine, scheduled).
+    // PONTO DE EXTENSÃO: quando o EPIC 07 entregar IResolutionStrategy, esta tela
+    // passa a receber as opções do motor; os rótulos aqui são o contrato visual.
+    public static IReadOnlyList<string> EstrategiasResolucao { get; } =
+    [
+        "Manter mais recente",
+        "Manter maior",
+        "Manter versão de determinada máquina",
+        "Escolher manualmente",
+    ];
+
+    /// <summary>Regra obrigatória de desempate do §17, exibida ao usuário.</summary>
+    public static string RegraDeEmpate => "mtime → size → path";
+
+    // --- Tela "Confirmação": manifesto fake determinístico (§18) ---
+    // Timestamp e id derivados de forma DETERMINÍSTICA (sem relógio local, sem locale):
+    // o esqueleto usa a âncora fixa do motor DEMO. Quando EPIC 08 entregar a
+    // quarentena real, o manifesto passa a vir do motor — os rótulos permanecem.
+
+    /// <summary>Âncora temporal fixa do esqueleto DEMO (nunca DateTime.Now).</summary>
+    internal static DateTimeOffset AncoraDemo { get; } =
+        new(2026, 8, 22, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>Caminho previsto §18: ConflictDoctor/quarantine/<timestamp>.</summary>
+    public static string CaminhoQuarentenaPrevisto()
+    {
+        var t = AncoraDemo;
+        return $"ConflictDoctor/quarantine/{t.Year:D4}-{t.Month:D2}-{t.Day:D2}T{t.Hour:D2}-{t.Minute:D2}";
+    }
+
+    /// <summary>operation_id fake determinístico: hash estável do conteúdo da fila,
+    /// em minúsculas hexadecimais (invariante de locale), prefixado para legibilidade.</summary>
+    public string OperationIdPrevisto
+    {
+        get
+        {
+            var conteudo = string.Join("\n", QuarantineQueue);
+            var bytes = System.Security.Cryptography.SHA256.HashData(
+                Encoding.UTF8.GetBytes(conteudo));
+            var hex = Convert.ToHexString(bytes).ToLowerInvariant();
+            return $"op-{hex[..16]}";
+        }
+    }
+
+    /// <summary>Contagem exibida na Confirmação antes de habilitar o botão final.</summary>
+    public int ConfirmacaoContagemItens => QuarantineQueue.Count;
+
+    /// <summary>Rótulo do caminho previsto §18 para a tela Confirmação (x:Static).</summary>
+    public static string CaminhoQuarentenaPrevistoLabel =>
+        $"destino previsto: {CaminhoQuarentenaPrevisto()}";
+
     // --- Resumo §15: as 5 perguntas da primeira tela pós-scan ---
     // Contagens em dígitos crus (invariantes); espaço com separador decimal pt-BR fixo,
     // independente do locale da máquina (determinismo §3).
@@ -208,7 +261,7 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentScreen = Screen.Quarantine;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasQuarantineItems))]
     private void OpenConfirmationFromQuarantine() => CurrentScreen = Screen.Confirmation;
 
     [RelayCommand]

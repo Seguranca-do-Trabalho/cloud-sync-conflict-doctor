@@ -8,30 +8,8 @@
         Width="860" Height="600">
 
     <Window.Styles>
-        <!-- Botão primário: ação segura e recomendada (azul). -->
-        <Style Selector="Button.primary">
-            <Setter Property="Background" Value="#1F6FEB" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Padding" Value="16,8" />
-        </Style>
-        <!-- Botão destrutivo: move conteúdo do usuário para a quarentena (vermelho).
-             Nunca representa remoção definitiva — apenas movimentação auditável. -->
-        <Style Selector="Button.destructive">
-            <Setter Property="Background" Value="#C93C37" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Padding" Value="16,8" />
-        </Style>
-        <Style Selector="TextBlock.titulo">
-            <Setter Property="FontSize" Value="22" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Margin" Value="0,0,0,12" />
-        </Style>
-        <Style Selector="TextBlock.resposta">
-            <Setter Property="FontSize" Value="18" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
+        <!-- Estilos de segurança (primary/destructive/secondary) são CENTRALIZADOS
+             no App.axaml (G2 — t_87f625aa): todas as telas herdam o mesmo vocabulário. -->
     </Window.Styles>
 
     <Grid RowDefinitions="*,Auto" Margin="24">
@@ -73,7 +51,7 @@
                            Text="Nenhum byte de arquivo da nuvem foi lido: placeholders ficam intocados." TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,12,0,0">
                     <Button Classes="primary" Content="Ver duplicatas" Command="{Binding OpenDuplicatesCommand}" />
-                    <Button Content="Ver conflitos reais" Command="{Binding OpenConflictsCommand}" />
+                    <Button Classes="secondary" Content="Ver conflitos reais" Command="{Binding OpenConflictsCommand}" />
                 </StackPanel>
             </StackPanel>
 
@@ -103,7 +81,7 @@
                 </ItemsControl>
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Button Classes="primary" Content="Continuar" Command="{Binding OpenConflictsCommand}" />
-                    <Button Content="Voltar ao resumo" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Voltar ao resumo" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
@@ -125,7 +103,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <Button Content="Voltar às duplicatas" Command="{Binding GoBackCommand}" HorizontalAlignment="Left" />
+                <Button Classes="secondary" Content="Voltar às duplicatas" Command="{Binding GoBackCommand}" HorizontalAlignment="Left" />
             </StackPanel>
 
             <!-- 6. Comparar -->
@@ -153,7 +131,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Button Classes="destructive" Content="Mover para quarentena as outras versões"
                             Command="{Binding QueueOtherVersionsForQuarantineCommand}" />
-                    <Button Content="Voltar aos conflitos" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Voltar aos conflitos" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
@@ -163,10 +141,27 @@
                 <TextBlock TextWrapping="Wrap"
                            Text="As versões que não serão mantidas vão para uma pasta de quarentena datada, com manifesto para restauração. Nada é descartado de imediato." />
                 <TextBlock Text="{Binding Quarantine.CountLabel, StringFormat='{}{0} itens na fila'}" />
+
+                <!-- Estratégias do §17: lista FIXA, apenas apresentação visual.
+                     A lógica de resolução é do EPIC 07 (scheduled) — ponto de extensão. -->
+                <TextBlock FontWeight="SemiBold" Text="Como você quer decidir entre versões?" />
+                <ItemsControl ItemsSource="{x:Static vm:MainWindowViewModel.EstrategiasResolucao}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
+                                <Ellipse Width="8" Height="8" Fill="#1F6FEB"
+                                         VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Foreground="Gray" FontSize="12" TextWrapping="Wrap"
+                           Text="Empate entre versões resolvido sempre na ordem: mtime → size → path (data de modificação, depois tamanho, depois caminho)." />
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <Button Classes="destructive" Content="Mover para quarentena agora"
                             Command="{Binding ConfirmQuarantineCommand}" />
-                    <Button Content="Repensar" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Repensar" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
@@ -183,16 +178,29 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Button Classes="primary" Content="Registrar movimentação" Command="{Binding OpenConfirmationFromQuarantineCommand}" />
-                    <Button Content="Voltar" Command="{Binding GoBackCommand}" />
+                    <Button Classes="primary" Content="Registrar movimentação para a quarentena"
+                            Command="{Binding OpenConfirmationFromQuarantineCommand}" />
+                    <Button Classes="secondary" Content="Voltar" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
-            <!-- 9. Confirmação -->
+            <!-- 9. Confirmação: manifesto fake §18 exibido ANTES da ação final.
+                 operation_id determinístico, contagem e caminho previsto. -->
             <StackPanel IsVisible="{Binding ShowConfirmation}" Spacing="12" VerticalAlignment="Center">
                 <TextBlock Classes="titulo" Text="Pronto" />
                 <TextBlock TextWrapping="Wrap"
                            Text="A movimentação para a quarentena foi registrada. Um manifesto permite restaurar qualquer item depois." />
+                <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontWeight="SemiBold" Text="Manifesto desta operação (demonstração):" />
+                        <TextBlock FontSize="12"
+                                   Text="{Binding OperationIdPrevisto, StringFormat='operation_id: {0}'}" />
+                        <TextBlock FontSize="12"
+                                   Text="{Binding ConfirmacaoContagemItens, StringFormat='itens na fila: {0}'}" />
+                        <TextBlock FontSize="12"
+                                   Text="{x:Static vm:MainWindowViewModel.CaminhoQuarentenaPrevistoLabel}" />
+                    </StackPanel>
+                </Border>
                 <TextBlock Foreground="Green" Text="Nenhum arquivo foi descartado — tudo permanece recuperável na quarentena." TextWrapping="Wrap" />
                 <Button Classes="primary" Content="Examinar outra pasta" Command="{Binding RestartCommand}" HorizontalAlignment="Left" />
             </StackPanel>

@@ -4,5 +4,50 @@
              RequestedThemeVariant="Default">
     <Application.Styles>
         <FluentTheme />
+
+        <!-- ============================================================
+             Sistema de segurança visual (G2 — t_87f625aa; §37, ADR-0009).
+             Vocabulário único de botões para TODAS as telas:
+               primary    — ação segura recomendada (azul);
+               destructive— move conteúdo do usuário para a quarentena
+                            (vermelho; nunca remoção definitiva — ADR-0002);
+               secondary  — navegação/repensar (neutro).
+             A affordance de destruir NUNCA é compartilhada com comparar/navegar.
+             ============================================================ -->
+
+        <!-- Botão primário: ação segura e recomendada (azul). -->
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#1F6FEB" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="16,8" />
+        </Style>
+
+        <!-- Botão destrutivo: move conteúdo do usuário para a quarentena (vermelho).
+             Nunca representa remoção definitiva — apenas movimentação auditável. -->
+        <Style Selector="Button.destructive">
+            <Setter Property="Background" Value="#C93C37" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="16,8" />
+        </Style>
+
+        <!-- Botão secundário: navegação e reconsideração (neutro, sem destaque). -->
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="#E9ECEF" />
+            <Setter Property="Foreground" Value="#212529" />
+            <Setter Property="Padding" Value="16,8" />
+        </Style>
+
+        <!-- Tipografia comum das telas. -->
+        <Style Selector="TextBlock.titulo">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style Selector="TextBlock.resposta">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
     </Application.Styles>
 </Application>
