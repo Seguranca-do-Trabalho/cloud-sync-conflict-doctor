@@ -84,6 +84,8 @@ public class SegurancaTests
         var vm = NovoVm();
         vm.ChosenFolder = @"C:\demo";
         vm.StartScanCommand.Execute(null);
+        vm.OpenDuplicatesCommand.Execute(null);   // §15: Resumo → Duplicatas
+        vm.OpenConflictsCommand.Execute(null);    // §15: Duplicatas → Conflitos
 
         var grupo = vm.Report!.RealConflicts[0];
         vm.CompareConflictCommand.Execute(grupo);
@@ -94,7 +96,10 @@ public class SegurancaTests
         Assert.DoesNotContain(vm.SelectedVersionToKeep!.Path, vm.Quarantine.Paths);
         Assert.All(vm.Quarantine.Paths, p => Assert.NotEqual(vm.SelectedVersionToKeep!.Path, p));
 
-        // Repetir a operação não duplica itens na fila.
+        // Repetir a operação não duplica itens na fila: o usuário volta de
+        // "Repensar" (caminho válido §15 — a escolha enfileirada deixa de valer,
+        // de volta a Comparar com o mesmo grupo), re-decide e enfileira de novo.
+        vm.GoBackCommand.Execute(null);
         vm.QueueOtherVersionsForQuarantineCommand.Execute(null);
         Assert.Equal(2, vm.Quarantine.Count);
     }
