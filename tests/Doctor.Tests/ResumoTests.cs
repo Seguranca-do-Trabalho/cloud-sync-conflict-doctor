@@ -23,7 +23,9 @@ public class ResumoTests
         var vm = NovoVmAposScan();
 
         // 1. Quantos arquivos foram encontrados? (inteiro invariante, sem separador de milhar)
-        Assert.Equal("1849", vm.SummaryFilesFound); // 1847 comuns + 2 placeholders (DEMO)
+        // Adaptado ao schema v1 (t_2a116a88): files_enumerated do dataset DEMO
+        // (2 placeholders + 4 únicos + 10 parcialmente hasheados = 16).
+        Assert.Equal("16", vm.SummaryFilesFound);
 
         // 2. Quantas duplicatas idênticas? (cópias redundantes: (3-1) + (2-1))
         Assert.Equal("3", vm.SummaryIdenticalDuplicates);
