@@ -1,186 +1,102 @@
 # Cloud Sync Conflict Doctor
 
-> "Você tem 1.847 arquivos duplicados e 23 divergências reais nesta pasta.
-> 1.812 são cópias idênticas — posso apagar agora."
+> "Você tem 1.847 arquivos duplicados e 23 divergências reais nesta pasta. 1.812 são cópias idênticas — posso colocar em quarentena agora."
 
-## Problema
+![status](https://img.shields.io/badge/status-em%20desenvolvimento-orange) ![stack](https://img.shields.io/badge/C%23-.NET%208-blueviolet) ![segurança](https://img.shields.io/badge/delete-direto%20nunca-red) ![licença](https://img.shields.io/badge/pre%C3%A7o-US%24%209%2C90%20venda%20%C3%BAnica-green)
 
-OneDrive, Google Drive, Dropbox, Nextcloud e iCloud criam, silenciosamente:
+**Autor:** André Santo (forg3) | junkyardgoodies.app
 
-- `arquivo (conflicted copy).docx`
-- `arquivo-DESKTOP-A1B2C3.xlsx`
-- `arquivo (1).pdf`, `arquivo (2).pdf`
-- versões divergentes do mesmo documento em máquinas diferentes
-- arquivos "online only" que quebram scripts e backups
+## Para que serve
 
-O usuário nunca sabe qual é a versão boa. Então não apaga nenhuma. A pasta
-apodrece por anos.
+Quem usa OneDrive, Google Drive, Dropbox, Nextcloud ou iCloud conhece a rotina: `relatório (conflicted copy).docx`, `planilha-DESKTOP-A1B2C3.xlsx`, `foto (1).jpg`, `foto (2).jpg`… O provedor de nuvem cria essas cópias em silêncio, nunca avisa qual versão é a boa, e a pasta apodrece por anos porque o usuário tem medo de apagar a errada.
 
-## Produto
+O **Cloud Sync Conflict Doctor** escaneia uma pasta sincronizada local e responde, com evidência auditável:
 
-Escaneia uma pasta sincronizada **local** e monta a árvore de versões:
+- quantas cópias são **idênticas byte a byte** (podem ir para quarentena sem risco);
+- quais são **divergências reais** do mesmo documento (precisam de decisão humana);
+- quais arquivos são *placeholders* online-only (ele nem toca — ver abaixo);
+- quanto espaço pode ser recuperado com segurança.
 
-1. **Agrupa** por nome-base, desfazendo os sufixos de conflito de cada fornecedor.
-2. **Classifica** cada grupo por hash:
-   - duplicata idêntica → lixo, apagar em lote com um clique;
-   - divergência real → precisa de decisão humana.
-3. **Compara** as divergências: diff de texto; para Office, diff do XML interno
-   (parágrafos/células que mudaram, não bytes).
-4. **Resolve** em lote: manter a mais recente, manter a maior, manter a de tal
-   máquina, ou escolher item a item.
+É uma ferramenta de decisão confiável para limpeza de árvores de sincronização — não mais um deduplicador burro que não entende conflito.
 
-Sempre com "desfazer": nada é apagado, vai para uma quarentena datada.
+## Como funciona
 
-## Especificação do scan — determinístico e de alto desempenho
+Pipeline determinístico em cascata — o desempenho vem de **não ler** o que não precisa:
 
-### O que "determinístico" tem que significar aqui
+```text
+LEVEL 0  Enumeração (só metadados: caminho, tamanho, mtime, atributos, file id)
+         → placeholders OFFLINE / RECALL_* / reparse points são MARCADOS E PULADOS.
+           Nunca são abertos: tocar neles dispararia download da nuvem inteira.
+LEVEL 1  Agrupamento por (nome-base normalizado + tamanho)
+         → grupo de 1 elemento? Descartado sem ler 1 byte.
+         → normalização limitada e versionada dos sufixos de conflito
+           ((conflicted copy), -DESKTOP-XXXX, " (1)", ~$, .sb-hex…)
+LEVEL 2  Hash parcial BLAKE3 (primeiros 64 KiB + últimos 64 KiB) só nos sobreviventes
+         → mata falso positivo "mesmo nome, mesmo tamanho, conteúdo diferente".
+LEVEL 3  Hash completo BLAKE3 só nas colisões do nível 2
+         → hash igual = duplicata idêntica | hash diferente = divergência real.
+```
 
-Não é vago: **a mesma árvore de arquivos produz um relatório byte a byte
-idêntico, em qualquer máquina, em qualquer ordem de disco.** Isso é testável
-e é a garantia que permite o usuário confiar num botão que apaga arquivo.
+Garantias de projeto (todas testadas, não declaradas):
 
-Consequências de projeto, todas obrigatórias:
+- **Determinismo byte-a-byte:** a mesma árvore produz o mesmo relatório JSON sempre — ordenação por caminho em bytes UTF-8 (nunca locale), empate resolvido por `mtime → tamanho → caminho`, zero paralelismo na decisão (paralelismo só na leitura).
+- **Segurança antes de conveniência:** nada é apagado. Jamais. Toda remoção vira **quarentena datada** com manifesto (`original_path`, hash BLAKE3, motivo, regra) e **restore verificado**, que nunca sobrescreve arquivo existente silenciosamente.
+- **BLAKE3 versionado:** algoritmo explícito no schema do relatório (`algorithm/hash_version/report_schema_version`); trocar hash é bump de formato.
+- **Cache incremental SQLite** chaveado por file ID/inode — renomear/mover não invalida cache; o segundo scan é quase instantâneo.
+- **Local-first absoluto:** zero upload, zero telemetria obrigatória, zero conteúdo enviado para qualquer serviço.
+- **Calibração por mídia:** SSD/NVMe → paralelismo alto na leitura; HDD com seek penalty → leitura serial (detectado via IOCTL, configurável, nunca fixo).
 
-- Nenhuma decisão depende da ordem de enumeração do sistema de arquivos.
-- Nenhuma ordem de iteração de `HashMap` vaza para a saída — ordenar por
-  caminho (bytes, não locale) antes de emitir qualquer coisa.
-- Hash fixo e versionado no relatório (BLAKE3). Trocar de hash é mudança de
-  versão do formato, não detalhe interno.
-- Empate resolvido por regra escrita e estável (mtime, depois tamanho, depois
-  caminho), nunca por "o que apareceu primeiro".
-- Zero paralelismo na *decisão*. O paralelismo fica só na leitura; a
-  classificação acontece sobre um conjunto já ordenado.
+Distribuição: CLI (`conflictdoctor scan <pasta> --json`) desde o dia um, GUI de consumidor como produto principal (fluxo Pasta → Scan → Resumo → Duplicatas → Conflitos → Comparar → Quarentena → Confirmação).
 
-### Pipeline em cascata — o desempenho vem de não ler
+## Stack
 
-O erro clássico é hashear tudo. A pasta tem 400 GB; 99% dela é irrelevante.
+C#/.NET 8 · solução `CloudSyncConflictDoctor.sln`: `src/Doctor.Core` (motor), `src/Doctor.Cli`, `src/Doctor.Gui` (Avalonia — hipótese de trabalho), `tests/Doctor.Tests`. SQLite via `Microsoft.Data.Sqlite`, hashing via Blake3.
 
-**Nível 0 — enumeração (I/O de metadado apenas)**
+## Estado atual (agosto/2026)
 
-Uma passada só, coletando `(caminho, tamanho, mtime, atributos, file id)`.
-Tamanho e mtime **já vêm** na enumeração de diretório — não custa `stat`
-adicional. No Windows, `FindFirstFileEx` com `FindExInfoBasic` +
-`FIND_FIRST_EX_LARGE_FETCH` (dispensa o nome 8.3 e busca em lote).
+Concluído e revisado (**GATE 1 — Architecture Ready fechado**):
 
-**Pular obrigatoriamente**, antes de qualquer outra coisa:
+- ADRs 0001–0011 (linguagem, quarentena, schema, scanner, hashing, cache, concorrência, CLI, GUI, quarentena detalhada, comparador);
+- Threat model com 11 casos concretos de destruição de dados e mitigação mapeada;
+- Schema do relatório v1 fechado com fixture real (hashes BLAKE3 calculados);
+- Estratégia de testes completa (suítes DET/PLH/QDT mapeadas para os gates);
+- Harness de benchmark + gerador de dataset sintético versionado;
+- Protótipo Level 0 funcional (enumeração cross-platform + marcação de placeholder na origem);
+- Esqueleto de GUI navegável com as 9 telas do fluxo e linguagem visual de segurança (ação destrutiva sempre rotulada "Mover para quarentena", nunca "apagar"), ViewModels com 49 testes verdes.
 
-- `FILE_ATTRIBUTE_OFFLINE`
-- `FILE_ATTRIBUTE_RECALL_ON_OPEN`
-- `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`
-- reparse points em geral
+Em execução: motor do scan (pipeline Level 0/1), gate de placeholder com telemetria zero-bytes, state machine da GUI, contrato de telemetria (bytes evitados).
 
-Esses são os placeholders de "Arquivos sob Demanda". **Tocar neles dispara
-download.** Um scan ingênuo baixa a nuvem inteira do usuário e estoura a
-franquia dele. Isto não é otimização — é requisito de correção.
+## O que falta (roadmap até o release)
 
-**Nível 1 — agrupamento (custo zero de I/O)**
+| Marco | Conteúdo | Gate |
+|---|---|---|
+| Motor completo | Level 1–3, classificação duplicata vs divergência | GATE 2 (Scanner Correctness) |
+| Segurança | Path traversal, TOCTOU, reparse attacks, fail-closed | GATE 5 |
+| Resolução | keep-newest/largest/machine/manual + empate determinístico | GATE 3 (Resolution Safety) |
+| Performance | Benchmark 1M arquivos, telemetria de bytes evitados | GATE 4 |
+| CI | GitHub Actions ubuntu+windows, suítes determinismo/placeholder/no-delete | GATE 6 |
+| Empacotamento | Instalador assinado, winget, MSIX/Microsoft Store | GATE 6 |
+| Licenciamento | Ed25519 offline-first, US$ 9,90 venda única, scan grátis | — |
+| Auditoria final | *"Can I trust the delete button?"* — revisão adversarial | pré-RC |
 
-Agrupar por `(nome-base normalizado, tamanho)`. Grupo com 1 elemento é
-descartado na hora. Isto elimina a esmagadora maioria dos arquivos sem ler
-um byte de conteúdo.
+## Ideias e questões abertas
 
-A normalização do nome-base é a **única** parte com conhecimento por
-fornecedor: uma lista ordenada de ~8 expressões (`(conflicted copy)`,
-`-DESKTOP-XXXX`, ` (1)`, `~$`, `.sb-<hex>`, etc.). Bounded e estável.
+- **Diff semântico de Office** (parágrafos/células/fórmulas via Open XML): entra no v1 ou é o gancho do Pro? Análise em curso no board.
+- **Escopo de providers no v1**: os cinco de uma vez ou Windows-first progressivo? (arquitetura já desacoplada de vendor.)
+- **Naming**: "Conflict Doctor" descreve mas não vende — pesquisa de nome/trademark planejada.
+- Comparação CSV orientada a linha/coluna e diff markdown no comparador v1.
+- Modo MSP/RMM: execução headless agendada com relatório JSON consolidado (o EXE é o produto; wrapper PowerShell é só implantação).
 
-**Nível 2 — hash parcial (só nos sobreviventes)**
+## Desenvolvimento
 
-Primeiros 64 KiB + últimos 64 KiB. Mata quase todo falso positivo de
-"mesmo nome, mesmo tamanho, conteúdo diferente" a duas leituras por arquivo.
+Este projeto é executado via **Hermes Kanban** (board `conflict-doctor`): cards com Definition of Done, dependências explícitas, gates formais de revisão e handoffs auditáveis. A especificação completa está em [`docs/SPEC.md`](docs/SPEC.md) e as decisões de arquitetura em [`docs/adr/`](docs/adr/).
 
-**Nível 3 — hash completo (só nas colisões do nível 2)**
-
-BLAKE3 no arquivo inteiro. Aqui sobra tão pouco que o custo some.
-
-Resultado: o trabalho pesado acontece em ordem de grandeza menor que a pasta.
-
-### Paralelismo — e o detalhe que a maioria erra
-
-- **Enumeração: uma thread por volume.** Listar diretório é metadado; várias
-  threads brigando pela mesma MFT deixam mais lento, não mais rápido.
-- **Hashing: pool limitado.** E o limite depende da mídia:
-  - NVMe/SSD → paralelismo alto ajuda (fila profunda);
-  - HDD → paralelismo **destrói** o throughput (seek thrashing). Serializar.
-  - Detectar com `IOCTL_STORAGE_QUERY_PROPERTY` /
-    `StorageDeviceSeekPenaltyProperty`. Tem penalidade de seek = disco
-    girante = uma thread de leitura.
-
-Isto é uma calibração de hardware real, não um número escolhido no papel:
-deixar o valor configurável e medido, nunca fixo no código.
-
-### Cache incremental — o segundo scan é instantâneo
-
-SQLite local: `(file id, tamanho, mtime) → hash`. Rescan só re-lê o que mudou.
-Chave é o **file id** (`FileIndex`/inode), não o caminho — assim renomear e
-mover não invalida nada, que é justamente o que a sincronização faz o tempo
-todo.
-
-### Como medir (antes de otimizar qualquer coisa)
-
-Alvo declarado e verificável, não estimativa de marketing:
-
-- Árvore sintética de 1.000.000 de arquivos, gerada por script versionado.
-- Métricas: tempo de parede, arquivos lidos de fato, bytes lidos de fato,
-  pico de RSS.
-- **Teste de determinismo no CI:** rodar o scan 3x na mesma árvore, com ordem
-  de enumeração embaralhada artificialmente, e exigir saída idêntica. Se
-  falhar, é bug de correção, não de desempenho.
-- **Teste de placeholder:** árvore com arquivos marcados como offline; o scan
-  tem que terminar com **zero** bytes lidos deles.
-
-Os dois últimos testes valem mais que qualquer benchmark.
-
-## Por que passa no filtro "baixa manutenção + lucro alto"
-
-- **A menor manutenção das três ideias.** Os padrões de nome de conflito são
-  determinísticos e mudam quase nunca.
-- **Não depende de API de fornecedor nenhum no v1.** Só do sistema de arquivos.
-  Isso mata de uma vez: OAuth, quota, rate limit, mudança de API, revisão de app.
-- **Infra: US$ 0/mês.** Local-first, licença + site estático.
-- **Base gigantesca:** qualquer pessoa com nuvem sincronizada. Concorrência
-  praticamente nula — as ferramentas existentes são de-duplicadores burros que
-  não entendem o conceito de conflito de sincronização.
-
-## Riscos
-
-- **A dor é chata, não urgente.** É o oposto do Printer Rescue. Ninguém acorda
-  querendo resolver isso. A conversão depende de um scan grátis que mostre o
-  estrago em números — o susto é o gatilho da compra.
-- Apagar arquivo do usuário é a operação mais perigosa que existe. Quarentena
-  obrigatória, nunca delete direto, nem em modo "limpar tudo".
-- Arquivos "online only" (placeholders) não têm conteúdo local para hashear.
-  Precisa detectar o atributo de reparse point e tratar separadamente, sem
-  disparar download de 400 GB sem querer.
-
-## Decisões travadas
-
-- **Interface: GUI de verdade.** É o único dos quatro cujo comprador é usuário
-  final. UI/UX decente não é enfeite aqui — é o produto. Um CLI mataria a
-  venda.
-  *Ainda assim, expor um `--json` para o scan:* custa pouco e mantém a porta
-  aberta para o kit de técnico.
-- **Preço: US$ 9,90, venda única, updates gratuitos.** É o produto de volume.
-- **Scan e relatório completos de graça.** O susto é o gatilho da compra;
-  cobrar pelo diagnóstico mata o funil.
-- **Microsoft Store: sim, e é o único dos quatro em que ela realmente serve.**
-  Público consumidor, zero atrito de política (não toca driver nem serviço),
-  0% de comissão usando Paddle.
-
-## A decidir
-
-- [ ] Cobrar por licença vitalícia (compra única) ou assinatura?
-- [ ] O diff semântico de Office entra no v1 ou é o gancho do Pro?
-- [ ] Escopo do v1: só OneDrive + Google Drive, ou os cinco de uma vez?
-- [ ] Nome. "Conflict Doctor" descreve, mas não vende.
-
-## Fonte
-
-`grok.md` §2.8 e `ideias_apps_problemas_cronicos_ti_refinada.md` §2.8
-(5/5 automação, 5/5 valor, 5º lugar geral). Subiu na nossa lista por ser o de
-menor custo de manutenção do conjunto todo.
+```bash
+# build e testes (requer .NET 8 SDK)
+dotnet build CloudSyncConflictDoctor.sln
+dotnet test tests/Doctor.Tests
+```
 
 ---
 
-**Distribuição e venda:** ver [`../CANAIS.md`](../CANAIS.md) — canal MSP, RMM, Microsoft Store e recebimento.
-
-**Preço e modelo:** ver [`../PRECIFICACAO.md`](../PRECIFICACAO.md).
+**Regra de ouro do produto:** o usuário precisa chegar ao ponto de dizer *"eu sei exatamente por que estes arquivos foram escolhidos e sei que posso desfazer."*
