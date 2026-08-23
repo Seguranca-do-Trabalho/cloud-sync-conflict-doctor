@@ -12,7 +12,27 @@ namespace Doctor.Core;
 public sealed record ScanResult(
     IReadOnlyList<ConflictGroup> Groups,
     IReadOnlyList<IdenticalDuplicate> IdenticalDuplicates,
-    IReadOnlyList<RealConflict> RealConflicts);
+    IReadOnlyList<RealConflict> RealConflicts,
+    IReadOnlyList<UnresolvedGroup>? UnresolvedGroups = null)
+{
+    /// <summary>Grupos recusados por hash não verificável (S11-5). Nunca nulo.</summary>
+    public IReadOnlyList<UnresolvedGroup> UnresolvedGroups { get; init; } =
+        UnresolvedGroups ?? [];
+}
+
+/// <summary>
+/// Grupo cuja decisão L3 foi recusada por impossibilidade de hash completo de ao
+/// menos um membro (S11-5 fail-closed, ameaça T-11): sem hash completo verificado,
+/// nenhuma classificação é emitida — o grupo não vira duplicata nem conflito e o
+/// par nunca é elegível a resolução/quarentena. Motivo auditável por membro.
+/// </summary>
+public sealed record UnresolvedGroup(
+    string NormalizedBaseName,
+    long SizeBytes,
+    IReadOnlyList<UnresolvedMember> Members);
+
+/// <summary>Membro sem hash completo verificável, com o motivo da recusa.</summary>
+public sealed record UnresolvedMember(string Path, string Reason);
 
 /// <summary>
 /// Classe de duplicatas idênticas (schema v1 §6.1): hash BLAKE3 completo comum +
@@ -49,6 +69,9 @@ public sealed record ConflictMember(string Path, string Hash);
 /// </summary>
 public sealed class ScanPipeline
 {
+    /// <summary>Sentinela de hash não verificável (S11-5): prefixo + motivo.</summary>
+    public const string UnresolvedPrefix = "UNRESOLVED::";
+
     private readonly IFileEnumerator _enumerator;
     private readonly IHasher _hasher;
     private readonly IStreamSource? _streams;
@@ -93,6 +116,7 @@ public sealed class ScanPipeline
 
         var identical = new List<IdenticalDuplicate>();
         var conflicts = new List<RealConflict>();
+        var unresolved = new List<UnresolvedGroup>();
 
         // L2 + L3 — decisão serial sobre grupos já ordenados (base em bytes, size).
         foreach (var group in groups)
@@ -106,6 +130,23 @@ public sealed class ScanPipeline
             // Colisão parcial = ao menos dois membros com o MESMO hash parcial.
             // Sem colisão parcial não há candidato a duplicata: grupo não sobrevive
             // ao L2 e nenhum full hash acontece (ADR-0004: L3 só sobre sobreviventes).
+            // S11-5 fail-closed: hash parcial não verificável (sentinela) força o
+            // grupo inteiro para unresolved — sem decisão sobre dado ausente.
+            var hasUnresolvedPartial = partial.Any(p =>
+                p.Partial.StartsWith(UnresolvedPrefix, StringComparison.Ordinal));
+
+            if (hasUnresolvedPartial)
+            {
+                unresolved.Add(new UnresolvedGroup(
+                    group.NormalizedBaseName,
+                    group.SizeBytes,
+                    partial
+                        .Where(p => p.Partial.StartsWith(UnresolvedPrefix, StringComparison.Ordinal))
+                        .Select(p => new UnresolvedMember(p.Member.Path, p.Partial[UnresolvedPrefix.Length..]))
+                        .ToArray()));
+                continue;
+            }
+
             var hasPartialCollision = partial
                 .GroupBy(p => p.Partial, StringComparer.Ordinal)
                 .Any(g => g.Count() >= 2);
@@ -126,13 +167,14 @@ public sealed class ScanPipeline
                 full[i] = (partial[i].Member, HashGuarded(() => FullHash(partial[i].Member, ct), partial[i].Member));
             }
 
-            ClassifyGroup(group, full, identical, conflicts);
+            ClassifyGroup(group, full, identical, conflicts, unresolved);
         }
 
         identical.Sort((a, b) => string.CompareOrdinal(a.Files[0].Path, b.Files[0].Path));
         conflicts.Sort((a, b) => string.CompareOrdinal(a.Files[0].Path, b.Files[0].Path));
+        unresolved.Sort((a, b) => string.CompareOrdinal(a.Members[0].Path, b.Members[0].Path));
 
-        return new ScanResult(groups, identical.ToArray(), conflicts.ToArray());
+        return new ScanResult(groups, identical.ToArray(), conflicts.ToArray(), unresolved.ToArray());
     }
 
     /// <summary>
@@ -140,12 +182,29 @@ public sealed class ScanPipeline
     /// completos todos iguais ⇒ <see cref="IdenticalDuplicate"/>; ao menos dois
     /// distintos ⇒ <see cref="RealConflict"/> cobrindo TODOS os membros.
     /// </summary>
-    private static void ClassifyGroup(
+    private void ClassifyGroup(
         ConflictGroup group,
         (FileEntry Member, string Full)[] full,
         List<IdenticalDuplicate> identical,
-        List<RealConflict> conflicts)
+        List<RealConflict> conflicts,
+        List<UnresolvedGroup> unresolved)
     {
+        // S11-5 fail-closed (T-11): membro cujo hash completo não pôde ser verificado
+        // recusa a decisão do GRUPO INTEIRO — nunca classificar com dado ausente.
+        var failed = full
+            .Where(f => f.Full.StartsWith(UnresolvedPrefix, StringComparison.Ordinal))
+            .Select(f => new UnresolvedMember(f.Member.Path, f.Full[UnresolvedPrefix.Length..]))
+            .ToArray();
+
+        if (failed.Length > 0)
+        {
+            unresolved.Add(new UnresolvedGroup(
+                group.NormalizedBaseName,
+                group.SizeBytes,
+                failed));
+            return;
+        }
+
         var distinctFull = full.Select(f => f.Full).Distinct(StringComparer.Ordinal).Count();
 
         if (distinctFull <= 1)
@@ -186,7 +245,18 @@ public sealed class ScanPipeline
             throw new PlaceholderReadException(entry.Path);
         }
 
-        return compute();
+        try
+        {
+            return compute();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                   or PlaceholderViolationException)
+        {
+            // S11-5 fail-closed: falha de leitura/hash não aborta o scan e NUNCA
+            // produz decisão — o membro carrega o motivo como sentinela auditável
+            // consumida por ClassifyGroup (grupo inteiro vira UnresolvedGroup).
+            return UnresolvedPrefix + ex.Message;
+        }
     }
 
     /// <summary>
