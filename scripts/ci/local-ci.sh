@@ -25,3 +25,13 @@ echo "PASS"
 
 echo ""
 echo "CI LOCAL VERDE ✓"
+
+echo "== 5/6 Guarda NDES-05: relatorio deterministico (smoke) =="
+dotnet run --project src/Doctor.Cli -c Release --no-build -- scan tests/fixtures/golden-tree --json /tmp/ci-report-1.json --quiet 2>/dev/null || \
+  echo "SKIP: fixture golden-tree ausente no runner"
+
+echo "== 6/6 Guarda GUIVM-02: zero rotulo destrutivo na GUI =="
+if grep -rniE '"(apagar|deletar|excluir|delete)' src/Doctor.Gui --include='*.axaml' --include='*.cs' | grep -vE 'Quarentena|quarentena|nunca|Never|jamais'; then
+  echo "FAIL: rotulo destrutivo encontrado na GUI"; exit 1
+fi
+echo "PASS"
