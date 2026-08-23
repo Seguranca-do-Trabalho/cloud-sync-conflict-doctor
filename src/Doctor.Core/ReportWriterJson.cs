@@ -61,7 +61,10 @@ public sealed class ReportWriterJson : IReportWriter
 
         var report = new ReportDoc
         {
-            ReportSchemaVersion = 1,
+            // SEG-12: campo novo em telemetry (files_excluded_conflictdoctor) ⇒ bump
+            // obrigatório por §7.1 do schema-report-v1 (política conservadora: bump em
+            // mudança aditiva; consumidores são estritos e consomem exatamente uma versão).
+            ReportSchemaVersion = 2,
             Algorithm = "BLAKE3",
             HashVersion = 1,
             NormalizationRulesVersion = Grouping.NormalizerVersion,
@@ -75,6 +78,9 @@ public sealed class ReportWriterJson : IReportWriter
             {
                 FilesEnumerated = telemetry.FilesEnumerated,
                 FilesPlaceholder = telemetry.FilesPlaceholder,
+                // SEG-12 (T-15): subárvore reservada excluída na fronteira canônica L0,
+                // contada aqui — política, não erro (R10); idempotência §20 entre rescans.
+                FilesExcludedConflictDoctor = telemetry.FilesExcludedConflictDoctor,
                 FilesSkipped = telemetry.FilesSkipped,
                 FilesPartialHashed = telemetry.FilesPartialHashed,
                 FilesFullHashed = telemetry.FilesFullHashed,
@@ -158,6 +164,8 @@ public sealed class ReportWriterJson : IReportWriter
     {
         [JsonPropertyName("files_enumerated")] public long FilesEnumerated { get; init; }
         [JsonPropertyName("files_placeholder")] public long FilesPlaceholder { get; init; }
+        // SEG-12 (T-15): posição declarada no schema v2 §5 — logo após files_placeholder.
+        [JsonPropertyName("files_excluded_conflictdoctor")] public long FilesExcludedConflictDoctor { get; init; }
         [JsonPropertyName("files_skipped")] public long FilesSkipped { get; init; }
         [JsonPropertyName("files_partial_hashed")] public long FilesPartialHashed { get; init; }
         [JsonPropertyName("files_full_hashed")] public long FilesFullHashed { get; init; }
