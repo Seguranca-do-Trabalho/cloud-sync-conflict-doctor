@@ -21,7 +21,8 @@ public class PlaceholderSuiteTests
         long size,
         FileAttributes? attrs = null,
         bool isPlaceholder = false,
-        PlaceholderKind? kind = null)
+        PlaceholderKind? kind = null,
+        string fileId = "1")
         => new()
         {
             Path = path,
@@ -29,7 +30,7 @@ public class PlaceholderSuiteTests
             MtimeUtc = DateTimeOffset.UnixEpoch,
             Attributes = attrs ?? FileAttributes.Normal,
             VolumeId = "vol-test",
-            FileId = "1",
+            FileId = fileId,
             IsPlaceholder = isPlaceholder,
             PlaceholderKind = kind,
         };
@@ -67,15 +68,17 @@ public class PlaceholderSuiteTests
         fonte.Register("tree/b/Relatorio.bin", new byte[] { 1, 2, 3 });
 
         var entries = new List<FileEntry>();
-        foreach (var (path, kind, attrs) in placeholders)
+        var placeholderIds = new[] { "p_offline", "p_recall", "p_data", "p_reparse" };
+        foreach (var i in Enumerable.Range(0, placeholders.Length))
         {
-            // Marcação L0 ausente OU presente não muda nada: o duplo gate cobre ambos.
+            var (path, kind, attrs) = placeholders[i];
+            // Marcação L0 ausenta OU presente não muda nada: o duplo gate cobre ambos.
             var marcado = path != "tree/p.recall";
-            entries.Add(Entrada(path, 2048, attrs, marcado, marcado ? kind : null));
+            entries.Add(Entrada(path, 2048, attrs, marcado, marcado ? kind : null, placeholderIds[i]));
         }
 
-        entries.Add(Entrada("tree/a/Relatorio.bin", 3));
-        entries.Add(Entrada("tree/b/Relatorio.bin", 3));
+        entries.Add(Entrada("tree/a/Relatorio.bin", 3, fileId: "fa"));
+        entries.Add(Entrada("tree/b/Relatorio.bin", 3, fileId: "fb"));
 
         var hasher = CountingHasher.Using(new PlaceholderGate(fonte));
         var pipeline = new ScanPipeline(new FakeEnumerator(Resultado(entries)), hasher, new PlaceholderGate(fonte));
