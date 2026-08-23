@@ -1,0 +1,79 @@
+{
+  "arquivos_encontrados": 1060000,
+  "arquivos_esperados": 1060000,
+  "divergencia": 0,
+  "bytes_em_disco": 76015949061,
+  "bytes_previstos_gerador": 75999732750,
+  "shards": [
+    {
+      "shard": 0,
+      "seed": 20260822,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7625730968
+    },
+    {
+      "shard": 1,
+      "seed": 20260823,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7606240581
+    },
+    {
+      "shard": 2,
+      "seed": 20260824,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7601665963
+    },
+    {
+      "shard": 3,
+      "seed": 20260825,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7595721105
+    },
+    {
+      "shard": 4,
+      "seed": 20260826,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7593836406
+    },
+    {
+      "shard": 5,
+      "seed": 20260827,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7607357080
+    },
+    {
+      "shard": 6,
+      "seed": 20260828,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7609767009
+    },
+    {
+      "shard": 7,
+      "seed": 20260829,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7593199635
+    },
+    {
+      "shard": 8,
+      "seed": 20260830,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7593554942
+    },
+    {
+      "shard": 9,
+      "seed": 20260831,
+      "esperado": 106000,
+      "encontrado": 106000,
+      "bytes_disco": 7588875372
+    }
+  ]
+}
