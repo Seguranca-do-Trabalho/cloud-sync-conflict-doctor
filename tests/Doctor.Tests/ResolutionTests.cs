@@ -59,4 +59,25 @@ public sealed class ResolutionTests
         Assert.Equal(2, plano.Sacrifices.Count);
         Assert.All(plano.Sacrifices, s => Assert.Equal("keep-largest", s.Reason));
     }
+
+    // ---------------------------------------------------------------- KeepMachine
+
+    [Fact]
+    public void KeepMachine_MarcaDesktopNoNome_VenceVersaoDaMaquinaPedida()
+    {
+        var grupo = new ConflictGroup("contrato", 0,
+        [
+            Entrada("/root/contrato-DESKTOP-ABC123.txt", 100, "2026-08-22T12:00:00Z"),
+            Entrada("/root/contrato-DESKTOP-XYZ789.txt", 100, "2026-08-20T10:00:00Z"),
+            Entrada("/root/contrato (1).txt", 100, "2026-08-21T11:00:00Z"), // sem marca
+        ]);
+
+        var plano = Resolution.Resolve(grupo, new KeepMachine("DESKTOP-XYZ789"));
+
+        Assert.Equal("/root/contrato-DESKTOP-XYZ789.txt", plano.Winner.Path);
+        Assert.Equal(
+            new[] { "/root/contrato (1).txt", "/root/contrato-DESKTOP-ABC123.txt" },
+            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
+        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-machine:DESKTOP-XYZ789", s.Reason));
+    }
 }

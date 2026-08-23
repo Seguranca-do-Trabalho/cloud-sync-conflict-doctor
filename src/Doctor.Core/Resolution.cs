@@ -51,6 +51,32 @@ public static class Resolution
     }
 
     /// <summary>
+    /// Estratégia keep-machine (SPEC §17 "manter versão de determinada máquina"):
+    /// vence o membro cujo nome carrega o marcador de conflito "-DESKTOP-&lt;machineId&gt;"
+    /// (SPEC §7), Ordinal. Sem representante no grupo: lança (falha fechada) — nunca
+    /// devolve plano plausível para pedido não atendível.
+    /// </summary>
+    public static ResolutionPlan Resolve(ConflictGroup group, KeepMachine strategy)
+    {
+        var marker = "-DESKTOP-" + strategy.MachineId;
+        var representative = group.Members
+            .Where(m => Path.GetFileName(m.Path).Contains(marker, StringComparison.Ordinal))
+            .ToArray();
+
+        if (representative.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"keep-machine: nenhum membro da máquina '{strategy.MachineId}' no grupo.");
+        }
+
+        // Entre representantes da MESMA máquina (caso patológico), desempate padrão.
+        var ordered = OrderByTieBreak(representative, m => m.MtimeUtc);
+
+        // Sacrificados: TODOS os não-vencedores do grupo, em ordem canônica por caminho.
+        return BuildPlan(group, strategy, ordered, exclude: representative[0]);
+    }
+
+    /// <summary>
     /// Ordenação canônica de CANDIDATOS a vencedor: chave de estratégia desc (o melhor
     /// primeiro), depois desempate obrigatório mtime desc → size desc → path asc.
     /// Primeiro elemento é o vencedor; os demais viram sacrificados em ordem canônica.
@@ -68,19 +94,23 @@ public static class Resolution
     private static ResolutionPlan BuildPlan(
         ConflictGroup group,
         ResolutionStrategy strategy,
-        IOrderedEnumerable<FileEntry> ordered)
+        IOrderedEnumerable<FileEntry> ordered,
+        FileEntry? exclude = null)
     {
         var list = ordered.ToArray();
-        if (list.Length == 0 || list.Length != group.Members.Count)
+        if (exclude is null && (list.Length == 0 || list.Length != group.Members.Count))
         {
             throw new InvalidOperationException("Grupo sem membros ou corrompido: falha fechada.");
         }
 
-        var sacrifices = list[1..]
+        var winner = exclude ?? list[0];
+        var sacrifices = group.Members
+            .Where(m => !ReferenceEquals(m, winner))
+            .OrderBy(m => m.Path, StringComparer.Ordinal)
             .Select(m => new Sacrifice(m, ReasonFor(strategy)))
             .ToArray();
 
-        return new ResolutionPlan(group, strategy, list[0], sacrifices);
+        return new ResolutionPlan(group, strategy, winner, sacrifices);
     }
 
     private static string ReasonFor(ResolutionStrategy strategy) => strategy switch
