@@ -5,7 +5,7 @@
 | Documento | docs/security-audit-gate5.md |
 | Card | t_1543f566 (S11-6 — Consolidação GATE 5, filho de EPIC 11 t_e0cd185c) |
 | Data | 2026-08-23 |
-| Revisão | R1 |
+| Revisão | R2 (R1 pelo card t_1543f566; R2 pelo card t_218a0218/S11-6a — SEG-01/SEG-08 → VERDE) |
 | Responsável | André Santo (forg3) — andre@junkyardgoodies.app |
 | Base auditada | main @ 0ca0530 (worktree wt/t_1543f566; nenhum código alterado) |
 | Base normativa | SPEC §45 (GATE 5), §26, §51; threat-model.md rev. 1.0 (commit 4bad5d2); ADR-0001..0011 |
@@ -41,14 +41,14 @@ arquivo da suíte. Regras R1–R12 conforme §4 do threat-model.
 
 | SEG | Teste (nome canônico §5 TM) | Caso | Regra | Card resp. | Prior. | Status | Evidência (commit + suíte) |
 |---|---|---|---|---|---|---|---|
-| SEG-01 | `Security_PathTraversal_HostileName_ContainedInRoot` | T-01 | R2 | S11-1 (T17) | P0 | ADIADO → T-12a/T-14 (§4) | CanonicalPathTests.cs (6cbac18) cobre a metade de validação; contenção em move ausente |
+| SEG-01 | `Security_PathTraversal_HostileName_ContainedInRoot` | T-01 | R2 | S11-6a (t_218a0218) | P0 | VERDE (R2) | CanonicalPathTests.cs (6cbac18) cobre a validação de nome; contenção em move/restore implementada em Quarantine.cs (f210608, wt/t_218a0218) + SecurityContainmentTests.Security_PathTraversal_HostileName_ContainedInRoot: vetores trailing dot/space, RLO U+202E e homóglifo; manifesto forjado fora da raiz recusado; suíte 438/438 |
 | SEG-02 | `Security_LongPath_Over260Chars_ExtendedPrefixNoTruncation` | T-01 | R2 | S11-1 (T17) | P0 | ADIADO → T-13 (§4.2) | CanonicalPathTests.Normalize_ExtensaoAcimaDe255_TrunciaPara255EGateAprova (6cbac18); >260 chars não exercitado |
 | SEG-03 | `Report_BidiControlChars_EscapedInJsonAndGui` | T-01 | R12 | S11-1 (T17) | P2 | VERDE (equivalente funcional) | ReportWriterTests.Write_ContraFixture_BytesIdenticos + Write_FormatoExato_UTF8SemBOM_LF_Final_NewlineTerminal (709ddf6): escape JSON RFC 8259 mínimo provado contra fixture; variante GUI pendente pós-GUI v2 |
 | SEG-04 | `Security_JunctionLoop_TerminatesWithoutDescent` | T-02 | R3 | S11-2 (T18) | P1 | VERDE | ReparsePolicyTests.Reparse05_IntegracaoJunctionDeDiretorio_EhFolhaEOScanContinua + Loop01..Loop06 incl. Loop04_IntegracaoArvoreComCicloReal_TerminaEmTempoFinitoSemDuplicata (3a701c4) |
 | SEG-05 | `Security_ReparseDir_PointingOutsideRoot_NotEntered` | T-02 | R3 | S11-2 (T18) | P1 | VERDE | ReparsePolicyTests.Reparse06_SymlinkParaForaDaRaiz_ConteudoExternoNaoVaza + ReparseDirectoryGuardTests.SymlinkDeDiretorio_ParaForaDaRaiz_NaoEhAtravessado (d5a5a0f, 3a701c4) |
 | SEG-06 | `Placeholder_GateBeforeOpen_ZeroBytesRead` | T-03 | R3 | EPIC 03 (PLH) | P1 | VERDE | PlaceholderSuiteTests.Plh01_ScanArvoreMista_NenhumaAberturaDeStreamSobrePlaceholders + Plh02_HashSobrePlaceholder_LancaAntesDeQualquerIo + PlaceholderGateTests.Enforce_ArvoreMista_ZeroLeitura_RelatorioParcialCorreto (ece1112, 1b4516f) |
 | SEG-07 | `Placeholder_ConvertedAfterEnumeration_IsCaughtBySecondGate` | T-03 | R3 | EPIC 03 (PLH) | P1 | VERDE | PlaceholderSuiteTests.Plh04_MutacaoPosGate_Falha_EhDetectadaPelosEspioes + Plh03_TelemetriaComBytesDePlaceholder_LancaViolacaoENuncaELavada + PlaceholderGateTests.OpenRead_NaoMarcada_ComBitsCrusDePlaceholder_TambemELanca (ece1112) |
-| SEG-08 | `Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack` | T-04 | R4/R5 | S11-3 (T19) | P0 | PARCIAL → T-12b (§4.1) | QuarantineTests.Move_MetadadoStale_ItemPulado_ArquivoPermaneceOndeEsta (19fe330): janela reduzida por revalidação size+mtime; rollback por hash pós-move não implementado |
+| SEG-08 | `Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack` | T-04 | R4/R5 | S11-6a (t_218a0218) | P0 | VERDE (R2) | QuarantineTests.Move_MetadadoStale_ItemPulado_ArquivoPermaneceOndeEsta (19fe330): janela reduzida por revalidação size+mtime; rollback por hash pós-move implementado em Quarantine.cs (f210608, wt/t_218a0218) + SecurityContainmentTests.Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack: troca na janela hash→move ⇒ rollback, fonte intacta, FALHA, hash_pre_move ≠ hash_post_move no manifesto; suíte 438/438 |
 | SEG-09 | `Quarantine_ShareModeExclusive_BlockWriterDuringHashWindow` | T-04 | R4 | S11-3 (T19) | P0 | ADIADO → T-13 (§4.2) |FileStreamSource abre FileShare.Read (d8cc7df), mas bloqueio exclusivo na JANELA hash→move não é testável no POSIX-fs atual |
 | SEG-10 | `Scan_FileModifiedDuringRead_MarkedUnstable_AndNeverCached` | T-05 | R4/R10 | S11-3 (T19) | P0 | ADIADO → T-12c (§4.1) | Não há snapshot pós-leitura nem status UNSTABLE no pipeline L2/L3 |
 | SEG-11 | `Scan_StableFile_MetadataUnchanged_ClassifiedNormally` | T-05 | R4 | S11-3 (T19) | P1 | VERDE (controle) | ScanPipelineTests.Scan_TresOrdensDeEnumeracao_SaidaIdenticaByteAByte + DeterminismSuiteTests (39cb05b): classificação normal sob instabilidade ausente é o caminho único exercitado |
@@ -65,9 +65,11 @@ arquivo da suíte. Regras R1–R12 conforme §4 do threat-model.
 | SEG-22 | `Permissions_AccessDenied_FileReportedAndNeverQuarantineEligible` | T-11 | R10 | S11-5 | P1 | ADIADO → §4.8 | Falha por-item registrada (ScanCommand.cs:99 captura UnauthorizedAccessException/IOException como anomalia, d8cc7df), mas elegibilidade negativa explícita "sem hash, sem resolução" não afirmada em teste |
 | SEG-23 | `Scan_PartialFailures_DoNotAbortWholeScan` | T-11 | R10/R11 | S11-5 | P1 | VERDE | CliScanCommandTests.AnomaliasComArquivosPulados_ExitTres_MarcaParcial + ErrosSemAnomalias_PermaneceExitZero (d8cc7df): parcial explícito, exit 3, scan continua |
 
-Células vazias: zero. Total: 23 linhas — **16 verdes**, **7 adiado/parcial com justificativa
-formal na §4** (SEG-01, SEG-02, SEG-09, SEG-10, SEG-12, SEG-15, SEG-21, SEG-22 + parciais
-SEG-08/SEG-20; contagem líquida na §7).
+Células vazias: zero. Total: 23 linhas — **18 verdes** (R1: 16 + SEG-01 e SEG-08
+convertidas em R2 pelo card t_218a0218/S11-6a, commit f210608, branch wt/t_218a0218),
+**7 adiado/parcial com justificativa formal na §4**
+(SEG-02, SEG-09, SEG-10, SEG-12, SEG-15, SEG-21, SEG-22; parciais remanescentes:
+SEG-20; contagem líquida na §7).
 
 ## 3. Ownership (conforme decisão do orquestrador)
 
@@ -183,11 +185,17 @@ GATE 6 junto com a suíte T-13 (windows-native).
 | Condição | Atendida? | Evidência |
 |---|---|---|
 | Threat model revisado | **SIM** | Esta revisão: 4 adendos numerados (T-12…T-15), riscos residuais §7 reavaliados, equivalência R9 documentada; nenhuma reescrita retroativa |
-| Path/reparse attacks testados | **PARCIAL** | Reparse: completo e verde (SEG-04/05, 8 testes). Path traversal: validação de nome hostil verde, contenção em move/restore pendente (T-12a) |
-| Race/TOCTOU analisado | **SIM** | Janela hash→move reduzida por revalidação de metadados (SEG-08 parcial), cache venenoso encerrado por redesign (SEG-16/17), op_id determinístico provado (SEG-18/19), falha fechada com manifesto parcial honesto (SEG-20); lacunas UNSTABLE/rollback formalizadas em T-12b/T-12c |
+| Path/reparse attacks testados | **PARCIAL** | Reparse: completo e verde (SEG-04/05, 8 testes). Path traversal: validação de nome hostil verde; **R2 (t_218a0218): contenção byte-a-byte no move/restore implementada e provada — SEG-01 VERDE; restam >260 chars (T-13) e variante GUI do bidi (T-14)** |
+| Race/TOCTOU analisado | **SIM** | Janela hash→move reduzida por revalidação de metadados (SEG-08 parcial), cache venenoso encerrado por redesign (SEG-16/17), op_id determinístico provado (SEG-18/19), falha fechada com manifesto parcial honesto (SEG-20); lacunas UNSTABLE/rollback formalizadas em T-12b/T-12c. **R2 (t_218a0218): rollback por hash pós-move implementado e provado — SEG-08 VERDE; restam as lacunas T-12c (UNSTABLE) e T-13 (share exclusivo, plataforma)** |
 | Installer reviewed | **SIM (com ressalva de transferência)** | Auditado: inexistente por decisão de escopo 0ca0530 (v1 sem packaging); checklist vinculante registrado na §5; condição física transfere-se ao GATE 6 |
 
 **VEREDITO GLOBAL: GATE 5 NÃO FECHADO NESTE ESTÁGIO — 3 lacunas bloqueantes.**
+
+> **R2 (2026-08-23, card t_218a0218/S11-6a):** lacuna 1 abaixo SANADA — SEG-01 e SEG-08
+> verdes (implementação em Quarantine.cs + testes canônicos §5, commit f210608 na
+> branch wt/t_218a0218; TDD RED→GREEN provado; suíte 438/438). Bloqueio cruzado ao
+> GATE 3 reduzido na mesma medida. Permanecem bloqueando: SEG-10 (t_060a77cc) e
+> SEG-12 (t_694bc7ce), além da suíte windows-native para SEG-02/09/21 (T-13).
 
 Lacunas bloqueantes (cada uma com card responsável):
 
@@ -215,6 +223,7 @@ transferida ao GATE 6 por decisão de escopo documentada.
 
 Repetindo para efeito de trilha: os testes P0 da matriz — SEG-01, SEG-02, SEG-08, SEG-09,
 SEG-10, SEG-13, SEG-14, SEG-16, SEG-18, SEG-20, SEG-21 — bloqueiam GATE 3 E GATE 5
-simultaneamente (threat-model §5, critério de pronto). Estado deles: verdes SEG-13/14/16/18;
-parciais SEG-08/20; pendentes SEG-01/02/09/10/21. Portanto **GATE 3 também não fecha** enquanto
-as lacunas 1–3 (e a suíte windows-native para 02/09/21) não forem sanadas.
+simultaneamente (threat-model §5, critério de pronto). Estado deles: verdes SEG-01/08 (R2,
+t_218a0218), SEG-13/14/16/18; parciais SEG-20; pendentes SEG-02/09/10/21. Portanto **GATE 3
+também não fecha** enquanto as lacunas 2–3 (e a suíte windows-native para 02/09/21) não forem
+sanadas — a lacuna 1 foi sanada em R2 pelo card t_218a0218.
