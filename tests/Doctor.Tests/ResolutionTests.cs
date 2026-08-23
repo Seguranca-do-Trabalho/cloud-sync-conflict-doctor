@@ -80,4 +80,37 @@ public sealed class ResolutionTests
             plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
         Assert.All(plano.Sacrifices, s => Assert.Equal("keep-machine:XYZ789", s.Reason));
     }
+
+    // ---------------------------------------------------------------- KeepManual
+
+    [Fact]
+    public void KeepManual_EscolhaDentroDoGrupo_VenceEscolhaDoUsuario()
+    {
+        var grupo = new ConflictGroup("apostila", 0,
+        [
+            Entrada("/root/apostila.pdf", 100, "2026-08-22T12:00:00Z"), // mais recente
+            Entrada("/root/apostila (1).pdf", 100, "2026-08-20T10:00:00Z"),
+        ]);
+
+        var plano = Resolution.Resolve(grupo, new KeepManual("/root/apostila (1).pdf"));
+
+        Assert.Equal("/root/apostila (1).pdf", plano.Winner.Path);
+        Assert.Equal(
+            new[] { "/root/apostila.pdf" },
+            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
+        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-manual", s.Reason));
+    }
+
+    [Fact]
+    public void KeepManual_EscolhaForaDoGrupo_FalhaFechada()
+    {
+        var grupo = new ConflictGroup("apostila", 0,
+        [
+            Entrada("/root/apostila.pdf", 100, "2026-08-22T12:00:00Z"),
+            Entrada("/root/apostila (1).pdf", 100, "2026-08-20T10:00:00Z"),
+        ]);
+
+        Assert.Throws<InvalidOperationException>(
+            () => Resolution.Resolve(grupo, new KeepManual("/outra/arquivo.pdf")));
+    }
 }

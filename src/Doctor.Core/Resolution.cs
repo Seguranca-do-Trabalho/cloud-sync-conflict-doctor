@@ -77,6 +77,25 @@ public static class Resolution
     }
 
     /// <summary>
+    /// Estratégia keep-manual (SPEC §17 "escolher manualmente"): vence o membro cujo
+    /// caminho é EXATAMENTE a escolha do usuário (Ordinal). Escolha fora do grupo:
+    /// lança — falha fechada, nunca plano plausível para pedido não atendível.
+    /// </summary>
+    public static ResolutionPlan Resolve(ConflictGroup group, KeepManual strategy)
+    {
+        var choice = group.Members
+            .FirstOrDefault(m => string.Equals(m.Path, strategy.ChoicePath, StringComparison.Ordinal));
+
+        if (choice is null)
+        {
+            throw new InvalidOperationException(
+                $"keep-manual: escolha '{strategy.ChoicePath}' não pertence ao grupo.");
+        }
+
+        return BuildPlan(group, strategy, OrderByTieBreak([choice], m => m.MtimeUtc), exclude: choice);
+    }
+
+    /// <summary>
     /// Ordenação canônica de CANDIDATOS a vencedor: chave de estratégia desc (o melhor
     /// primeiro), depois desempate obrigatório mtime desc → size desc → path asc.
     /// Primeiro elemento é o vencedor; os demais viram sacrificados em ordem canônica.
