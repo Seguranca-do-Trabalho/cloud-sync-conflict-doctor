@@ -8,32 +8,10 @@ using System.Buffers;
 /// como placeholder (SPEC §6 — NÃO TOCAR). Invariante automatizada: nenhum byte de
 /// placeholder é lido — o gate precede qualquer abertura/leitura.
 /// </summary>
-public sealed class PlaceholderReadException : InvalidOperationException
-{
-    public PlaceholderReadException(string path)
-        : base($"Gate de placeholder: conteúdo não pode ser lido ({path}). SPEC §6 / ADR-0005 §6.")
-    {
-        Path = path;
-    }
-
-    /// <summary>Caminho da entrada placeholder recusada.</summary>
-    public string Path { get; }
-
-    /// <summary>Bytes lidos antes da recusa. Sempre 0 (invariante placeholder_bytes_read == 0).</summary>
-    public long BytesRead => 0;
-}
+// PlaceholderReadException: fonte unica em PlaceholderGate.cs.
 
 /// <summary>Contrato de hashing (docs/contratos.md — fonte única de tipos).</summary>
-public interface IHasher
-{
-    /// <summary>Hash parcial BLAKE3 (ADR-0005): arquivo ≤ 128 KiB inteiro;
-    /// &gt; 128 KiB janelas [0,64KiB) + [size−64KiB,size) numa única abertura.
-    /// Lança <see cref="PlaceholderReadException"/> se entry.IsPlaceholder.</summary>
-    string PartialHash(FileEntry entry, CancellationToken ct);
-
-    /// <summary>Hash completo BLAKE3. Mesmo gate de placeholder.</summary>
-    string FullHash(FileEntry entry, CancellationToken ct);
-}
+// IHasher e IStreamSource: fonte unica em Hashing.cs (contratos.md).
 
 /// <summary>
 /// Hasher BLAKE3 do produto — receita v1 EXATA do ADR-0005 (hash_version = 1 fixa

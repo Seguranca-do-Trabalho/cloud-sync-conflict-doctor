@@ -177,14 +177,12 @@ public class Blake3HasherTests : IDisposable
 
         var ex = Assert.Throws<PlaceholderReadException>(
             () => hasher.PartialHash(entry, CancellationToken.None));
-        Assert.Equal(path, ex.Path);
-        Assert.Equal(0, ex.BytesRead);
+        Assert.Equal(path, ex.EntryPath);
+        Assert.False(opened); // o gate precede qualquer abertura
 
         var full = Assert.Throws<PlaceholderReadException>(
             () => hasher.FullHash(entry, CancellationToken.None));
-        Assert.Equal(0, full.BytesRead);
-
-        Assert.False(opened); // o gate precede qualquer abertura
+        Assert.Equal(path, full.EntryPath);
     }
 
     // ---- Teste NEGATIVO de mutação da ordem de concatenação ------------------
