@@ -80,7 +80,18 @@ Em execução: motor do scan (pipeline Level 0/1), gate de placeholder com telem
 
 > **Estratégia comercial:** v1 é **gratuita** para validação em campo. Empacotamento com instalador assinado (MSIX/winget/Store), licensing Ed25519 e precificação ficam para a **v2**, quando o produto estiver provado.
 
-## Estado atual (2026-08-23, tarde)
+## Estado atual (2026-08-23, noite) — RC1
+
+- **Board Kanban concluído: 70/70 cards done** — todos os EPICs, suítes QA, S11 completo,
+  GATEs 1/2 fechados com evidência, GATE 4 baseline, GATE 5 consolidado, GATE 6 pendência
+  estrutural documentada (Actions desligadas + job Windows)
+- **EPIC 19 executado:** *"Can I trust the delete button?"* → veredito **SIM**
+  (`docs/audit/epic19-can-i-trust-the-delete-button-2026-08-23.md`)
+- **RC1 gerado:** `conflictdoctor.exe` win-x64 self-contained (67 MB), smoke E2E aprovado
+  (`docs/release/RC1-notes.md`)
+- Auditoria GATE 2/6 com evidências reais: `docs/qa/auditoria-gate26-2026-08-23.md`
+
+## Histórico — tarde de 2026-08-23
 
 - **522 testes verdes** na `main`; cobertura 83.4% line-rate (coverlet)
 - **CI local**: `./scripts/ci/local-ci.sh` — build Release + suíte completa + guardas estáticas
