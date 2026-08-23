@@ -79,8 +79,30 @@ public sealed class OrderedFileEnumerator : IFileEnumerator
         var raizNormalizada = rootPath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
             .TrimEnd(Path.DirectorySeparatorChar);
 
+        // ---- SEG-12 (adendo T-15; caso T-06/R1): subárvore reservada fora da enumeração --
+        // <raiz>/ConflictDoctor/ é território da ferramenta (quarentena §18/SPEC,
+        // ADR-0002): qualquer entrada sob esse prefixo é política estrutural da
+        // fronteira canônica Level 0 — nunca candidato, nunca erro (contratos.md R10),
+        // nunca contagem em files_enumerated. Comparação de PREFIXO EM BYTES sobre o
+        // caminho canônico (Ordinal), separador já normalizado dos dois lados.
+        var prefixoReservado = raizNormalizada
+            + Path.DirectorySeparatorChar
+            + SubarvoreReservada.NomeDiretorio
+            + Path.DirectorySeparatorChar;
+
+        var excluidosReservados = 0;
+
         foreach (var entry in ordenados)
         {
+            var caminhoCanônico = entry.Path.Replace(
+                Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
+            if (caminhoCanônico.StartsWith(prefixoReservado, StringComparison.Ordinal))
+            {
+                excluidosReservados++;
+                continue;
+            }
+
             if (!visitados.Add((entry.VolumeId, entry.FileId)))
             {
                 errors.Add(new ScanError(
@@ -105,6 +127,11 @@ public sealed class OrderedFileEnumerator : IFileEnumerator
         {
             FilesEnumerated = files.Count,
             FilesPlaceholder = files.Count(f => f.IsPlaceholder),
+            // Cumulativo entre camadas: a composição de produção sofre wrap duplo
+            // (pipeline → Ordered sobre Ordered+CrossPlatform) e a camada interna já
+            // excluiu; recontar zeraria o contador (idempotência §20).
+            FilesExcludedConflictDoctor =
+                physical.Telemetry.FilesExcludedConflictDoctor + excluidosReservados,
         };
 
         return new EnumerationResult(files, errors, telemetry);

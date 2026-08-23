@@ -69,8 +69,10 @@ public sealed class CliScanCommandTests : IDisposable
 
         Assert.Equal(0, r.ExitCode);
         Assert.Null(r.HumanText);
-        var doc = JsonDocument.Parse(r.JsonOutput!); // JSON v1 válido
-        Assert.Equal(1, doc.RootElement.GetProperty("report_schema_version").GetInt32());
+        var doc = JsonDocument.Parse(r.JsonOutput!); // JSON válido (schema vigente)
+        // Schema v2 (SEG-12/t_694bc7ce): files_excluded_conflictdoctor adicionado à
+        // telemetria ⇒ bump 1→2 por §7.1 do schema-report-v1 (mudança aditiva = bump).
+        Assert.Equal(2, doc.RootElement.GetProperty("report_schema_version").GetInt32());
         Assert.Empty(doc.RootElement.GetProperty("identical_duplicates").EnumerateArray());
         Assert.Empty(doc.RootElement.GetProperty("real_conflicts").EnumerateArray());
     }
