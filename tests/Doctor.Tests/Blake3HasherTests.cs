@@ -247,7 +247,80 @@ public class Blake3HasherTests : IDisposable
             Blake3Hasher.ComputeHash(spy, declaredSize: 300 * Kib, partial: true, ct: default));
     }
 
+    // ---- FullHashBlake3 (escopo reduzido do orquestrador): streaming integral ----
+
+    [Fact]
+    public void FullHashBlake3_Arquivo300KiB_HashIntegralViaIStreamSource_DiferenteDoParcialDeJanelas()
+    {
+        var content = new byte[300 * Kib];
+        new Random(23).NextBytes(content);
+        var path = NewTempFileFromBytes(content);
+        var entry = EntryFor(path);
+
+        var source = new CountingStreamSource();
+        source.Register(path, content);
+
+        var full = Blake3Hasher.FullHashBlake3(source, entry, CancellationToken.None);
+
+        // Valor esperado independente: BLAKE3 do arquivo INTEIRO (ADR-0005 §4).
+        var expected = Convert.ToHexString(Blake3.Hasher.Hash(content).AsSpan()).ToLowerInvariant();
+        Assert.Equal(expected, full);
+        Assert.Matches("^[0-9a-f]{64}$", full);
+
+        // O parcial das MESMAS janelas (receita v1) é outro valor — full cobre tudo.
+        var janelas = content[0..WindowBytes].Concat(content[^WindowBytes..]).ToArray();
+        var parcial = Convert.ToHexString(Blake3.Hasher.Hash(janelas).AsSpan()).ToLowerInvariant();
+        var hasher = new Blake3Hasher();
+        Assert.Equal(parcial, hasher.PartialHash(entry, CancellationToken.None));
+        Assert.NotEqual(parcial, full);
+
+        // Streaming pela fonte única de conteúdo: UMA abertura, todos os bytes lidos,
+        // sem carregar o arquivo inteiro em memória.
+        Assert.Equal(1, source.OpenCount(path));
+        Assert.Equal(content.Length, source.BytesRead(path));
+    }
+
+    [Fact]
+    public void ColisaoParcial_JanelasIdenticas_FullDiferente_SeparaRealConflict()
+    {
+        // Dois arquivos com [0,64KiB) e últimas 64KiB IDÊNTICAS e miolo diferente:
+        // o parcial (L2) colide — sobrevivem juntos no grupo — e o full (L3) os
+        // separa como RealConflict, nunca IdenticalDuplicate (SPEC §9).
+        var a = new byte[300 * Kib];
+        new Random(31).NextBytes(a);
+        var b = (byte[])a.Clone();
+        b[150 * Kib] ^= 0xFF; // divergência só no miolo, fora das duas janelas
+        Assert.NotEqual(a[WindowBytes..^WindowBytes], b[WindowBytes..^WindowBytes]);
+
+        var pathA = NewTempFileFromBytes(a);
+        var pathB = NewTempFileFromBytes(b);
+        var hasher = new Blake3Hasher();
+
+        var parcialA = hasher.PartialHash(EntryFor(pathA), CancellationToken.None);
+        var parcialB = hasher.PartialHash(EntryFor(pathB), CancellationToken.None);
+        Assert.Equal(parcialA, parcialB); // L2 NÃO elimina nenhum dos dois
+
+        var source = new CountingStreamSource();
+        source.Register(pathA, a);
+        source.Register(pathB, b);
+        var fullA = Blake3Hasher.FullHashBlake3(source, EntryFor(pathA), CancellationToken.None);
+        var fullB = Blake3Hasher.FullHashBlake3(source, EntryFor(pathB), CancellationToken.None);
+        Assert.NotEqual(fullA, fullB); // L3 separa: RealConflict (§9)
+
+        // Determinismo: repetir produz exatamente os mesmos valores.
+        Assert.Equal(fullA, Blake3Hasher.FullHashBlake3(source, EntryFor(pathA), CancellationToken.None));
+        Assert.Equal(fullB, Blake3Hasher.FullHashBlake3(source, EntryFor(pathB), CancellationToken.None));
+    }
+
     // ---- Helpers --------------------------------------------------------------
+
+    private string NewTempFileFromBytes(byte[] content)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"t99-{Guid.NewGuid():N}.bin");
+        File.WriteAllBytes(path, content);
+        _tempFiles.Add(path);
+        return path;
+    }
 
     private string NewTempFile(long size)
     {

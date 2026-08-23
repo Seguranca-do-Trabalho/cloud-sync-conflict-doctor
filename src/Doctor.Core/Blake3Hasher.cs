@@ -68,6 +68,41 @@ public sealed class Blake3Hasher : IHasher
         return ComputeHash(stream, entry.Size, partial: false, ct);
     }
 
+    /// <summary>
+    /// Hash completo BLAKE3 por streaming (ADR-0005 §4; contratos.md IStreamSource):
+    /// abre o arquivo EXCLUSIVAMENTE pela fonte única de conteúdo e alimenta um
+    /// <see cref="Blake3.StreamingHasher"/> com buffers de 256 KiB emprestados do
+    /// <see cref="ArrayPool{T}"/> — o arquivo NUNCA é carregado inteiro em memória,
+    /// independentemente do tamanho. Mesmo gate de placeholder de
+    /// <see cref="IHasher.FullHash"/>: recusa antes de qualquer abertura/leitura.
+    /// Saída hexadecimal minúscula; determinística byte a byte.
+    /// </summary>
+    public static string FullHashBlake3(IStreamSource streams, FileEntry entry, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(streams);
+        GatePlaceholder(entry);
+
+        using var stream = streams.OpenRead(entry);
+        using var hasher = Blake3.Hasher.New();
+
+        var rented = ArrayPool<byte>.Shared.Rent(CopyBufferSize);
+        try
+        {
+            int read;
+            while ((read = stream.Read(rented, 0, rented.Length)) > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                hasher.Update(rented.AsSpan(0, read));
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+
+        return ToHex(hasher.Finalize());
+    }
+
     internal static void GatePlaceholder(FileEntry entry)
     {
         if (entry.IsPlaceholder)
