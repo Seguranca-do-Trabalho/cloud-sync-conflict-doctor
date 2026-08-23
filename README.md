@@ -2,7 +2,7 @@
 
 > "Você tem 1.847 arquivos duplicados e 23 divergências reais nesta pasta. 1.812 são cópias idênticas — posso colocar em quarentena agora."
 
-![status](https://img.shields.io/badge/status-em%20desenvolvimento-orange) ![stack](https://img.shields.io/badge/C%23-.NET%208-blueviolet) ![segurança](https://img.shields.io/badge/delete-direto%20nunca-red) ![licença](https://img.shields.io/badge/pre%C3%A7o-US%24%209%2C90%20venda%20%C3%BAnica-green)
+![status](https://img.shields.io/badge/status-em%20desenvolvimento-orange) ![stack](https://img.shields.io/badge/C%23-.NET%208-blueviolet) ![segurança](https://img.shields.io/badge/delete-direto%20nunca-red) ![licença](https://img.shields.io/badge/v1-gratuita-green)
 
 **Autor:** André Santo (forg3) | junkyardgoodies.app
 
@@ -75,9 +75,10 @@ Em execução: motor do scan (pipeline Level 0/1), gate de placeholder com telem
 | Resolução | keep-newest/largest/machine/manual + empate determinístico | GATE 3 (Resolution Safety) |
 | Performance | Benchmark 1M arquivos, telemetria de bytes evitados | GATE 4 |
 | CI | GitHub Actions ubuntu+windows, suítes determinismo/placeholder/no-delete | GATE 6 |
-| Empacotamento | Instalador assinado, winget, MSIX/Microsoft Store | GATE 6 |
-| Licenciamento | Ed25519 offline-first, US$ 9,90 venda única, scan grátis | — |
+| Distribuição v1 (gratuita) | Build self-contained win-x64 via GitHub Releases (sem assinatura de código — adiada para a v2 paga) | GATE 6 |
 | Auditoria final | *"Can I trust the delete button?"* — revisão adversarial | pré-RC |
+
+> **Estratégia comercial:** v1 é **gratuita** para validação em campo. Empacotamento com instalador assinado (MSIX/winget/Store), licensing Ed25519 e precificação ficam para a **v2**, quando o produto estiver provado.
 
 ## Ideias e questões abertas
 
