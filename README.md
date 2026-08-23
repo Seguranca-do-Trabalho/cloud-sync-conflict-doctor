@@ -80,6 +80,19 @@ Em execução: motor do scan (pipeline Level 0/1), gate de placeholder com telem
 
 > **Estratégia comercial:** v1 é **gratuita** para validação em campo. Empacotamento com instalador assinado (MSIX/winget/Store), licensing Ed25519 e precificação ficam para a **v2**, quando o produto estiver provado.
 
+## Estado atual (2026-08-23, tarde)
+
+- **522 testes verdes** na `main`; cobertura 83.4% line-rate (coverlet)
+- **CI local**: `./scripts/ci/local-ci.sh` — build Release + suíte completa + guardas estáticas
+  (anti-`File.Delete`/`Directory.Delete`, anti-`Process.Start`, GUIVM-02 anti-rótulo-destrutivo)
+- **Hardening S11 concluído:** PathCanonical (S11-1), ReparsePolicy (S11-2 via T18),
+  TOCTOU+cache poisoning (S11-3/4 via T19), fail-closed com `UnresolvedGroup` auditável (S11-5),
+  auditoria GATE 5 consolidada com matriz SEG-01..23 (S11-6) e SEG-12 verde
+  (exclusão estrutural de `ConflictDoctor/` na enumeração)
+- **Comparadores v1 completos:** texto (LCS), binário, markdown e CSV (ADR-0011)
+- Benchmark round-01 sobre dataset real de 1M arquivos registrado em `docs/bench/rounds/`
+- GATEs fechados: 1 (Architecture), 2 (Scanner Correctness); GATE 4 baseline registrado
+
 ## Ideias e questões abertas
 
 - **Diff semântico de Office** (parágrafos/células/fórmulas via Open XML): entra no v1 ou é o gancho do Pro? Análise em curso no board.
