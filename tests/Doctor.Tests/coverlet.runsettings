@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!-- Thresholds por módulo (linhas): falha o build se abaixo. -->
+          <!-- Docs/test-strategy.md §7: Core>=85%, Cli>=75%, Gui ViewModels>=60%. -->
+          <!-- A CLI não existe mais no repo (fusão em EPIC 09); threshold Cli omitido. -->
+          <CollectionThreshold>0.85</CollectionThreshold>
+          <!-- Exclusões: views/code-behind e código gerado. -->
+          <Exclude>[xunit.*]*</Exclude>
+          <ExcludeByFile>**/obj/**,**/bin/**</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
