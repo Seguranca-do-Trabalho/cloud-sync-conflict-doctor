@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # CI local — substitui GitHub Actions enquanto desligadas (ago/2026)
+# ESCOPO: cobre o job LINUX do workflow. O job WINDOWS (PLH-03, placeholders
+# OneDrive nativos, junctions NTFS) exige SO Windows — pendência estrutural
+# do GATE 6; ver README "CI/CD — local (Linux) vs GitHub Actions".
 # Uso: ./scripts/ci/local-ci.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."

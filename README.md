@@ -112,6 +112,29 @@ Em execução: motor do scan (pipeline Level 0/1), gate de placeholder com telem
 - Comparação CSV orientada a linha/coluna e diff markdown no comparador v1.
 - Modo MSP/RMM: execução headless agendada com relatório JSON consolidado (o EXE é o produto; wrapper PowerShell é só implantação).
 
+## CI/CD — local (Linux) vs GitHub Actions
+
+Com as **GitHub Actions da org desligadas neste mês**, o CI roda **localmente** via
+`./scripts/ci/local-ci.sh`:
+
+| Etapa | Equivalente no Actions | Status |
+|---|---|---|
+| Build Release (`dotnet build -c Release`) | job linux | ✓ verde |
+| Suíte completa (`dotnet test`) | job linux | ✓ 541/541 |
+| Guarda anti-`File.Delete`/`Directory.Delete` em `src/` | — (extra) | ✓ PASS |
+| Guarda anti-`Process.Start` em `src/` | — (extra) | ✓ PASS |
+| Guarda GUIVM-02 (zero rótulo destrutivo na GUI) | — (extra) | ✓ PASS |
+| Cobertura Doctor.Core (coverlet) | — (extra) | ✓ 93,37% |
+
+**Limitação conhecida:** o CI local cobre a versão **Linux apenas**. O job Windows do
+workflow (`.github/workflows/ci.yml`) exige execução num SO Windows nativo — os testes
+de placeholders reais OneDrive (PLH-03), junctions NTFS e FileId por volume usam APIs
+do Cloud Filter que não existem em Linux (Wine não implementa o Cloud Filter API, logo
+não é alternativa válida). O build cruzado para Windows já está provado: o RC1
+(`conflictdoctor.exe` win-x64 self-contained) foi compilado aqui mesmo. Quando as
+Actions forem reativadas, o push dispara o workflow sozinho e o job Windows executa
+os testes nativos — último requisito para fechar formalmente o GATE 6.
+
 ## Desenvolvimento
 
 Este projeto é executado via **Hermes Kanban** (board `conflict-doctor`): cards com Definition of Done, dependências explícitas, gates formais de revisão e handoffs auditáveis. A especificação completa está em [`docs/SPEC.md`](docs/SPEC.md) e as decisões de arquitetura em [`docs/adr/`](docs/adr/).
