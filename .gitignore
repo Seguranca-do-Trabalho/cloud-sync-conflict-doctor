@@ -13,3 +13,7 @@ tools/report-v1-fixturegen/obj/
 
 # Ferramentas locais
 .repowise/
+
+# Artefatos de teste/coverage regeneraveis
+tests/*/TestResults/
+**/*.binlog
