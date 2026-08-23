@@ -35,14 +35,23 @@ public interface IFileEnumerator
 /// <summary>
 /// Wrapper determinístico sobre um enumerador físico qualquer (SPEC §3):
 /// reordena pela ordem canônica byte-a-byte de caminho (<see cref="PathOrder"/>),
-/// marca placeholders via <see cref="PlaceholderPolicy"/> e deriva a telemetria da lista
-/// final ordenada. Não lê conteúdo — delega ao enumerador interno apenas metadados.
+/// marca placeholders via <see cref="PlaceholderPolicy"/>, aplica a <see cref="ReparsePolicy"/>
+/// (marcação IsReparsePoint, guarda de visitados por inode e teto de profundidade —
+/// threat-model T-02) e deriva a telemetria da lista final ordenada.
+/// Não lê conteúdo — delega ao enumerador interno apenas metadados.
+/// Rejeições da policy viram <see cref="ScanError"/> em <see cref="EnumerationResult.Errors"/>:
+/// nunca falha silenciosa (contratos.md R10).
 /// </summary>
 public sealed class OrderedFileEnumerator : IFileEnumerator
 {
     private readonly IFileEnumerator _inner;
+    private readonly ReparsePolicy _reparsePolicy;
 
-    public OrderedFileEnumerator(IFileEnumerator inner) => _inner = inner;
+    public OrderedFileEnumerator(IFileEnumerator inner, ReparsePolicy? reparsePolicy = null)
+    {
+        _inner = inner;
+        _reparsePolicy = reparsePolicy ?? new ReparsePolicy();
+    }
 
     public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default)
     {
@@ -50,20 +59,81 @@ public sealed class OrderedFileEnumerator : IFileEnumerator
 
         var physical = _inner.Enumerate(rootPath, ct);
 
-        var files = PathOrder.Sort(physical.Files, e => e)
+        // ---- ordenação canônica + marcações (ordem física nunca decide; §3) -------------
+        var ordenados = PathOrder.Sort(physical.Files, e => e)
             .Select(e => e with
             {
                 IsPlaceholder = PlaceholderPolicy.IsPlaceholder(e),
                 PlaceholderKind = PlaceholderPolicy.Classify(e),
+                IsReparsePoint = e.IsReparsePoint || (e.Attributes & FileAttributes.ReparsePoint) != 0,
             })
             .ToArray();
 
+        // ---- ReparsePolicy: loop detection por inode + teto de profundidade --------------
+        // Guarda de visitados por (VolumeId, FileId) sobre a lista JÁ ordenada: decisão
+        // determinística — fica sempre a PRIMEIRA ocorrência na ordem canônica, qualquer
+        // que seja a ordem física de chegada (mitigação T-02; contratos.md §3).
+        var visitados = new HashSet<(string VolumeId, string FileId)>();
+        var files = new List<FileEntry>(ordenados.Length);
+        var errors = new List<ScanError>(physical.Errors);
+        var raizNormalizada = rootPath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+            .TrimEnd(Path.DirectorySeparatorChar);
+
+        foreach (var entry in ordenados)
+        {
+            if (!visitados.Add((entry.VolumeId, entry.FileId)))
+            {
+                errors.Add(new ScanError(
+                    entry.Path,
+                    "reparse: caminho volta ao mesmo inode ja visitado - entrada rejeitada (loop detection, threat-model T-02)"));
+                continue;
+            }
+
+            var depth = Profundidade(entry.Path, raizNormalizada);
+            if (depth > _reparsePolicy.MaxDepth)
+            {
+                errors.Add(new ScanError(
+                    entry.Path,
+                    $"reparse: profundidade {depth} excede o teto de {_reparsePolicy.MaxDepth} - entrada rejeitada (threat-model T-02)"));
+                continue;
+            }
+
+            files.Add(entry);
+        }
+
         var telemetry = physical.Telemetry with
         {
-            FilesEnumerated = files.Length,
+            FilesEnumerated = files.Count,
             FilesPlaceholder = files.Count(f => f.IsPlaceholder),
         };
 
-        return new EnumerationResult(files, physical.Errors, telemetry);
+        return new EnumerationResult(files, errors, telemetry);
+    }
+
+    /// <summary>Profundidade relativa à raiz em segmentos de diretório (raiz = 0).</summary>
+    private static int Profundidade(string path, string raizNormalizada)
+    {
+        var normalizado = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        if (!normalizado.StartsWith(raizNormalizada, StringComparison.Ordinal))
+        {
+            return 0; // caminho fora da raiz não tem profundidade relativa mensurável
+        }
+
+        var relativo = normalizado.AsSpan(raizNormalizada.Length).TrimStart(Path.DirectorySeparatorChar);
+        if (relativo.IsEmpty)
+        {
+            return 0;
+        }
+
+        var profundidade = 1; // o primeiro segmento após a raiz é o próprio arquivo
+        foreach (var c in relativo)
+        {
+            if (c == Path.DirectorySeparatorChar)
+            {
+                profundidade++;
+            }
+        }
+
+        return profundidade;
     }
 }
