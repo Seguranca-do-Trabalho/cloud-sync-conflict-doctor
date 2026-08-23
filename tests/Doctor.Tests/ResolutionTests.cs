@@ -113,4 +113,46 @@ public sealed class ResolutionTests
         Assert.Throws<InvalidOperationException>(
             () => Resolution.Resolve(grupo, new KeepManual("/outra/arquivo.pdf")));
     }
+
+    // ---------------------------------------------------------------- Empates
+
+    [Fact]
+    public void EmpateTriplo_MtimesIdenticos_DesempataPorSizeDepoisPathByteWise()
+    {
+        // mtimes IDÊNTICOS: decisão nunca pode ser first-seen (SPEC §17; ADR-0003).
+        var mtimeComum = "2026-08-22T12:00:00Z";
+        var grupo = new ConflictGroup("inventario", 0,
+        [
+            Entrada("/root/inventario-B.txt", 200, mtimeComum),
+            Entrada("/root/inventario-A.txt", 300, mtimeComum), // vence: maior size
+            Entrada("/root/inventario-C.txt", 100, mtimeComum),
+        ]);
+
+        var plano = Resolution.Resolve(grupo, new KeepNewest());
+
+        Assert.Equal("/root/inventario-A.txt", plano.Winner.Path);
+        Assert.Equal(
+            new[] { "/root/inventario-B.txt", "/root/inventario-C.txt" },
+            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
+    }
+
+    [Fact]
+    public void EmpateAbsoluto_MtimeSizeIguais_VenceMenorCaminhoByteWise()
+    {
+        var mtimeComum = "2026-08-22T12:00:00Z";
+        long sizeComum = 300;
+        var grupo = new ConflictGroup("inventario", 0,
+        [
+            Entrada("/root/inventario-b.txt", sizeComum, mtimeComum),
+            Entrada("/root/inventario-a.txt", sizeComum, mtimeComum),
+        ]);
+
+        var plano = Resolution.Resolve(grupo, new KeepLargest());
+
+        // path CRESCENTE byte-wise: "a" < "b" em Ordinal.
+        Assert.Equal("/root/inventario-a.txt", plano.Winner.Path);
+        Assert.Equal(
+            new[] { "/root/inventario-b.txt" },
+            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
+    }
 }
