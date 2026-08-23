@@ -26,16 +26,19 @@ public interface IReportWriter
 
 /// <summary>
 /// Gravador JSON v1 (schema-report-v1.md §2). Usa System.Text.Json com
-/// WriteIndented=true, JavaScriptEncoder.UnsafeRelaxedJsonEscaping e POCO
+/// WriteIndented=true, JavaScriptEncoder.Default e POCO
 /// cuja ordem de propriedades replica o schema. Anexa \n final; codificacao
-/// UTF-8 sem BOM.
+/// UTF-8 sem BOM. Encoder ESTRITO (S11-1/SEG-03, R12): escapa caracteres de
+/// controle bidi (U+202E etc.) e todo não-ASCII — nenhum byte que reordene a
+/// renderização do consumidor sai cru no relatório; nomes permanecem byte-exatos
+/// no decode UTF-8.
 /// </summary>
 public sealed class ReportWriterJson : IReportWriter
 {
     private static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Encoder = JavaScriptEncoder.Default,
     };
 
     public void Write(
