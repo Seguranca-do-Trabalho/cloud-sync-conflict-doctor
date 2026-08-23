@@ -28,6 +28,14 @@ public sealed record ScanTelemetry
     /// <summary>Entradas classificadas como placeholder e excluídas de todo acesso a conteúdo.</summary>
     public long FilesPlaceholder { get; init; }
 
+    /// <summary>
+    /// Entradas excluídas da enumeração por estarem sob a subárvore reservada
+    /// &lt;raiz&gt;/ConflictDoctor/ (quarentena §18/SPEC; adendo T-15, SEG-12): política
+    /// estrutural da fronteira canônica Level 0, não erro — nunca entra em Errors nem
+    /// em qualquer contador de arquivos (R10; idempotência §20 entre rescans).
+    /// </summary>
+    public long FilesExcludedConflictDoctor { get; init; }
+
     /// <summary>Entradas não-placeholder que receberam hash parcial (janela inicial + janela final).</summary>
     public long FilesPartialHashed { get; init; }
 
