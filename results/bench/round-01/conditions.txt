@@ -1,0 +1,11 @@
+== Condicoes da maquina no inicio da rodada round-01 ==
+2026-08-23T14:32:51+00:00
+ 14:32:51 up 30 days, 19:34,  0 user,  load average: 1.47, 2.12, 1.50
+               total        used        free      shared  buff/cache   available
+Mem:            23Gi       8.8Gi       2.3Gi       163Mi        12Gi        14Gi
+Swap:             0B          0B          0B
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       193G   40G  153G  21% /
+Filesystem       Inodes  IUsed    IFree IUse% Mounted on
+/dev/sda1      26083328 906717 25176611    4% /
+Linux vnic 6.17.0-1018-oracle #18~24.04.1-Ubuntu SMP Mon Jun 22 18:23:57 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
