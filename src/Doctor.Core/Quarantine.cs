@@ -58,11 +58,66 @@ public sealed class RestoreConflictException : InvalidOperationException
 }
 
 /// <summary>
+/// Violação de contenção byte-a-byte (threat-model T-01, mitigação (b); regra R2):
+/// um caminho de destino de move/resolve/restore não começa pelo prefixo canônico
+/// da raiz autorizada. Lançada ANTES de qualquer toque — falha fechada, nada é
+/// movido nem escrito.
+/// </summary>
+public sealed class QuarantineContainmentException : InvalidOperationException
+{
+    public QuarantineContainmentException(string caminho, string prefixoRaiz)
+        : base($"Contenção violada: destino '{caminho}' está fora do prefixo canônico " +
+               $"'{prefixoRaiz}'. Operação recusada sem tocar nada (T-01/R2).")
+    {
+        Caminho = caminho;
+        PrefixoRaiz = prefixoRaiz;
+    }
+
+    /// <summary>Caminho recusado.</summary>
+    public string Caminho { get; }
+
+    /// <summary>Prefixo canônico exigido.</summary>
+    public string PrefixoRaiz { get; }
+}
+
+/// <summary>
+/// Divergência de hash pós-move (threat-model T-04, regra R5): os bytes chegados à
+/// quarentena diferem do hash capturado imediatamente antes do move. A fonte foi
+/// ROLLBACK-ada (move de volta) e a operação é FALHA — nada é declarado sucesso.
+/// O manifesto parcial carrega hash_pre_move ≠ hash_post_move para auditoria.
+/// </summary>
+public sealed class QuarantineRollbackException : QuarantinePartialException
+{
+    public QuarantineRollbackException(
+        string partialManifestPath,
+        string originalPath,
+        string hashPreMove,
+        string hashPostMove)
+        : base(partialManifestPath,
+               $"Divergência TOCTOU pós-move em '{originalPath}': hash_pre_move {hashPreMove} " +
+               $"!= hash_post_move {hashPostMove}. Rollback executado; operação FALHA (R5).")
+    {
+        OriginalPath = originalPath;
+        HashPreMove = hashPreMove;
+        HashPostMove = hashPostMove;
+    }
+
+    /// <summary>Caminho original cuja operação sofreu rollback.</summary>
+    public string OriginalPath { get; }
+
+    /// <summary>Hash capturado na fonte imediatamente antes do move.</summary>
+    public string HashPreMove { get; }
+
+    /// <summary>Hash recalculado no payload já na quarentena.</summary>
+    public string HashPostMove { get; }
+}
+
+/// <summary>
 /// Move falhou no meio da operação: itens já movidos permanecem registrados num
 /// manifesto PARCIAL honesto; nada movido fica sem registro (ADR-0002 item 4;
 /// ADR-0010 §3). A exceção aponta o manifesto parcial para auditoria.
 /// </summary>
-public sealed class QuarantinePartialException : InvalidOperationException
+public class QuarantinePartialException : InvalidOperationException
 {
     public QuarantinePartialException(string partialManifestPath, string message)
         : base($"{message} Manifesto parcial: {partialManifestPath}")
@@ -164,6 +219,10 @@ public sealed class QuarantineService
         var pulados = new List<string>();
         var mapeamentoPayloads = new Dictionary<string, string>(StringComparer.Ordinal);
 
+        // Prefixo canônico da contenção (T-01/R2): raiz do plano em forma plena,
+        // com separador final — todo destino de move/restore DEVE começar por ele.
+        var prefixoRaiz = ComSeparadorFinal(Path.GetFullPath(plan.RootPath));
+
         try
         {
             for (var indice = 0; indice < ordenados.Length; indice++)
@@ -193,13 +252,43 @@ public sealed class QuarantineService
                 var nomePayload = $"{indice + 1:D4}.dat";
                 var destinoAbsoluto = Path.Combine(payloadDir, nomePayload);
 
+                // Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2):
+                // o destino resolvido DEVE começar pelo prefixo canônico da raiz da
+                // operação, por comparação Ordinal sobre a forma plena. Divergência ⇒
+                // exceção ANTES de tocar qualquer coisa.
+                GarantirContencao(destinoAbsoluto, prefixoRaiz);
+
+                // Hash pré-move do ORIGINAL imediatamente antes do move (T-04/R5),
+                // pela mesma cadeia de leitura do gate (_openRead).
+                var hashPreMove = FullHashBlake3Streaming(entry.Path, ct);
+
                 _move(entry.Path, destinoAbsoluto);
+
                 movidos.Add(entry.Path);
                 mapeamentoPayloads[entry.Path] = $"payload/{nomePayload}";
 
                 // Hash BLAKE3 completo do PAYLOAD já na quarentena (fonte única de
                 // verdade do manifesto; streaming, nunca carrega inteiro em memória).
+                // É também a VERIFICAÇÃO PÓS-MOVE do R5: divergente do pré-move ⇒
+                // rollback (move de volta) e operação FALHA — nada é declarado sucesso.
                 var hash = FullHashBlake3Streaming(destinoAbsoluto, ct);
+                if (!string.Equals(hash, hashPreMove, StringComparison.Ordinal))
+                {
+                    RollbackPosMove(
+                        stagingDir,
+                        payloadDir,
+                        nomePayload,
+                        entry,
+                        item.Reason,
+                        item.Rule,
+                        hashPreMove,
+                        hash);
+                    throw new QuarantineRollbackException(
+                        Path.Combine(stagingDir, "manifest-partial.json"),
+                        entry.Path,
+                        hashPreMove,
+                        hash);
+                }
 
                 registros.Add(new Dictionary<string, object?>
                 {
@@ -350,6 +439,13 @@ public sealed class QuarantineService
 
         // ---- fase 1: validar TUDO (hash + destinos livres) sem tocar nada --------
         var pendentes = new List<(string PayloadAbsoluto, string Destino, string HashEsperado)>();
+
+        // Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2): o
+        // destino de CADA item deve começar pelo prefixo canônico da raiz informada
+        // — manifesto forjado ou corrompido com original_path externo é recusado
+        // ANTES de qualquer toque, sem mover nem escrever nada.
+        var prefixoRaiz = ComSeparadorFinal(Path.GetFullPath(rootPath));
+
         foreach (var item in itens.EnumerateArray())
         {
             ct.ThrowIfCancellationRequested();
@@ -357,6 +453,9 @@ public sealed class QuarantineService
             var payloadAbsoluto = Path.Combine(dirOperacao, relativo.Replace('/', Path.DirectorySeparatorChar));
             var destino = item.GetProperty("original_path").GetString()!;
             var hashEsperado = item.GetProperty("hash").GetString()!;
+
+            // contenção ANTES de qualquer validação com I/O sobre o item
+            GarantirContencao(destino, prefixoRaiz);
 
             // validação de integridade: payload corrompido ⇒ restore recusado.
             var hashAtual = FullHashBlake3Streaming(payloadAbsoluto, ct);
@@ -394,6 +493,98 @@ public sealed class QuarantineService
     // ------------------------------------------------------------------
     // infraestrutura interna
     // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2):
+    /// <paramref name="caminho"/> resolvido à forma plena DEVE começar pelo
+    /// prefixo canônico de <paramref name="prefixoRaiz"/> em comparação Ordinal.
+    /// Qualquer fuga — traversal, symlink resolvido fora, manifesto forjado —
+    /// lança <see cref="QuarantineContainmentException"/> sem tocar nada.
+    /// </summary>
+    private static void GarantirContencao(string caminho, string prefixoRaiz)
+    {
+        var pleno = Path.GetFullPath(caminho);
+
+        if (!pleno.StartsWith(prefixoRaiz, StringComparison.Ordinal))
+        {
+            throw new QuarantineContainmentException(caminho, prefixoRaiz);
+        }
+    }
+
+    /// <summary>Prefixo canônico com separador final: evita que "/raiz-evil"
+    /// passe pela contenção de "/raiz" (comparação de componente inteiro).</summary>
+    private static string ComSeparadorFinal(string diretorio) =>
+        diretorio.EndsWith(Path.DirectorySeparatorChar)
+            ? diretorio
+            : diretorio + Path.DirectorySeparatorChar;
+
+    /// <summary>
+    /// Rollback do R5: move o payload divergente DE VOLTA ao caminho original,
+    /// remove o registro do item movido e grava o manifesto parcial com status
+    /// "failed" e a evidência auditable hash_pre_move ≠ hash_post_move. Falha no
+    /// próprio rollback propaga a exceção original — nunca mascara um erro com outro.
+    /// </summary>
+    private void RollbackPosMove(
+        string stagingDir,
+        string payloadDir,
+        string nomePayload,
+        FileEntry entry,
+        string reason,
+        string rule,
+        string hashPreMove,
+        string hashPostMove)
+    {
+        var payloadAbsoluto = Path.Combine(payloadDir, nomePayload);
+
+        try
+        {
+            if (File.Exists(payloadAbsoluto) && !File.Exists(entry.Path))
+            {
+                _move(payloadAbsoluto, entry.Path);
+            }
+        }
+        finally
+        {
+            // evidência auditable mesmo se o rollback físico falhar (R11):
+            // registro FALHA com a cadeia hash_pre_move/hash_post_move.
+            try
+            {
+                var parcial = new Dictionary<string, object?>
+                {
+                    ["manifest_version"] = 1,
+                    ["operation_id"] = "(parcial)",
+                    ["created_utc"] = FormatarTimestamp(DateTimeOffset.UtcNow),
+                    ["items"] = new List<Dictionary<string, object?>>
+                    {
+                        new()
+                        {
+                            ["original_path"] = entry.Path,
+                            ["quarantine_path"] = $"payload/{nomePayload}",
+                            ["size"] = entry.Size,
+                            ["mtime_utc"] = FormatarTimestamp(entry.MtimeUtc),
+                            ["hash_pre_move"] = hashPreMove,
+                            ["hash_post_move"] = hashPostMove,
+                            ["algorithm"] = "BLAKE3",
+                            ["hash_version"] = 1,
+                            ["reason"] = reason,
+                            ["rule"] = rule,
+                        },
+                    },
+                    ["status"] = "failed",
+                };
+
+                var parcialPath = Path.Combine(stagingDir, "manifest-partial.json");
+                if (!File.Exists(parcialPath))
+                {
+                    File.WriteAllBytes(parcialPath, SerializarParcial(parcial));
+                }
+            }
+            catch
+            {
+                // nem o registro foi possível: a exceção do rollback/origem prevalece
+            }
+        }
+    }
 
     private string FullHashBlake3Streaming(string caminho, CancellationToken ct)
     {
