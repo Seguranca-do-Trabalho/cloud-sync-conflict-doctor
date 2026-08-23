@@ -3,10 +3,10 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T23 (t_64c4d4c0) — Seleção de comparador por extensão case-insensitive
-/// (ADR-0011 item 1; contratos.md IDocumentComparator): .txt/.log/.ini/.cfg/.conf
-/// ⇒ texto; TODO o resto, inclusive SEM extensão, ⇒ BinaryFallbackComparator.
-/// Markdown/CSV são cards futuros (06.2) — aqui caem no binário.
+/// T23 (t_64c4d4c0) / T24 (t_f37457ba) — Seleção de comparador por extensão
+/// case-insensitive (ADR-0011 item 1; contratos.md IDocumentComparator):
+/// .txt/.log/.ini/.cfg/.conf ⇒ texto; .md ⇒ markdown; .csv ⇒ csv; TODO o resto,
+/// inclusive SEM extensão, ⇒ BinaryFallbackComparator.
 /// </summary>
 [Trait("Category", "Comparison")]
 public class ComparatorSelectorTests : IDisposable
@@ -46,8 +46,32 @@ public class ComparatorSelectorTests : IDisposable
     }
 
     [Theory]
+    [InlineData(".MD")]
     [InlineData(".md")]
+    [InlineData(".Md")]
+    public void Sel03_ExtensaoMarkdown_RoteiaParaMarkdownComparator(string extensao)
+    {
+        var (left, right) = ParComExtensao(extensao);
+
+        var resultado = ComparatorSelector.Compare(left, right, CancellationToken.None);
+
+        Assert.Equal("markdown", resultado.ComparatorKind);
+    }
+
+    [Theory]
+    [InlineData(".CSV")]
     [InlineData(".csv")]
+    [InlineData(".Csv")]
+    public void Sel04_ExtensaoCsv_RoteiaParaCsvComparator(string extensao)
+    {
+        var (left, right) = ParComExtensao(extensao);
+
+        var resultado = ComparatorSelector.Compare(left, right, CancellationToken.None);
+
+        Assert.Equal("csv", resultado.ComparatorKind);
+    }
+
+    [Theory]
     [InlineData(".bin")]
     [InlineData(".docx")]
     [InlineData("")]
