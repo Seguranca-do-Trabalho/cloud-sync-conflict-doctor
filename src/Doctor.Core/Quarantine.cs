@@ -145,10 +145,18 @@ public sealed class QuarantineService
 {
     private const int CopyBufferSize = 256 * 1024;
 
+    /// <summary>
+    /// Opções JSON do manifesto. O encoder é o ESTRITO <see cref="JavaScriptEncoder.Default"/>
+    /// (S11-1/SEG-03, R12): escapa TODO caractere não-ASCII e de controle — inclusive
+    /// os bidi (U+202E etc.) — de modo que nenhum byte bruto capaz de reordenar a
+    /// renderização do consumidor (RMM/GUI) saia no documento. Nomes permanecem
+    /// byte-exatos após o decode UTF-8; o custo é só tamanho de escape. O relaxed
+    /// anterior emitia U+202E cru no manifesto — vetor T-01.
+    /// </summary>
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Encoder = JavaScriptEncoder.Default,
     };
 
     /// <summary>Injeta um opener customizado (testes); produção usa File.OpenRead.</summary>
@@ -202,7 +210,9 @@ public sealed class QuarantineService
         // manifesto, que depende dos paths finais): cria com nome temporário único
         // baseado NO PLANO, e renomeia ao final. Em duas execuções do mesmo estado
         // com o mesmo plano, o diretório final tem o MESMO nome.
-        var quarantineRoot = Path.Combine(
+        // Combinação ESTRUTURAL (S11-1/R2/D6): nenhum Path.Combine cru sobre dado
+        // de entrada — a cadeia inteira nasce re-canonicalizada na forma estendida.
+        var quarantineRoot = PathCanonical.Combine(
             plan.RootPath, "ConflictDoctor", "quarantine");
         Directory.CreateDirectory(quarantineRoot);
 
@@ -210,18 +220,14 @@ public sealed class QuarantineService
         // existir. Usa um diretório de trabalho efêmero dentro da quarentena datada;
         // ao fechar, renomeia para o diretório definitivo <op_id>.
         var stagingName = $"staging-{Guid.NewGuid():N}";
-        var stagingDir = Path.Combine(quarantineRoot, stagingName);
-        var payloadDir = Path.Combine(stagingDir, "payload");
+        var stagingDir = PathCanonical.Combine(quarantineRoot, stagingName);
+        var payloadDir = PathCanonical.Combine(stagingDir, "payload");
         Directory.CreateDirectory(payloadDir);
 
         var registros = new List<Dictionary<string, object?>>();
         var movidos = new List<string>();
         var pulados = new List<string>();
         var mapeamentoPayloads = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        // Prefixo canônico da contenção (T-01/R2): raiz do plano em forma plena,
-        // com separador final — todo destino de move/restore DEVE começar por ele.
-        var prefixoRaiz = ComSeparadorFinal(Path.GetFullPath(plan.RootPath));
 
         try
         {
@@ -250,13 +256,15 @@ public sealed class QuarantineService
 
                 // Nome opaco sequencial (ADR-0010 §1): sem relação com o original.
                 var nomePayload = $"{indice + 1:D4}.dat";
-                var destinoAbsoluto = Path.Combine(payloadDir, nomePayload);
+                var destinoAbsoluto = PathCanonical.Combine(payloadDir, nomePayload);
 
-                // Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2):
-                // o destino resolvido DEVE começar pelo prefixo canônico da raiz da
-                // operação, por comparação Ordinal sobre a forma plena. Divergência ⇒
-                // exceção ANTES de tocar qualquer coisa.
-                GarantirContencao(destinoAbsoluto, prefixoRaiz);
+                // Contenção byte-a-byte (T-01/R2) ANTES do move — via primitiva única
+                // PathCanonical (D6), delegada por GarantirContencao para preservar o
+                // contrato público deste módulo (QuarantineContainmentException):
+                // destino E origem têm que cair sob o prefixo canônico da raiz;
+                // senão, falha fechada sem tocar nada.
+                GarantirContencao(destinoAbsoluto, plan.RootPath);
+                GarantirContencao(entry.Path, plan.RootPath);
 
                 // Hash pré-move do ORIGINAL imediatamente antes do move (T-04/R5),
                 // pela mesma cadeia de leitura do gate (_openRead).
@@ -440,22 +448,24 @@ public sealed class QuarantineService
         // ---- fase 1: validar TUDO (hash + destinos livres) sem tocar nada --------
         var pendentes = new List<(string PayloadAbsoluto, string Destino, string HashEsperado)>();
 
-        // Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2): o
-        // destino de CADA item deve começar pelo prefixo canônico da raiz informada
-        // — manifesto forjado ou corrompido com original_path externo é recusado
-        // ANTES de qualquer toque, sem mover nem escrever nada.
-        var prefixoRaiz = ComSeparadorFinal(Path.GetFullPath(rootPath));
+        // Contenção byte-a-byte via primitiva ÚNICA PathCanonical (S11-1/D6): o
+        // destino de CADA item deve cair sob a raiz canônica informada — manifesto
+        // forjado ou corrompido com original_path externo é recusado ANTES de
+        // qualquer toque, sem mover nem escrever nada.
 
         foreach (var item in itens.EnumerateArray())
         {
             ct.ThrowIfCancellationRequested();
+            // Combinação estrutural + contenção (T-01/R2/D6) ANTES da leitura: o
+            // manifesto é dado EXTERNO — quarantine_path/original_path hostis jamais
+            // alcançam o disco fora da raiz, nem para ler, nem para mover.
             var relativo = item.GetProperty("quarantine_path").GetString()!;
-            var payloadAbsoluto = Path.Combine(dirOperacao, relativo.Replace('/', Path.DirectorySeparatorChar));
+            var payloadAbsoluto = PathCanonical.Combine(dirOperacao, relativo.Replace('/', Path.DirectorySeparatorChar));
             var destino = item.GetProperty("original_path").GetString()!;
             var hashEsperado = item.GetProperty("hash").GetString()!;
 
-            // contenção ANTES de qualquer validação com I/O sobre o item
-            GarantirContencao(destino, prefixoRaiz);
+            GarantirContencao(payloadAbsoluto, rootPath);
+            GarantirContencao(destino, rootPath);
 
             // validação de integridade: payload corrompido ⇒ restore recusado.
             var hashAtual = FullHashBlake3Streaming(payloadAbsoluto, ct);
@@ -479,6 +489,12 @@ public sealed class QuarantineService
         foreach (var (payloadAbsoluto, destino, _) in pendentes)
         {
             ct.ThrowIfCancellationRequested();
+
+            // Contenção byte-a-byte no retorno também (T-01/R2, D6): o original_path
+            // do manifesto é re-canonicalizado e TEM que cair sob a raiz informada.
+            GarantirContencao(destino, rootPath);
+            GarantirContencao(payloadAbsoluto, rootPath);
+
             Directory.CreateDirectory(Path.GetDirectoryName(destino)!);
             File.Move(payloadAbsoluto, destino, overwrite: false);
             restaurados.Add(destino);
@@ -495,28 +511,25 @@ public sealed class QuarantineService
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2):
-    /// <paramref name="caminho"/> resolvido à forma plena DEVE começar pelo
-    /// prefixo canônico de <paramref name="prefixoRaiz"/> em comparação Ordinal.
-    /// Qualquer fuga — traversal, symlink resolvido fora, manifesto forjado —
-    /// lança <see cref="QuarantineContainmentException"/> sem tocar nada.
+    /// Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2) — DELEGAÇÃO
+    /// à primitiva ÚNICA <see cref="PathCanonical.EnsureContained"/> (D6 do card
+    /// S11-1): nenhuma segunda implementação de contenção existe no produto. O
+    /// <see cref="PathEscapeException"/> da primitiva é traduzido para
+    /// <see cref="QuarantineContainmentException"/>, contrato público deste módulo
+    /// desde S11-6a — mesmo significado (falha fechada antes de tocar nada),
+    /// mesma superfície para os consumidores.
     /// </summary>
-    private static void GarantirContencao(string caminho, string prefixoRaiz)
+    private static void GarantirContencao(string caminho, string raizOperacao)
     {
-        var pleno = Path.GetFullPath(caminho);
-
-        if (!pleno.StartsWith(prefixoRaiz, StringComparison.Ordinal))
+        try
         {
-            throw new QuarantineContainmentException(caminho, prefixoRaiz);
+            PathCanonical.EnsureContained(caminho, raizOperacao);
+        }
+        catch (PathEscapeException fuga)
+        {
+            throw new QuarantineContainmentException(fuga.RequestedPath, fuga.Root);
         }
     }
-
-    /// <summary>Prefixo canônico com separador final: evita que "/raiz-evil"
-    /// passe pela contenção de "/raiz" (comparação de componente inteiro).</summary>
-    private static string ComSeparadorFinal(string diretorio) =>
-        diretorio.EndsWith(Path.DirectorySeparatorChar)
-            ? diretorio
-            : diretorio + Path.DirectorySeparatorChar;
 
     /// <summary>
     /// Rollback do R5: move o payload divergente DE VOLTA ao caminho original,
