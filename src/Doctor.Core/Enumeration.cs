@@ -2,6 +2,9 @@ namespace Doctor.Core;
 
 using System.Diagnostics;
 
+// ScanTelemetry mudou de lugar: fonte única em Telemetry.cs (contrato do T06,
+// SPEC §10 completo + gate placeholder_bytes_read). Este arquivo mantém apenas
+// os tipos de enumeração Level 0.
 /// <summary>
 /// Erro individual de scan (permissão, caminho longo, etc.). Nunca aborta o scan:
 /// vira registro no relatório — sem falha silenciosa (docs/contratos.md, risco R10).
