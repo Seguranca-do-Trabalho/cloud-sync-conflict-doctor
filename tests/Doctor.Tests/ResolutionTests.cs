@@ -72,12 +72,12 @@ public sealed class ResolutionTests
             Entrada("/root/contrato (1).txt", 100, "2026-08-21T11:00:00Z"), // sem marca
         ]);
 
-        var plano = Resolution.Resolve(grupo, new KeepMachine("DESKTOP-XYZ789"));
+        var plano = Resolution.Resolve(grupo, new KeepMachine("XYZ789"));
 
         Assert.Equal("/root/contrato-DESKTOP-XYZ789.txt", plano.Winner.Path);
         Assert.Equal(
             new[] { "/root/contrato (1).txt", "/root/contrato-DESKTOP-ABC123.txt" },
             plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
-        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-machine:DESKTOP-XYZ789", s.Reason));
+        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-machine:XYZ789", s.Reason));
     }
 }
