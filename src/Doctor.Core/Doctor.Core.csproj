@@ -10,4 +10,14 @@
     <LangVersion>12</LangVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Versão pinada em Directory.Packages.props (ADR-0005 §1; risco R9). -->
+    <PackageReference Include="Blake3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Testes provam a receita v1 segmento a segmento via streams espiãs. -->
+    <InternalsVisibleTo Include="Doctor.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -6,6 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Blake3" Version="2.1.0" />
+    <PackageReference Include="Blake3" />
   </ItemGroup>
 </Project>
