@@ -1,5 +1,5 @@
 {
-  "report_schema_version": 1,
+  "report_schema_version": 2,
   "algorithm": "BLAKE3",
   "hash_version": 1,
   "normalization_rules_version": 1,
@@ -11,6 +11,7 @@
   "telemetry": {
     "files_enumerated": 50,
     "files_placeholder": 0,
+    "files_excluded_conflictdoctor": 0,
     "files_skipped": 0,
     "files_partial_hashed": 35,
     "files_full_hashed": 35,
