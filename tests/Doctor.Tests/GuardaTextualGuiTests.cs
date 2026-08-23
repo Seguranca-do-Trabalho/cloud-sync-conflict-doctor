@@ -10,6 +10,7 @@ namespace Doctor.Tests;
 /// Varredura completa: todos os .axaml do projeto de GUI + literais de string dos
 /// ViewModels (fontes de texto visível ao usuário: Content, Text, Watermark).
 /// </summary>
+[Xunit.Trait("Category", "GuiVm")]
 public class GuardaTextualGuiTests
 {
     private static readonly string[] PalavrasProibidas =

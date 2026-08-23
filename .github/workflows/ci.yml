@@ -51,6 +51,7 @@ jobs:
           dotnet test tests/Doctor.Tests -c Release --no-build \
             --filter "OS!=Windows" \
             --collect:"XPlat Code Coverage" \
+            -- RunSettings.RunSettingsPath=tests/Doctor.Tests/coverlet.runsettings \
             --logger "trx;LogFileName=linux.trx"
 
       # Determinismo EXPLICITO no Linux tambem (linha propria no resumo do PR).
@@ -113,7 +114,7 @@ jobs:
       # stub #if WINDOWS do enumerador (T07). Nao desativar nem remover testes;
       # o job e a evidencia de progresso do EPIC nativo.
       - name: Test (Windows, suíte completa)
-        run: dotnet test tests/Doctor.Tests -c Release --no-build --collect:"XPlat Code Coverage" --logger "trx;LogFileName=windows.trx"
+        run: dotnet test tests/Doctor.Tests -c Release --no-build --collect:"XPlat Code Coverage" -- RunSettings.RunSettingsPath=tests/Doctor.Tests/coverlet.runsettings --logger "trx;LogFileName=windows.trx"
 
       - name: Upload resultados windows
         if: always()
