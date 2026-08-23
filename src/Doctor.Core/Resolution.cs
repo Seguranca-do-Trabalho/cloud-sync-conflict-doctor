@@ -41,6 +41,16 @@ public static class Resolution
     }
 
     /// <summary>
+    /// Estratégia keep-largest (SPEC §17 "manter maior"): vence o size maior; empate
+    /// absoluto de size cai no desempate obrigatório mtime → path.
+    /// </summary>
+    public static ResolutionPlan Resolve(ConflictGroup group, KeepLargest strategy)
+    {
+        var ordered = OrderByTieBreak(group.Members, m => m.Size);
+        return BuildPlan(group, strategy, ordered);
+    }
+
+    /// <summary>
     /// Ordenação canônica de CANDIDATOS a vencedor: chave de estratégia desc (o melhor
     /// primeiro), depois desempate obrigatório mtime desc → size desc → path asc.
     /// Primeiro elemento é o vencedor; os demais viram sacrificados em ordem canônica.

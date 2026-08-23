@@ -40,4 +40,23 @@ public sealed class ResolutionTests
             new[] { "/root/relatorio-DESKTOP-ABC123.txt", "/root/relatorio.txt" },
             plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
     }
+
+    // ---------------------------------------------------------------- KeepLargest
+
+    [Fact]
+    public void KeepLargest_SizesDistintos_VenceMaior_MotivoAuditavel()
+    {
+        var grupo = new ConflictGroup("planilha", 0,
+        [
+            Entrada("/root/planilha.xlsx", 300, "2026-08-20T10:00:00Z"),
+            Entrada("/root/planilha (1).xlsx", 500, "2026-08-19T09:00:00Z"), // maior
+            Entrada("/root/planilha~.xlsx", 400, "2026-08-21T08:00:00Z"),
+        ]);
+
+        var plano = Resolution.Resolve(grupo, new KeepLargest());
+
+        Assert.Equal("/root/planilha (1).xlsx", plano.Winner.Path);
+        Assert.Equal(2, plano.Sacrifices.Count);
+        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-largest", s.Reason));
+    }
 }
