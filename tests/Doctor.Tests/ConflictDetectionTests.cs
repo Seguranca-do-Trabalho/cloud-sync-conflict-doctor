@@ -189,6 +189,197 @@ public sealed class ConflictDetectionTests : IDisposable
         }
     }
 
+    // ================================================================
+    // CD-02 (t_a77122c3) — Contrato de mútua exclusão do schema v1 §6.1/§6.2:
+    // grupo classificado como IdenticalDuplicate NUNCA gera entrada em
+    // RealConflicts e vice-versa; a classificação é POR GRUPO.
+    // ================================================================
+
+    // ----------------------------------------------------------------
+    // Caso 1 — Grupo misto: 2 membros idênticos entre si + 1 divergente.
+    // Schema §6.2: o elemento de real_conflicts cobre TODOS os membros,
+    // incluindo o subconjunto internamente idêntico; §6.1: duplicata só se
+    // forma de grupo cujos hashes completos são TODOS iguais. O subconjunto
+    // interno NÃO vira IdenticalDuplicate — o consumidor reconstrói
+    // subgrupos pelos hashes por arquivo.
+    // ----------------------------------------------------------------
+    [Fact]
+    public void GrupoMisto_SubconjuntoInternoIdentico_NaoViraIdenticalDuplicate_ViraUmUnicoRealConflict()
+    {
+        // Três membros, mesma base normalizada ("relatorio.xlsx") e mesmo tamanho:
+        //   A = relatorio.xlsx            (conteudo X)
+        //   A = relatorio (1).xlsx        (conteudo X — identico a A)
+        //   B = relatorio-DESKTOP-ABC123.xlsx (conteudo Y — divergente)
+        // Cabeca+cauda fixas garantem colisao parcial (sobrevivem ao L2);
+        // miolos distintos garantem full hashes distintos (X != Y).
+        var conteudoX = ConteudoComColisaoParcial(miolo: 0x11);
+        var conteudoY = ConteudoComColisaoParcial(miolo: 0x22);
+
+        var caminhoA1 = CriarArquivo("financas/relatorio.xlsx", conteudoX);
+        var caminhoA2 = CriarArquivo("financas/relatorio (1).xlsx", conteudoX);
+        var caminhoB = CriarArquivo("backup/relatorio-DESKTOP-ABC123.xlsx", conteudoY);
+
+        var entries = new[] { Entrada(caminhoA1), Entrada(caminhoA2), Entrada(caminhoB) };
+        var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
+        var result = pipeline.Run(_root);
+
+        // UMA entrada única em RealConflicts cobrindo os 3 membros.
+        Assert.Single(result.RealConflicts);
+        var conflito = result.RealConflicts[0];
+        Assert.Equal("relatorio.xlsx", conflito.NormalizedBaseName);
+        Assert.Equal(conteudoX.Length, conflito.SizeBytes);
+        Assert.Equal(3, conflito.Files.Count);
+        Assert.Equal(
+            new[] { caminhoA1, caminhoA2, caminhoB }.OrderBy(p => p, StringComparer.Ordinal),
+            conflito.Files.Select(f => f.Path));
+
+        // ZERO entradas em IdenticalDuplicates: o par interno identico NAO vira duplicata.
+        Assert.Empty(result.IdenticalDuplicates);
+
+        // Reconstrutibilidade do subconjunto pelos hashes por arquivo (schema §6.2):
+        // exatamente dois valores de hash, o par identico compartilha um deles.
+        var hashA1 = conflito.Files.First(f => f.Path == caminhoA1).Hash;
+        var hashA2 = conflito.Files.First(f => f.Path == caminhoA2).Hash;
+        var hashB = conflito.Files.First(f => f.Path == caminhoB).Hash;
+        Assert.Equal(hashA1, hashA2);
+        Assert.NotEqual(hashA1, hashB);
+    }
+
+    // ----------------------------------------------------------------
+    // Caso 2 — Propriedade de varredura: para qualquer ScanResult, todo
+    // normalized_base_name aparece em no máximo uma das duas listas
+    // (schema §6.2, último parágrafo). Árvore composta que exerce todos
+    // os desfechos de classificação no mesmo resultado: grupo misto
+    // (RealConflict), trio idêntico (IdenticalDuplicate), par morto no L2
+    // (presente só em Groups — trilha de auditoria §6.0) e arquivo único.
+    // ----------------------------------------------------------------
+    [Fact]
+    public void Propriedade_BaseNormalizada_ApareceEmNoMaximoUmaDasDuasListas_ParaQualquerScanResult()
+    {
+        // Grupo misto -> RealConflict.
+        var mistoX = ConteudoComColisaoParcial(miolo: 0x11);
+        var mistoY = ConteudoComColisaoParcial(miolo: 0x22);
+        var m1 = CriarArquivo("financas/relatorio.xlsx", mistoX);
+        var m2 = CriarArquivo("financas/relatorio (1).xlsx", mistoX);
+        var m3 = CriarArquivo("backup/relatorio-DESKTOP-ABC123.xlsx", mistoY);
+
+        // Trio byte-idêntico -> IdenticalDuplicate.
+        var identico = new byte[30 * Kib];
+        for (var i = 0; i < identico.Length; i++)
+        {
+            identico[i] = (byte)(i % 253);
+        }
+        var d1 = CriarArquivo("docs/notas.txt", identico);
+        var d2 = CriarArquivo("docs/notas (1).txt", identico);
+        var d3 = CriarArquivo("docs/notas (2).txt", identico);
+
+        // Par mesmo-tamanho/conteúdo-distinto -> morre no L2 (sem colisão parcial),
+        // fica somente em Groups (auditoria), fora das duas listas finais.
+        var mortoA = CriarArquivo("tmp/morto.bin", ConteudoPadronizado(semente: 0x01));
+        var mortoB = CriarArquivo("tmp/morto-DESKTOP-ABC123.bin", ConteudoPadronizado(semente: 0x02));
+
+        // Arquivo único -> nunca é candidato.
+        var solo = CriarArquivo("raiz/solo.txt", [0x53, 0x4F, 0x4C, 0x4F]);
+
+        var entries = new[] { Entrada(m1), Entrada(m2), Entrada(m3), Entrada(d1), Entrada(d2), Entrada(d3), Entrada(mortoA), Entrada(mortoB), Entrada(solo) };
+        var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
+        var result = pipeline.Run(_root);
+
+        // Cenário montado como esperado: 3 grupos candidatos, 1 de cada veredito.
+        Assert.Equal(3, result.Groups.Count);
+        Assert.Single(result.IdenticalDuplicates);
+        Assert.Single(result.RealConflicts);
+
+        // PROPRIEDADE: interseção vazia entre os nomes normalizados das duas listas.
+        var nomesEmConflitos = result.RealConflicts
+            .Select(c => c.NormalizedBaseName)
+            .ToHashSet(StringComparer.Ordinal);
+        var nomesEmDuplicatas = result.IdenticalDuplicates
+            .SelectMany(d => d.Files.Select(f => Grouping.NormalizeBaseName(Path.GetFileName(f.Path))))
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Empty(nomesEmConflitos.Intersect(nomesEmDuplicatas));
+
+        // Reforço concreto: o grupo morto no L2 ("morto.bin") existe em Groups
+        // (trilha de auditoria) mas aparece em NENHUMA das duas listas — zero
+        // também respeita "no máximo uma".
+        Assert.Contains(result.Groups, g => g.NormalizedBaseName == "morto.bin");
+        Assert.DoesNotContain("morto.bin", nomesEmConflitos);
+        Assert.DoesNotContain("morto.bin", nomesEmDuplicatas);
+
+        // E cada lista contém exatamente o nome do seu próprio veredito.
+        Assert.Equal(new[] { "relatorio.xlsx" }, nomesEmConflitos);
+        Assert.Equal(new[] { "notas.txt" }, nomesEmDuplicatas);
+    }
+
+    // ----------------------------------------------------------------
+    // Caso 3 — Único par do grupo sobrevive ao L2 (colisão parcial) mas
+    // full hashes distintos: SOMENTE RealConflict, ZERO IdenticalDuplicates
+    // (schema §6.2: ao menos dois hashes distintos após o L2 ⇒ conflito real).
+    // ----------------------------------------------------------------
+    [Fact]
+    public void ParSobreviveAoL2_ComFullHashesDistintos_SoRealConflict_ZeroIdenticalDuplicates()
+    {
+        var conteudoA = ConteudoComColisaoParcial(miolo: 0x33);
+        var conteudoB = ConteudoComColisaoParcial(miolo: 0x44);
+
+        var caminhoA = CriarArquivo("contratos/termo.xlsx", conteudoA);
+        var caminhoB = CriarArquivo("contratos/termo (1).xlsx", conteudoB);
+
+        var entries = new[] { Entrada(caminhoA), Entrada(caminhoB) };
+        var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
+        var result = pipeline.Run(_root);
+
+        // O grupo sobreviveu ao L2 e virou conflito — nada na lista de duplicatas.
+        Assert.Single(result.RealConflicts);
+        Assert.Empty(result.IdenticalDuplicates);
+
+        var conflito = result.RealConflicts[0];
+        Assert.Equal("termo.xlsx", conflito.NormalizedBaseName);
+        Assert.Equal(2, conflito.Files.Count);
+
+        var hashA = conflito.Files.First(f => f.Path == caminhoA).Hash;
+        var hashB = conflito.Files.First(f => f.Path == caminhoB).Hash;
+        Assert.Matches(@"^[0-9a-f]{64}$", hashA);
+        Assert.Matches(@"^[0-9a-f]{64}$", hashB);
+        Assert.NotEqual(hashA, hashB);
+    }
+
+    // ----------------------------------------------------------------
+    // Caso 4 — Triplo byte-idêntico: UMA única IdenticalDuplicate com 3
+    // Files e ZERO RealConflicts (schema §6.1: um elemento por classe de
+    // equivalência por conteúdo pleno, com 2 ou mais arquivos).
+    // ----------------------------------------------------------------
+    [Fact]
+    public void TriploByteIdentico_UnicaIdenticalDuplicate_ComTresArquivos_ZeroRealConflicts()
+    {
+        var conteudo = new byte[12 * Kib];
+        for (var i = 0; i < conteudo.Length; i++)
+        {
+            conteudo[i] = (byte)(0xC3 ^ (i % 31));
+        }
+
+        // Bases que normalizam todas para "config.ini".
+        var c1 = CriarArquivo("app/config.ini", conteudo);
+        var c2 = CriarArquivo("app/config (1).ini", conteudo);
+        var c3 = CriarArquivo("bak/config-DESKTOP-ZZZ999.ini", conteudo);
+
+        var entries = new[] { Entrada(c1), Entrada(c2), Entrada(c3) };
+        var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
+        var result = pipeline.Run(_root);
+
+        // UMA entrada única, três arquivos, nenhum conflito real.
+        Assert.Single(result.IdenticalDuplicates);
+        Assert.Empty(result.RealConflicts);
+
+        var dup = result.IdenticalDuplicates[0];
+        Assert.Matches(@"^[0-9a-f]{64}$", dup.Hash);
+        Assert.Equal(conteudo.Length, dup.SizeBytes);
+        Assert.Equal(3, dup.Files.Count);
+        Assert.Equal(
+            new[] { c1, c2, c3 }.OrderBy(p => p, StringComparer.Ordinal),
+            dup.Files.Select(f => f.Path));
+    }
+
     // ---- helpers ----------------------------------------------------------
 
     private string CriarArquivo(string relativo, byte[] conteudo)
