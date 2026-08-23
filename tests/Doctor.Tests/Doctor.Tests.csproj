@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/Doctor.Cli/Doctor.Cli.csproj" />
     <ProjectReference Include="../../src/Doctor.Gui/Doctor.Gui.csproj" />
     <ProjectReference Include="../../src/Doctor.Core/Doctor.Core.csproj" />
   </ItemGroup>
