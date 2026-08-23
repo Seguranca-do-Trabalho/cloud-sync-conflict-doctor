@@ -42,4 +42,11 @@ public sealed record FileEntry
     /// propriedade calculada, impossível dessincronizar do nome.
     /// </summary>
     public bool HasBidiControlChars => PathCanonical.HasBidiControlChars(Path);
+
+    /// <summary>
+    /// Status de estabilidade do arquivo (threat-model T-05, regra R4).
+    /// Stable = metadados conferidos; Unstable = divergência detectada,
+    /// excluído de decisões de igualdade e do cache.
+    /// </summary>
+    public FileStatus Status { get; init; } = FileStatus.Stable;
 }
