@@ -1,0 +1,403 @@
+{
+  "report_schema_version": 1,
+  "algorithm": "BLAKE3",
+  "hash_version": 1,
+  "normalization_rules_version": 1,
+  "generated_from": {
+    "root_path": "<RAIZ>",
+    "scan_started_utc": "2026-01-01T12:00:00.000Z",
+    "scan_finished_utc": "2026-01-01T12:00:01.000Z"
+  },
+  "telemetry": {
+    "files_enumerated": 50,
+    "files_placeholder": 0,
+    "files_skipped": 0,
+    "files_partial_hashed": 35,
+    "files_full_hashed": 35,
+    "bytes_read": 8826901,
+    "bytes_read_partial": 3491840,
+    "bytes_read_full": 5335061,
+    "placeholder_bytes_read": 0
+  },
+  "groups": [
+    {
+      "normalized_base_name": "arq-trio.bin",
+      "size_bytes": 204807,
+      "members": [
+        {
+          "path": "trio/arq-trio.bin"
+        },
+        {
+          "path": "trio/copia1/arq-trio.bin"
+        },
+        {
+          "path": "trio/copia2/arq-trio.bin"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p00.jpg",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "backup/p00/foto-p00.jpg"
+        },
+        {
+          "path": "dups/p00/foto-p00.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p01.jpg",
+      "size_bytes": 17408,
+      "members": [
+        {
+          "path": "backup/p01/foto-p01.jpg"
+        },
+        {
+          "path": "dups/p01/foto-p01.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p02.jpg",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "backup/p02/foto-p02.jpg"
+        },
+        {
+          "path": "dups/p02/foto-p02.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p03.jpg",
+      "size_bytes": 19456,
+      "members": [
+        {
+          "path": "backup/p03/foto-p03.jpg"
+        },
+        {
+          "path": "dups/p03/foto-p03.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p04.jpg",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "backup/p04/foto-p04.jpg"
+        },
+        {
+          "path": "dups/p04/foto-p04.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p05.jpg",
+      "size_bytes": 21504,
+      "members": [
+        {
+          "path": "backup/p05/foto-p05.jpg"
+        },
+        {
+          "path": "dups/p05/foto-p05.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p06.jpg",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "backup/p06/foto-p06.jpg"
+        },
+        {
+          "path": "dups/p06/foto-p06.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p07.jpg",
+      "size_bytes": 23552,
+      "members": [
+        {
+          "path": "backup/p07/foto-p07.jpg"
+        },
+        {
+          "path": "dups/p07/foto-p07.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p08.jpg",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "backup/p08/foto-p08.jpg"
+        },
+        {
+          "path": "dups/p08/foto-p08.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p09.jpg",
+      "size_bytes": 25600,
+      "members": [
+        {
+          "path": "backup/p09/foto-p09.jpg"
+        },
+        {
+          "path": "dups/p09/foto-p09.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "foto-p10.jpg",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "backup/p10/foto-p10.jpg"
+        },
+        {
+          "path": "dups/p10/foto-p10.jpg"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k00.bin",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "conflicts/mirror/orc-k00-DESKTOP-HOST00.bin"
+        },
+        {
+          "path": "conflicts/orc-k00.bin"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k01.bin",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "conflicts/mirror/orc-k01-DESKTOP-HOST01.bin"
+        },
+        {
+          "path": "conflicts/orc-k01.bin"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k02.bin",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "conflicts/mirror/orc-k02-DESKTOP-HOST02.bin"
+        },
+        {
+          "path": "conflicts/orc-k02.bin"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k03.bin",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "conflicts/mirror/orc-k03-DESKTOP-HOST03.bin"
+        },
+        {
+          "path": "conflicts/orc-k03.bin"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k04.bin",
+      "size_bytes": 204800,
+      "members": [
+        {
+          "path": "conflicts/mirror/orc-k04-DESKTOP-HOST04.bin"
+        },
+        {
+          "path": "conflicts/orc-k04.bin"
+        }
+      ]
+    }
+  ],
+  "identical_duplicates": [
+    {
+      "hash": "3320d02852b0d608a0eadeb4de4af35d94288789bcec5970ab8f34724018a251",
+      "size_bytes": 204800,
+      "files": [
+        "backup/p00/foto-p00.jpg",
+        "dups/p00/foto-p00.jpg"
+      ]
+    },
+    {
+      "hash": "466959f735cacd008bf536a15bf703a05487a3cabecf1507d2bb8020cccc21e4",
+      "size_bytes": 17408,
+      "files": [
+        "backup/p01/foto-p01.jpg",
+        "dups/p01/foto-p01.jpg"
+      ]
+    },
+    {
+      "hash": "be19103e9060167c5762e6dbc77558a23e6cf80a60420a2b97bd6d40c0a06315",
+      "size_bytes": 204800,
+      "files": [
+        "backup/p02/foto-p02.jpg",
+        "dups/p02/foto-p02.jpg"
+      ]
+    },
+    {
+      "hash": "88c44991049730b0d5d8b682d57daf3caa653eae302808c50edc945750582b22",
+      "size_bytes": 19456,
+      "files": [
+        "backup/p03/foto-p03.jpg",
+        "dups/p03/foto-p03.jpg"
+      ]
+    },
+    {
+      "hash": "7332c4c1aceb9f87ac5ce1b90e0fdb5623dd59cd137cfc133c4e6d3cf9891052",
+      "size_bytes": 204800,
+      "files": [
+        "backup/p04/foto-p04.jpg",
+        "dups/p04/foto-p04.jpg"
+      ]
+    },
+    {
+      "hash": "e808f9956cdc24d1b26429fb0cb778f95ded409bf15afc13df886a10fa333b24",
+      "size_bytes": 21504,
+      "files": [
+        "backup/p05/foto-p05.jpg",
+        "dups/p05/foto-p05.jpg"
+      ]
+    },
+    {
+      "hash": "5150d337d2aad0cc579c6834dcb31ecd5ba82511138f552a2ff7fe46a3f12532",
+      "size_bytes": 204800,
+      "files": [
+        "backup/p06/foto-p06.jpg",
+        "dups/p06/foto-p06.jpg"
+      ]
+    },
+    {
+      "hash": "264a3dff4255df1a997e3955a5bb7a59f42f7394123981afc0fa60a466c89168",
+      "size_bytes": 23552,
+      "files": [
+        "backup/p07/foto-p07.jpg",
+        "dups/p07/foto-p07.jpg"
+      ]
+    },
+    {
+      "hash": "8d0965751d1dfbc73f4071c2c286ff8ac32672f4f5af36f3b6de7ecd9ed2900b",
+      "size_bytes": 204800,
+      "files": [
+        "backup/p08/foto-p08.jpg",
+        "dups/p08/foto-p08.jpg"
+      ]
+    },
+    {
+      "hash": "c8899d3c7a8ef79426fe4da22f761fec9fd75bda68fbc92a82dd81b9b626254e",
+      "size_bytes": 25600,
+      "files": [
+        "backup/p09/foto-p09.jpg",
+        "dups/p09/foto-p09.jpg"
+      ]
+    },
+    {
+      "hash": "6465cd068ba5b920d83ea505dd885e44d11349cfd7e74849009bad4a1b246b55",
+      "size_bytes": 204800,
+      "files": [
+        "backup/p10/foto-p10.jpg",
+        "dups/p10/foto-p10.jpg"
+      ]
+    },
+    {
+      "hash": "aa839a7fe0e8685d75643c3bd997b207b73ae32bf53508f043aa0e4591044659",
+      "size_bytes": 204807,
+      "files": [
+        "trio/arq-trio.bin",
+        "trio/copia1/arq-trio.bin",
+        "trio/copia2/arq-trio.bin"
+      ]
+    }
+  ],
+  "real_conflicts": [
+    {
+      "normalized_base_name": "orc-k00.bin",
+      "size_bytes": 204800,
+      "files": [
+        {
+          "path": "conflicts/mirror/orc-k00-DESKTOP-HOST00.bin",
+          "hash": "10b9a02cb764c5253380a9f46beb8f151008884721e8229c06f1187880406639"
+        },
+        {
+          "path": "conflicts/orc-k00.bin",
+          "hash": "8fd7f0dfd6e1f5cfe572b65b30eb3246cef750e2ace13d3ee31e5b8e5e1a1ce5"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k01.bin",
+      "size_bytes": 204800,
+      "files": [
+        {
+          "path": "conflicts/mirror/orc-k01-DESKTOP-HOST01.bin",
+          "hash": "3ad29740c691a2f43403666708196b6d9932f3337a3798cc9c4c9ebfb58b0873"
+        },
+        {
+          "path": "conflicts/orc-k01.bin",
+          "hash": "bc225167db2fcb6cdd2b71faa33125ad036344709e2912e3b5614a4943102549"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k02.bin",
+      "size_bytes": 204800,
+      "files": [
+        {
+          "path": "conflicts/mirror/orc-k02-DESKTOP-HOST02.bin",
+          "hash": "f29171f450f6a84fcf5efb4fd3b822ea23bd5ba49ffc72b8fa8283dd00fcb934"
+        },
+        {
+          "path": "conflicts/orc-k02.bin",
+          "hash": "a957dd858a1e4379f82e665a59456aa8ab7c50b48be770553c117d9c6dd65171"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k03.bin",
+      "size_bytes": 204800,
+      "files": [
+        {
+          "path": "conflicts/mirror/orc-k03-DESKTOP-HOST03.bin",
+          "hash": "3621d257841ec2754b9cb2108cb012e5f9ce3e37c20156a2c4a7345501ced26e"
+        },
+        {
+          "path": "conflicts/orc-k03.bin",
+          "hash": "277db150e07675d4cf38c9ec5e171bc901f77955335ce623a6470e22cb0b8acf"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "orc-k04.bin",
+      "size_bytes": 204800,
+      "files": [
+        {
+          "path": "conflicts/mirror/orc-k04-DESKTOP-HOST04.bin",
+          "hash": "66435457740d191e737d6895f2bb4df0a6dd9043807e5c38b4b49de92c6eb4dd"
+        },
+        {
+          "path": "conflicts/orc-k04.bin",
+          "hash": "475724e168c3e7074140fc4282e342f9707cac85ca5b586308f791c81e05c2d4"
+        }
+      ]
+    }
+  ],
+  "placeholders": []
+}
