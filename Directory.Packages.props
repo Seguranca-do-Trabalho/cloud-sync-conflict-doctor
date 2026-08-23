@@ -1,0 +1,25 @@
+<Project>
+
+  <!-- Central Package Management (SPEC §52 — superfície mínima; risco R9: versões
+       pinadas, revisão de dependências no GATE 5). Qualquer PackageReference nova
+       DEVE passar por aqui com versão exata — sem ranges.
+       As versões abaixo são as mesmas até hoje inline nos csproj (nenhum bump). -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Blake3" Version="2.1.0" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageVersion Include="Avalonia" Version="11.2.2" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.2.2" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.2.2" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.2.2" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+</Project>
