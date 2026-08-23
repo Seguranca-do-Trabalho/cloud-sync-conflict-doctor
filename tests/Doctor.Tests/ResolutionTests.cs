@@ -155,4 +155,33 @@ public sealed class ResolutionTests
             new[] { "/root/inventario-b.txt" },
             plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
     }
+
+    // ---------------------------------------------------------------- Falha fechada
+
+    [Fact]
+    public void KeepMachine_MaquinaAusenteDoGrupo_FalhaFechada()
+    {
+        var grupo = new ConflictGroup("contrato", 0,
+        [
+            Entrada("/root/contrato-DESKTOP-ABC123.txt", 100, "2026-08-22T12:00:00Z"),
+            Entrada("/root/contrato (1).txt", 100, "2026-08-20T10:00:00Z"),
+        ]);
+
+        Assert.Throws<InvalidOperationException>(
+            () => Resolution.Resolve(grupo, new KeepMachine("ZZZ999")));
+    }
+
+    [Fact]
+    public void GrupoCorrompido_ComUmSoMembro_FalhaFechadaSemPlano()
+    {
+        // ConflictGroup exige >=2 membros; entrada violando o contrato nunca gera
+        // plano plausível — lança (SPEC §2.1 falha conservadora).
+        var grupo = new ConflictGroup("solitario", 0,
+        [
+            Entrada("/root/solitario.txt", 100, "2026-08-22T12:00:00Z"),
+        ]);
+
+        Assert.Throws<InvalidOperationException>(
+            () => Resolution.Resolve(grupo, new KeepNewest()));
+    }
 }

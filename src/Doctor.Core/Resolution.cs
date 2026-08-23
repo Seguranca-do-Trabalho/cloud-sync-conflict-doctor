@@ -122,6 +122,14 @@ public static class Resolution
             throw new InvalidOperationException("Grupo sem membros ou corrompido: falha fechada.");
         }
 
+        // Contrato de ConflictGroup (Grouping.Group): grupo candidato tem sempre >= 2
+        // membros. Entrada violando o contrato nunca gera plano (falha conservadora).
+        if (group.Members.Count < 2)
+        {
+            throw new InvalidOperationException(
+                $"Grupo candidato com {group.Members.Count} membro(s): contrato exige >= 2.");
+        }
+
         var winner = exclude ?? list[0];
         var sacrifices = group.Members
             .Where(m => !ReferenceEquals(m, winner))
