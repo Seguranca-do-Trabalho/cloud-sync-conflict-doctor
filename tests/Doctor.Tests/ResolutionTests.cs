@@ -184,4 +184,29 @@ public sealed class ResolutionTests
         Assert.Throws<InvalidOperationException>(
             () => Resolution.Resolve(grupo, new KeepNewest()));
     }
+
+    // ---------------------------------------------------------------- Determinismo
+
+    [Fact]
+    public void PlanoIndependenteDaOrdemFisicaDeEntrada_NuncaFirstSeen()
+    {
+        var mtimeComum = "2026-08-22T12:00:00Z";
+        FileEntry[] membros =
+        [
+            Entrada("/root/nota-B.txt", 200, mtimeComum),
+            Entrada("/root/nota-A.txt", 200, mtimeComum), // vence por path (empate total com B)
+            Entrada("/root/nota-C.txt", 100, "2026-08-21T11:00:00Z"),
+            Entrada("/root/nota-D.txt", 300, "2026-08-20T10:00:00Z"),
+        ];
+
+        var direta = Resolution.Resolve(new ConflictGroup("nota", 0, membros), new KeepNewest());
+        var reversa = Resolution.Resolve(
+            new ConflictGroup("nota", 0, membros.Reverse().ToArray()), new KeepNewest());
+
+        Assert.Equal(direta.Winner.Path, reversa.Winner.Path);
+        Assert.Equal(
+            direta.Sacrifices.Select(s => s.Entry.Path).ToArray(),
+            reversa.Sacrifices.Select(s => s.Entry.Path).ToArray());
+        Assert.Equal("/root/nota-A.txt", direta.Winner.Path);
+    }
 }
