@@ -87,7 +87,7 @@ public sealed class PlaceholderGuardedHasher : IHasher
 /// 3. recusa telemetria de entrada já violada — o gate nunca "lava" um contador
 ///    PlaceholderBytesRead != 0.
 /// </summary>
-public sealed class PlaceholderGate
+public sealed class PlaceholderGate : IStreamSource
 {
     private readonly IStreamSource _streams;
 
