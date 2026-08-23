@@ -26,4 +26,11 @@ public sealed record FileEntry
 
     /// <summary>Motivo da marcação de placeholder; null quando não é placeholder.</summary>
     public PlaceholderKind? PlaceholderKind { get; init; }
+
+    /// <summary>
+    /// Verdadeiro se a entrada carrega reparse point (junction, symlink, mount point —
+    /// análogo POSIX incluído). Marcada pelo enumerador ordenado via <see cref="ReparsePolicy"/>;
+    /// marcação da origem (enumerador físico) é autoridade máxima e nunca é apagada.
+    /// </summary>
+    public bool IsReparsePoint { get; init; }
 }
