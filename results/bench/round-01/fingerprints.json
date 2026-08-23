@@ -1,0 +1,29 @@
+{
+  "runs": {
+    "runwarmup": {
+      "sha256": "bd5ee0463688b3ce6d0e2244175972b3285f8eb0ca26607728d5ada5301ef91f",
+      "bytes": 12413941
+    },
+    "run1": {
+      "sha256": "d8113d5c62a0f4d8ce3fae74708be9380e88841e5837d42faad75046d576ef7e",
+      "bytes": 12413941
+    },
+    "run2": {
+      "sha256": "aab4da183c54f7a8fa9551aa970f30186bb1803cacb803dacbb0862284d574c3",
+      "bytes": 12413941
+    },
+    "run3": {
+      "sha256": "5902ed6a1bbea0b235d929ff46a74f864f60825dec7f0bf6228a0cc00112b5f0",
+      "bytes": 12413941
+    },
+    "run4": {
+      "sha256": "aad3b4572448f997c2d14d9ddaae27d9809e82b6bfd1711e738572d3f2b65c4d",
+      "bytes": 12413941
+    },
+    "run5": {
+      "sha256": "d3b8538e54e7cfb2e7226bf0b23f8cbc21f0146da6d4dafa20a222e13cc72090",
+      "bytes": 12413941
+    }
+  },
+  "stdout_byte_identicos": false
+}

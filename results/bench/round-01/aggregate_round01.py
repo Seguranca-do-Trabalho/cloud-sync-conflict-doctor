@@ -32,7 +32,8 @@ def main() -> int:
         meta = json.loads((d / f"run{i}.meta.json").read_text())
         doc = json.loads((d / f"run{i}").read_text())
         metas.append(meta)
-        tels.append(doc["report"]["telemetry"])
+        # JSON v1 e plano: telemetry na raiz (schema ADR-0003).
+        tels.append(doc["telemetry"])
 
     print("== metricas de processo (por execucao)")
     for i, m in enumerate(metas, 1):

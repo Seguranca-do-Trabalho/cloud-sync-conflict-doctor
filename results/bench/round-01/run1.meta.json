@@ -1,0 +1,10 @@
+{
+  "wall_clock_s": 118.637,
+  "peak_rss_kb": 1039620,
+  "cpu_user_s": 14.962,
+  "cpu_sys_s": 19.977,
+  "cpu_pct": 29.4,
+  "exit_code": 0,
+  "stdout_bytes": 12413941,
+  "stderr_tail": ""
+}
