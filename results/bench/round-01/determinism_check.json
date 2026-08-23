@@ -1,0 +1,11 @@
+{
+  "sha256_sem_generated_from": {
+    "runwarmup": "1019fd09a88ebef958a87eb10ca3749ff4ef4a956e1fba17390d73d52d103a96",
+    "run1": "1019fd09a88ebef958a87eb10ca3749ff4ef4a956e1fba17390d73d52d103a96",
+    "run2": "1019fd09a88ebef958a87eb10ca3749ff4ef4a956e1fba17390d73d52d103a96",
+    "run3": "1019fd09a88ebef958a87eb10ca3749ff4ef4a956e1fba17390d73d52d103a96",
+    "run4": "1019fd09a88ebef958a87eb10ca3749ff4ef4a956e1fba17390d73d52d103a96",
+    "run5": "1019fd09a88ebef958a87eb10ca3749ff4ef4a956e1fba17390d73d52d103a96"
+  },
+  "conteudo_deterministico": true
+}

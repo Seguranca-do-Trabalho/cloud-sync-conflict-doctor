@@ -1,0 +1,32 @@
+== metricas de processo (por execucao)
+run1: wall=118.637s rss=1039620kB cpu=29.4% exit=0
+run2: wall=92.171s rss=925664kB cpu=35.2% exit=0
+run3: wall=121.166s rss=1040328kB cpu=26.7% exit=0
+run4: wall=76.615s rss=1041248kB cpu=34.6% exit=0
+run5: wall=20.21s rss=1041352kB cpu=92.8% exit=0
+
+== medianas (n=5)
+wall_clock_s: 92.171
+peak_RSS_kb:  1040328
+CPU%:         34.6
+
+== telemetria (por execucao)
+run1: f_enumerated=1000000 f_skipped=0 f_placeholder=60000 f_partial_hashed=16572 f_full_hashed=0 b_read=1364973038 b_read_partial=1364973038 b_read_full=0 placeholder_b_read=0
+run2: f_enumerated=1000000 f_skipped=0 f_placeholder=60000 f_partial_hashed=16572 f_full_hashed=0 b_read=1364973038 b_read_partial=1364973038 b_read_full=0 placeholder_b_read=0
+run3: f_enumerated=1000000 f_skipped=0 f_placeholder=60000 f_partial_hashed=16572 f_full_hashed=0 b_read=1364973038 b_read_partial=1364973038 b_read_full=0 placeholder_b_read=0
+run4: f_enumerated=1000000 f_skipped=0 f_placeholder=60000 f_partial_hashed=16572 f_full_hashed=0 b_read=1364973038 b_read_partial=1364973038 b_read_full=0 placeholder_b_read=0
+run5: f_enumerated=1000000 f_skipped=0 f_placeholder=60000 f_partial_hashed=16572 f_full_hashed=0 b_read=1364973038 b_read_partial=1364973038 b_read_full=0 placeholder_b_read=0
+
+== medianas de telemetria
+files_enumerated: 1e+06
+files_skipped: 0
+files_placeholder: 60000
+files_partial_hashed: 16572
+files_full_hashed: 0
+bytes_read: 1.36497e+09
+bytes_read_partial: 1.36497e+09
+bytes_read_full: 0
+placeholder_bytes_read: 0
+
+gate placeholder_bytes_read == 0: PASS
+before_commit: 0ca0530

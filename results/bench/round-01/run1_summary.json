@@ -1,0 +1,21 @@
+{
+  "grupos_candidatos": 8286,
+  "duplicatas_identicas": 0,
+  "conflitos_reais": 0,
+  "arquivos_em_duplicatas": 0,
+  "arquivos_em_conflitos": 0,
+  "placeholders_listados": 60000,
+  "erros_acesso": 0,
+  "chaves_raiz": [
+    "algorithm",
+    "generated_from",
+    "groups",
+    "hash_version",
+    "identical_duplicates",
+    "normalization_rules_version",
+    "placeholders",
+    "real_conflicts",
+    "report_schema_version",
+    "telemetry"
+  ]
+}

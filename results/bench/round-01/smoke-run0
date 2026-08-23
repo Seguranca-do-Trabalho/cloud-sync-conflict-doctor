@@ -1,0 +1,371 @@
+{
+  "report_schema_version": 1,
+  "algorithm": "BLAKE3",
+  "hash_version": 1,
+  "normalization_rules_version": 1,
+  "generated_from": {
+    "root_path": "/tmp/cd-smoke-t07",
+    "scan_started_utc": "2026-08-23T14:31:20.378Z",
+    "scan_finished_utc": "2026-08-23T14:31:20.456Z"
+  },
+  "telemetry": {
+    "files_enumerated": 500,
+    "files_placeholder": 30,
+    "files_skipped": 0,
+    "files_partial_hashed": 22,
+    "files_full_hashed": 0,
+    "bytes_read": 1865426,
+    "bytes_read_partial": 1865426,
+    "bytes_read_full": 0,
+    "placeholder_bytes_read": 0
+  },
+  "groups": [
+    {
+      "normalized_base_name": "relatorio_g002.csv",
+      "size_bytes": 94721,
+      "members": [
+        {
+          "path": "relatorio_g002 (1).csv"
+        },
+        {
+          "path": "~$relatorio_g002.csv"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g004.xlsx",
+      "size_bytes": 88287,
+      "members": [
+        {
+          "path": "relatorio_g004.sb-1bbc53.xlsx"
+        },
+        {
+          "path": "relatorio_g004.xlsx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g006.docx",
+      "size_bytes": 57880,
+      "members": [
+        {
+          "path": "relatorio_g006 (1).docx"
+        },
+        {
+          "path": "~$relatorio_g006.docx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g010.docx",
+      "size_bytes": 63750,
+      "members": [
+        {
+          "path": "relatorio_g010 (1).docx"
+        },
+        {
+          "path": "~$relatorio_g010.docx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g012.docx",
+      "size_bytes": 82440,
+      "members": [
+        {
+          "path": "relatorio_g012 (1).docx"
+        },
+        {
+          "path": "~$relatorio_g012.docx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g020.docx",
+      "size_bytes": 113951,
+      "members": [
+        {
+          "path": "relatorio_g020.sb-a1fb3a.docx"
+        },
+        {
+          "path": "~$relatorio_g020.docx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g022.xlsx",
+      "size_bytes": 84644,
+      "members": [
+        {
+          "path": "relatorio_g022.sb-999937.xlsx"
+        },
+        {
+          "path": "~$relatorio_g022.xlsx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g026.docx",
+      "size_bytes": 81202,
+      "members": [
+        {
+          "path": "relatorio_g026.docx"
+        },
+        {
+          "path": "~$relatorio_g026.docx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g028.csv",
+      "size_bytes": 105460,
+      "members": [
+        {
+          "path": "relatorio_g028.csv"
+        },
+        {
+          "path": "relatorio_g028.sb-35094a.csv"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g030.xlsx",
+      "size_bytes": 69698,
+      "members": [
+        {
+          "path": "relatorio_g030.sb-af8e01.xlsx"
+        },
+        {
+          "path": "relatorio_g030.xlsx"
+        }
+      ]
+    },
+    {
+      "normalized_base_name": "relatorio_g034.csv",
+      "size_bytes": 90680,
+      "members": [
+        {
+          "path": "relatorio_g034.csv"
+        },
+        {
+          "path": "~$relatorio_g034.csv"
+        }
+      ]
+    }
+  ],
+  "identical_duplicates": [],
+  "real_conflicts": [],
+  "placeholders": [
+    {
+      "path": "/tmp/cd-smoke-t07/Arquivo1/Projetos2/Downloads3/Fotos4/file_6c031199.txt",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Arquivo1/Projetos2/Downloads3/Fotos4/file_a4161293.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Arquivo1/Projetos2/Downloads3/Fotos4/file_ec1b8ca1.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Backup1/file_a28defe3.pptx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Backup1/file_ce4a2bbd.jpg",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Docs1/file_38602ab6.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Docs1/file_bdd640fb.pptx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Fotos1/Arquivo2/Downloads3/Trabalho4/file_89fa6a68.jpg",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Fotos1/Arquivo2/Downloads3/Trabalho4/file_8b8148f6.pptx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Fotos1/Arquivo2/Downloads3/Trabalho4/file_c5e7ce8a.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Pessoal1/Arquivo2/Planilhas3/file_c40db9b4.xlsx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Pessoal1/file_0e51f30d.txt",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Pessoal1/file_448aaa9e.pptx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Pessoal1/file_a491f0b2.xlsx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Planilhas1/Downloads2/Planilhas3/file_1efa2197.pptx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Planilhas1/Downloads2/Planilhas3/file_877409a9.txt",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Planilhas1/file_c37459ee.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Projetos1/Trabalho2/Downloads3/Arquivo4/file_29a3b2e9.csv",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Projetos1/Trabalho2/Downloads3/Arquivo4/file_4eb93eff.txt",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Projetos1/Trabalho2/Downloads3/Arquivo4/file_93cd59bf.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Trabalho1/Fotos2/file_4fcca39a.csv",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Trabalho1/Fotos2/file_52fbe43b.txt",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/Trabalho1/Fotos2/file_74273ca3.md",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/file_663f1c97.pptx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/file_7e570ddf.txt",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/file_9be578c7.xlsx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/file_ae340454.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/file_b7c93acf.pptx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/file_c30ff46e.docx",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    },
+    {
+      "path": "/tmp/cd-smoke-t07/file_ddd1dfb2.jpg",
+      "kinds": [
+        "reparse_point"
+      ],
+      "size_bytes": 4098
+    }
+  ]
+}
+
