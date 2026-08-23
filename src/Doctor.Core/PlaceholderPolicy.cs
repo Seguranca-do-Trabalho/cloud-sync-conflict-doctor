@@ -28,6 +28,18 @@ public static class PlaceholderPolicy
     public static bool IsPlaceholder(FileEntry entry) => Classify(entry) is not null;
 
     /// <summary>
+    /// Sobrecarga sobre atributos crus (sem <see cref="FileEntry"/>): usada pelos
+    /// pontos que decidem ANTES de construir a entrada (ex.: recusa de descida em
+    /// diretório com reparse — ADR-0004 regra 4). Mantém os bits "não tocar"
+    /// centralizados aqui, único ponto de decisão do produto.
+    /// </summary>
+    public static bool IsPlaceholder(FileAttributes attributes) =>
+        (attributes & FileAttributes.Offline) != 0
+        || (attributes & RecallOnOpen) != 0
+        || (attributes & RecallOnDataAccess) != 0
+        || (attributes & FileAttributes.ReparsePoint) != 0;
+
+    /// <summary>
     /// Retorna o kind do placeholder ou null se a entrada for segura para leitura.
     /// Um único bit suficiente: qualquer um dos quatro dispara "NÃO TOCAR".
     /// </summary>

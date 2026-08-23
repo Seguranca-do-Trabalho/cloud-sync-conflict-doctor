@@ -80,7 +80,8 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
         /// </summary>
         protected override bool ShouldRecurseIntoEntry(ref FileSystemEntry entry)
         {
-            if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+            // Decisão centralizada: os bits "não tocar" vivem na PlaceholderPolicy.
+            if (PlaceholderPolicy.IsPlaceholder(entry.Attributes))
             {
                 _erros.Add(new ScanError(
                     entry.ToFullPath(),
