@@ -33,4 +33,13 @@ public sealed record FileEntry
     /// marcação da origem (enumerador físico) é autoridade máxima e nunca é apagada.
     /// </summary>
     public bool IsReparsePoint { get; init; }
+
+    /// <summary>
+    /// Marcador estrutural de caracteres de controle bidi no caminho (D5 do card
+    /// S11-1; T-01/R12). O NOME nunca é mutado para "consertar" nada: a flag expõe
+    /// o risco e a renderização/escape cabe ao EPIC 10 (R12). Derivada SEMPRE do
+    /// próprio <see cref="Path"/> via <see cref="PathCanonical.HasBidiControlChars"/> —
+    /// propriedade calculada, impossível dessincronizar do nome.
+    /// </summary>
+    public bool HasBidiControlChars => PathCanonical.HasBidiControlChars(Path);
 }
