@@ -16,7 +16,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Testes provam a receita v1 segmento a segmento via streams espiãs. -->
+    <!-- Cache incremental (SPEC §12; ADR-0001/ADR-0006): versão PINADA em
+         Directory.Packages.props (supply chain R9; ADR-0006 §1). -->
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Testes provam a receita v1 segmento a segmento via streams espiãs e
+         inspecionam linhas cruas do cache (família CACHE). -->
     <InternalsVisibleTo Include="Doctor.Tests" />
   </ItemGroup>
 
