@@ -17,3 +17,7 @@ tools/report-v1-fixturegen/obj/
 # Artefatos de teste/coverage regeneraveis
 tests/*/TestResults/
 **/*.binlog
+
+# Binários e artefatos de build/grafos grandes (não rastrear)
+dist/
+results/
