@@ -13,7 +13,7 @@
 
 ## 0. Baseline verificada nesta execução
 
-- Build + testes: `dotnet test CloudSyncConflictDoctor.sln` → **Passed! Failed: 0, Passed: 298** (executado pelo revisor, saída real).
+- Build + testes: `dotnet test CloudSyncConflictDoctor.sln` → **Passed! Failed: 0, Passed: 541** (executado pelo revisor, saída real).
 - Base auditada: main @ 399e353 (merge T16).
 
 ## 1. Checklist 1 — APIs destrutivas com argumentos do usuário (proibido)
@@ -106,4 +106,4 @@ Checklist registrado como requisito do futuro card de packaging:
 | 3 | PlaceholderGate sem bypass | **PASS** |
 | 4 | Checklist installer | **N/A** — inexistente por design neste estágio (EPIC 14/GATE 6); requisitos registrados |
 
-**VEREDITO GLOBAL: PASS.** Nenhuma violação das regras anti-delete (ADR-0002), nenhum bypass do gate de placeholder (SPEC §6), nenhuma superfície de rede/processo/reflection em src/ (varredura adicional: apenas `Environment.GetEnvironmentVariable("XDG_DATA_HOME")` em CacheStore.cs:66). Suíte 298/298 verde na execução do revisor.
+**VEREDITO GLOBAL: PASS.** Nenhuma violação das regras anti-delete (ADR-0002), nenhum bypass do gate de placeholder (SPEC §6), nenhuma superfície de rede/processo/reflection em src/ (varredura adicional: apenas `Environment.GetEnvironmentVariable("XDG_DATA_HOME")` em CacheStore.cs:66). Suíte 541/541 verde na execução do revisor.

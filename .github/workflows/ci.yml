@@ -1,6 +1,6 @@
 # CI — Cloud Sync Conflict Doctor
 # Norma: docs/test-strategy.md secao 6 (arquivo UNICO, dois jobs, sem matriz).
-# Gatilhos: push em main, pull_request, cron noturno "0 5 * * *" (bench smoke BENCH-01/02).
+# Gatilhos: push em main, pull_request. Cron desativado (bench smoke BENCH-01/02).
 # Contrato de traits (docs/test-strategy.md secao 1.1):
 #   OS=Windows     -> testes nativos Windows (excluidos do job Linux via filtro)
 #   Category=Determinism -> prova de determinismo EXPLICITa tambem no Linux (SPEC §20)
@@ -11,8 +11,8 @@ on:
   push:
     branches: [main]
   pull_request:
-  schedule:
-    - cron: "0 5 * * *" # noturno: bench smoke
+  # schedule:
+  #   - cron: "0 5 * * *" # noturno: bench smoke
 
 permissions:
   contents: read

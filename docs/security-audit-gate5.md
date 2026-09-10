@@ -26,7 +26,7 @@ Execuções reais desta sessão:
   ScanPipeline.cs, CacheStore.cs, ScanFingerprint.cs, CanonicalPath.cs, FileStreamSource.cs,
   SidecarPlaceholderEnumerator.cs.
 - Auditoria estática independente R1 (relatório `auditoria-seguranca-T20-S11-6-R1.md`, commit
-  81339e8 na branch wt/t_ea884c03, suíte 298/298 verde na época sobre main @ 399e353),
+  81339e8 na branch wt/t_ea884c03, suíte 541/541 verde na época sobre main @ 399e353),
   incorporada como evidência complementar nos itens 4 e 5.
 
 Convenção de numeração (decisão do orquestrador, VINCULANTE): SEG-nn segue a ordem EXATA das
