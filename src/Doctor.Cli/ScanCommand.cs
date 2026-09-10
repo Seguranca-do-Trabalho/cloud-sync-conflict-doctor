@@ -36,7 +36,31 @@ public static class ScanCommand
     /// </summary>
     public static Func<string, EnumerationResult> DefaultEnumeration { get; set; } =
         root => new SidecarPlaceholderEnumerator(
-            new OrderedFileEnumerator(new CrossPlatformEnumerator())).Enumerate(root);
+            new OrderedFileEnumerator(EnumeradorDaPlataforma())).Enumerate(root);
+
+    /// <summary>
+    /// Escolhe o enumerador Level 0 conforme o sistema operacional.
+    ///
+    /// A producao instanciava SEMPRE o CrossPlatformEnumerator, apesar do
+    /// WindowsNativeEnumerator existir justamente para o Windows (ADR-0004,
+    /// card T23). Isso importava muito mais do que desempenho:
+    ///
+    /// O CrossPlatformEnumerator obtem o file id por lstat(2) — um P/Invoke de
+    /// libc que so existe no POSIX. No Windows ele nao tem de onde tirar um id
+    /// real e devolve "0" para TODOS os arquivos. Como OrderedFileEnumerator
+    /// usa a chave (VolumeId, FileId) para detectar ciclo de reparse point, o
+    /// primeiro arquivo entrava e todos os seguintes eram rejeitados como
+    /// "caminho volta ao mesmo inode ja visitado". Na pratica, um scan no
+    /// Windows enxergava um unico arquivo por volume.
+    ///
+    /// O enumerador nativo obtem o FileId NTFS de 128 bits real
+    /// (GetFileInformationByHandleEx / FILE_ID_INFO) e o numero de serie do
+    /// volume, que e o par correto para essa deteccao.
+    /// </summary>
+    internal static IFileEnumerator EnumeradorDaPlataforma() =>
+        OperatingSystem.IsWindows()
+            ? new WindowsNativeEnumerator()
+            : new CrossPlatformEnumerator();
 
     public static CliResult Run(string[] args)
     {

@@ -101,14 +101,28 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
                     return null; // somente arquivos na lista Level 0 (reparse de diretório já virou folha registrada)
                 }
 
-                // Linux: inode via lstat P/Invoke (LinuxFileId); Windows: preenchido
-                // pelo enumerador nativo (WindowsNativeEnumerator), não por este caminho.
-                string fileId;
-#if WINDOWS
-                fileId = "0"; // não usado: build Windows usa WindowsNativeEnumerator
-#else
-                fileId = LinuxFileId.GetInode(entry.ToFullPath());
-#endif
+                // Identidade do arquivo, decidida em TEMPO DE EXECUCAO.
+                //
+                // Antes isto era um `#if WINDOWS`, e os dois ramos estavam errados
+                // no Windows:
+                //
+                //   - o ramo compilado (`#else`) chamava LinuxFileId.GetInode(),
+                //     um P/Invoke de lstat(2). No Windows lanca
+                //     DllNotFoundException('libc'); o catch abaixo engolia o erro
+                //     e DESCARTAVA o arquivo — a enumeracao devolvia zero
+                //     arquivos numa arvore povoada.
+                //   - o ramo pretendido (`#if WINDOWS`) devolvia "0" para TODOS
+                //     os arquivos. Como OrderedFileEnumerator usa (VolumeId,
+                //     FileId) para detectar ciclo, o primeiro arquivo entrava e
+                //     todos os demais eram rejeitados como "mesmo inode".
+                //
+                // O simbolo WINDOWS nunca era definido (TFM net8.0), entao o
+                // primeiro ramo era o que valia — em ambas as plataformas.
+                // A decisao agora e por OperatingSystem, que nao depende de
+                // simbolo de compilacao.
+                string fileId = OperatingSystem.IsWindows()
+                    ? IdentidadeDeCaminho(entry.ToFullPath())
+                    : LinuxFileId.GetInode(entry.ToFullPath());
 
                 // Marcação de placeholder NA ORIGEM (SPEC §6, defesa em profundidade):
                 // este enumerador é utilizável cru (testes, harness); quem o consumir
@@ -134,6 +148,32 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
                 ErrosDeAcesso.Add(new ScanError(entry.ToFullPath(), ex.Message));
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Identidade derivada do caminho canônico, para Windows.
+        ///
+        /// Este enumerador não tem como obter o FileId NTFS sem abrir um handle
+        /// por arquivo, o que violaria o orçamento de E/S do SPEC §5. Em
+        /// produção o Windows usa <c>WindowsNativeEnumerator</c>, que traz o
+        /// FileId de 128 bits da própria enumeração, sem custo extra.
+        ///
+        /// Aqui a identidade é o caminho normalizado: garante que arquivos
+        /// distintos tenham chaves distintas — o que basta para a deduplicação
+        /// de <c>OrderedFileEnumerator</c> não colapsar a lista. A limitação
+        /// honesta é que dois hard links para o mesmo inode aparecem como
+        /// entradas separadas; a detecção de ciclo por reparse point continua
+        /// coberta pela regra 4 do ADR-0004, que trata diretório com reparse
+        /// como folha e nunca desce nele.
+        /// </summary>
+        private static string IdentidadeDeCaminho(string caminho)
+        {
+            var canônico = caminho
+                .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+                .ToLowerInvariant();   // NTFS é case-insensitive
+            return "path:" + Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(canônico))).ToLowerInvariant();
         }
     }
 }

@@ -133,7 +133,21 @@ public class WindowsNativeEnumeratorTests : IDisposable
             var erro = Assert.Single(resultado.Errors, e => e.Path.Contains("juncao", StringComparison.Ordinal));
             Assert.Contains("reparse point", erro.Message, StringComparison.OrdinalIgnoreCase);
 
-            Assert.DoesNotContain(resultado.Files, f => f.Path.Contains("dentro.txt", StringComparison.Ordinal));
+            // O que precisa ser garantido e que NADA seja alcancado ATRAVES da
+            // juncao. A versao anterior exigia que "dentro.txt" nao aparecesse
+            // em lugar nenhum — asercao incorreta, porque o alvo da juncao fica
+            // DENTRO da raiz varrida (_root/alvo/dentro.txt) e deve mesmo ser
+            // enumerado pelo caminho direto. O teste nunca rodou (o corpo estava
+            // sob `#if !WINDOWS return;` com o simbolo WINDOWS jamais definido),
+            // entao o engano passou despercebido.
+            Assert.DoesNotContain(
+                resultado.Files,
+                f => f.Path.Contains("juncao", StringComparison.Ordinal));
+
+            // ...e o alvo legitimo continua sendo enumerado pelo caminho real.
+            Assert.Contains(
+                resultado.Files,
+                f => f.Path.EndsWith(Path.Combine("alvo", "dentro.txt"), StringComparison.Ordinal));
         }
         finally
         {

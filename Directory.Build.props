@@ -1,0 +1,33 @@
+<Project>
+
+  <!--
+    Define o simbolo WINDOWS quando a compilacao acontece em Windows.
+
+    POR QUE ISTO EXISTE
+    O codigo usa `#if WINDOWS` em tres lugares (CrossPlatformEnumerator,
+    WindowsNativeEnumerator e os testes nativos), mas NADA definia esse simbolo:
+    os projetos tem TargetFramework net8.0 (nao net8.0-windows), e nao havia
+    Directory.Build.props. Consequencias medidas antes desta correcao:
+
+      - CrossPlatformEnumerator caia sempre no ramo #else e chamava
+        LinuxFileId.GetInode(), um P/Invoke de lstat(2). No Windows isso lanca
+        DllNotFoundException ('libc'), o catch engolia o erro e DESCARTAVA o
+        arquivo: a enumeracao devolvia ZERO arquivos numa arvore com 2.
+      - O corpo nativo inteiro de WindowsNativeEnumerator (P/Invoke
+        FindFirstFileExW, entregue no commit 42ed47c/T23) nunca era compilado.
+      - Os quatro testes de WindowsNativeEnumeratorTests começam com
+        `#if !WINDOWS return; #endif`, entao retornavam de imediato e passavam
+        sem exercitar nada — em qualquer plataforma, inclusive no runner
+        Windows do CI. O compilador avisava (CS0162, codigo inacessivel).
+
+    Efeito: 29 dos 541 testes falhavam no Windows, todos por essa raiz unica.
+
+    A condicao usa $(OS), avaliado pelo MSBuild na maquina que compila. Em
+    Linux o simbolo NAO e definido e tudo segue pelo caminho POSIX, preservando
+    o job linux do CI.
+  -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
+  </PropertyGroup>
+
+</Project>

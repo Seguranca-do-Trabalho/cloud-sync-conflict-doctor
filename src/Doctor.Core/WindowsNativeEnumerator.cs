@@ -22,7 +22,19 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
 #if WINDOWS
 
     private const int FindExInfoBasic = 1;
-    private const int FindExSearchLimitToDirectories = 0x00000002;
+
+    /// <summary>
+    /// FINDEX_SEARCH_OPS.FindExSearchNameMatch — retorna TODAS as entradas.
+    ///
+    /// O codigo passava FindExSearchLimitToDirectories (valor 2) neste
+    /// parametro, que instrui o Windows a devolver SOMENTE DIRETORIOS. Num
+    /// enumerador de arquivos o efeito era: na raiz so os subdiretorios eram
+    /// vistos (e empilhados), nenhum arquivo entrava na lista, e a varredura
+    /// terminava com ZERO arquivos e ZERO erros — falha silenciosa. Como o
+    /// corpo nativo nunca foi compilado (`#if WINDOWS` sem o simbolo definido),
+    /// isso jamais apareceu.
+    /// </summary>
+    private const int FindExSearchNameMatch = 0;
     private const uint FIND_FIRST_EX_LARGE_FETCH = 0x2;
     private static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
     private const int FileIdInfo = 18;
@@ -97,7 +109,7 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
             padraoBusca,
             FindExInfoBasic,
             out findData,
-            FindExSearchLimitToDirectories,
+            FindExSearchNameMatch,
             IntPtr.Zero,
             FIND_FIRST_EX_LARGE_FETCH);
 
@@ -156,7 +168,7 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
                         files.Add(entrada);
                     }
                 }
-                while (NativeMethods.FindNextFileExW(safeFindHandle, FindExInfoBasic, out findData, FindExSearchLimitToDirectories));
+                while (NativeMethods.FindNextFileW(safeFindHandle, out findData));
             }
             finally
             {
@@ -168,17 +180,39 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
     }
 
     /// <summary>
-    /// Obtém o GUID do volume a partir da raiz usando GetVolumeInformationForRootW.
+    /// Identidade do volume da raiz: o NUMERO DE SERIE, via GetVolumeInformationW.
+    ///
+    /// Duas correcoes em relacao a versao anterior:
+    ///
+    /// 1. Chamava 'GetVolumeInformationForRootW', que nao existe em kernel32.dll
+    ///    (EntryPointNotFoundException em toda invocacao).
+    /// 2. Devolvia o conteudo de lpVolumeNameBuffer, que e o ROTULO do volume
+    ///    ("Windows", "Dados"), nao o GUID que a documentacao prometia. Rotulo e
+    ///    editavel pelo usuario e pode repetir entre volumes: nao serve como
+    ///    identidade.
+    ///
+    /// O numero de serie e o que efetivamente identifica o volume e e o mesmo
+    /// campo que FILE_ID_INFO pareia com o FileId de 128 bits — a chave
+    /// (VolumeId, FileId) usada na deteccao de ciclo de OrderedFileEnumerator.
     /// </summary>
     private static string ObtemVolumeGuid(string raizWin32)
     {
-        var guidBuffer = new char[260];
-        var fsNameBuffer = new char[260];
-        var success = NativeMethods.GetVolumeInformationForRootW(
-            raizWin32,
-            guidBuffer,
-            (uint)guidBuffer.Length,
-            out _,
+        // GetVolumeInformationW exige a RAIZ DO VOLUME ("C:\"), nao um diretorio
+        // qualquer: passar o caminho da varredura faz a chamada falhar e cair no
+        // fallback de MachineName, perdendo a distincao entre volumes.
+        var raizVolume = Path.GetPathRoot(raizWin32);
+        if (string.IsNullOrEmpty(raizVolume))
+        {
+            return Environment.MachineName;
+        }
+
+        var volumeNameBuffer = new char[261];   // MAX_PATH + 1
+        var fsNameBuffer = new char[261];
+        var success = NativeMethods.GetVolumeInformationW(
+            raizVolume,
+            volumeNameBuffer,
+            (uint)volumeNameBuffer.Length,
+            out var volumeSerialNumber,
             out _,
             out _,
             fsNameBuffer,
@@ -186,11 +220,12 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
 
         if (!success)
         {
+            // Degrada para um identificador estavel da maquina em vez de lancar:
+            // sem volume id o scan ainda roda, apenas com dedup por maquina.
             return Environment.MachineName;
         }
 
-        var guidString = new string(guidBuffer).TrimEnd('\0');
-        return guidString;
+        return volumeSerialNumber.ToString("X8", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -295,15 +330,32 @@ internal static class NativeMethods
         IntPtr lpSearchFilter,
         uint dwAdditionalFlags);
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern bool FindNextFileExW(
+    // ATENCAO: nao existe 'FindNextFileExW' em kernel32.dll.
+    //
+    // A continuacao de uma enumeracao aberta por FindFirstFileEx e feita por
+    // FindNextFileW, que recebe APENAS DOIS argumentos (handle e buffer): o
+    // nivel de informacao e a operacao de busca sao fixados na chamada
+    // FindFirstFileEx e nao se repetem. A declaracao anterior inventava uma
+    // funcao com quatro parametros. Nunca foi compilada, entao o erro so
+    // existia no papel.
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true,
+               EntryPoint = "FindNextFileW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool FindNextFileW(
         SafeFindHandle hFindFile,
-        int fInfoId,
-        out WIN32_FIND_DATAW lpFindFileData,
-        int fSearchOp);
+        out WIN32_FIND_DATAW lpFindFileData);
 
+    // Recebe IntPtr, nao SafeFindHandle.
+    //
+    // Esta funcao e chamada de dentro de SafeFindHandle.ReleaseHandle(), ou
+    // seja, DURANTE o descarte do proprio handle. Marshalar um SafeHandle nesse
+    // momento faz o runtime tentar DangerousAddRef num objeto ja em fechamento,
+    // e a chamada morre com ObjectDisposedException — a enumeracao nativa
+    // inteira falhava no primeiro diretorio por causa disto. A sobrecarga com
+    // IntPtr fecha o handle cru, que e o contrato esperado de ReleaseHandle.
     [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool FindClose(SafeFindHandle hFindFile);
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool FindClose(IntPtr hFindFile);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr CreateFileW(
@@ -323,9 +375,19 @@ internal static class NativeMethods
         IntPtr lpBuffer,
         uint dwBufferSize);
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    // ATENCAO: a entrada correta e GetVolumeInformationW.
+    //
+    // Este P/Invoke declarava 'GetVolumeInformationForRootW' — funcao que NAO
+    // EXISTE em kernel32.dll. A assinatura abaixo e, byte a byte, a de
+    // GetVolumeInformationW; so o nome estava errado. Como o corpo nativo vivia
+    // sob `#if WINDOWS` e o simbolo nunca era definido (ver Directory.Build.props),
+    // este codigo jamais foi compilado nem executado, e o erro so aparecia em
+    // runtime como EntryPointNotFoundException. Todos os sete testes de
+    // WindowsNativeEnumeratorTests falhavam por esta unica linha.
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true,
+               EntryPoint = "GetVolumeInformationW")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool GetVolumeInformationForRootW(
+    public static extern bool GetVolumeInformationW(
         string rootPath,
         [Out] char[] volumeNameBuffer,
         uint volumeNameSize,
@@ -369,7 +431,10 @@ internal sealed class SafeFindHandle : SafeHandleZeroOrMinusOneIsInvalid
 
     protected override bool ReleaseHandle()
     {
-        return NativeMethods.FindClose(this);
+        // `handle` (o IntPtr cru), nunca `this`: passar o proprio SafeHandle
+        // aqui provoca ObjectDisposedException, pois o objeto ja esta sendo
+        // descartado quando ReleaseHandle roda.
+        return NativeMethods.FindClose(handle);
     }
 }
 #endif
