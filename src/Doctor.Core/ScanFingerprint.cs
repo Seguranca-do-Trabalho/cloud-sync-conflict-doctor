@@ -36,7 +36,7 @@ public static class ScanFingerprint
         hasher.Update(Encoding.ASCII.GetBytes(DomainTag));
 
         // Grupos candidatos — ordem canônica por primeiro membro.
-        foreach (var g in result.Groups.OrderBy(g => g.Members.FirstOrDefault(), PathOrder.Comparer))
+        foreach (var g in result.Groups.OrderBy(g => g.Members.FirstOrDefault(), (IComparer<FileEntry?>)PathOrder.Comparer))
         {
             hasher.Update(Tag("g"));
             hasher.Update(Field(g.NormalizedBaseName));
@@ -51,7 +51,7 @@ public static class ScanFingerprint
         // Duplicatas idênticas — ordem por hash (Ordinal); membros em ordem canônica.
         foreach (var d in result.IdenticalDuplicates
                      .OrderBy(d => d.Hash, StringComparer.Ordinal)
-                     .ThenBy(d => d.Files.FirstOrDefault(), PathOrder.Comparer))
+                     .ThenBy(d => d.Files.FirstOrDefault(), (IComparer<FileEntry?>)PathOrder.Comparer))
         {
             hasher.Update(Tag("i"));
             hasher.Update(Field(d.Hash));

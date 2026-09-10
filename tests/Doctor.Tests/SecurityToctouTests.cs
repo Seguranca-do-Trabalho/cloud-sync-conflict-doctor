@@ -107,7 +107,6 @@ public sealed class SecurityToctouTests : IDisposable
 
         // Simula writer concorrente que tenta modificar o arquivo
         // durante a janela de hash (openReadOverride abre com FileMode.Open)
-        var writerAtivo = false;
         var excecoes = new List<Exception>();
 
         var svc = new QuarantineService(
@@ -117,7 +116,6 @@ public sealed class SecurityToctouTests : IDisposable
                 {
                     // Simula abertura compartilhada — em Windows real seria
                     // FILE_SHARE_READ | FILE_SHARE_WRITE restrito
-                    writerAtivo = true;
                     // Tenta escrita concorrente (simulada por exceção)
                     try
                     {
@@ -127,7 +125,6 @@ public sealed class SecurityToctouTests : IDisposable
                     {
                         excecoes.Add(ex);
                     }
-                    writerAtivo = false;
                 }
                 return File.OpenRead(path);
             });

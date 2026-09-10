@@ -294,7 +294,7 @@ public class ReparsePolicyTests : IDisposable
         var result = new OrderedFileEnumerator(fake).Enumerate("/root", CancellationToken.None);
 
         // Nenhum erro de profundidade — caminho fora da raiz não é rejeitado.
-        Assert.Empty(result.Errors.Where(e => e.Message.Contains("profundidade", StringComparison.Ordinal)));
+        Assert.DoesNotContain(result.Errors, e => e.Message.Contains("profundidade", StringComparison.Ordinal));
         Assert.Equal(
             new[] { "/outro/volume/salto.txt", "/root/real.txt" },
             result.Files.Select(f => f.Path).ToArray());
@@ -311,7 +311,7 @@ public class ReparsePolicyTests : IDisposable
         var result = new OrderedFileEnumerator(fake).Enumerate("/root/", CancellationToken.None);
 
         // Profundidade = 3 ("/d1/d2/final.txt") <= teto (16) — fica.
-        Assert.Empty(result.Errors.Where(e => e.Message.Contains("profundidade", StringComparison.Ordinal)));
+        Assert.DoesNotContain(result.Errors, e => e.Message.Contains("profundidade", StringComparison.Ordinal));
         Assert.Single(result.Files, f => f.Path.EndsWith("final.txt", StringComparison.Ordinal));
     }
 }

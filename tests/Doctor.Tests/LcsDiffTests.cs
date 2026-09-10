@@ -152,7 +152,7 @@ public class LcsDiffTests
         {
             for (int k = 0; k < r.LeftCount; k++)
             {
-                Assert.True(string.Equals(left[r.LeftStart + k], right[r.RightStart + k], StringComparison.Ordinal));
+                Assert.Equal(left[r.LeftStart + k], right[r.RightStart + k]);
             }
         }
     }

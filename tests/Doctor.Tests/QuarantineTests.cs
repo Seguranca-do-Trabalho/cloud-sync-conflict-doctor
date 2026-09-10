@@ -252,7 +252,7 @@ public sealed class QuarantineTests : IDisposable
         Assert.Equal(
             [caminho],
             json.RootElement.GetProperty("skipped_stale_metadata")
-                .EnumerateArray().Select(p => p.GetString()).ToArray());
+                .EnumerateArray().Select(p => p.GetString()!).ToArray());
     }
 
     // ------------------------------------------------------------------
