@@ -20,6 +20,7 @@ using Doctor.Core;
 /// ScanPipeline L0→L3 + ReportWriterJson — nenhuma peça de teste no caminho.
 /// NUNCA File.Delete: a quarentena nasce e permanece (ADR-0002).
 /// </summary>
+[Collection("ScanCommand")]
 public sealed class SecuritySeg12Tests : IDisposable
 {
     private readonly string _root;

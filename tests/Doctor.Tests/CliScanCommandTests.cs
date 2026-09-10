@@ -10,7 +10,12 @@ using Doctor.Core;
 /// 4 exit codes documentados + validade estrutural do JSON v1. A CLI é camada fina:
 /// compõe o pipeline de produção exatamente como o card T12 a definiu
 /// (Sidecar → Ordered → CrossPlatform; Blake3Hasher), formata e traduz veredito.
+///
+/// [Collection] serializa com SecuritySeg12Tests porque ambos chamam ScanCommand.Run
+/// que usa DefaultEnumeration (static mutável); ComErroDeAcessoSimulado substitui
+/// temporariamente essa propriedade, e execução paralela injeta erros sintéticos.
 /// </summary>
+[Collection("ScanCommand")]
 public sealed class CliScanCommandTests : IDisposable
 {
     private const int Kib = 1024;
