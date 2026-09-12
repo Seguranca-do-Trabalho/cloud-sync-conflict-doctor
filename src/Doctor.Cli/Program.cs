@@ -1,53 +1,48 @@
 namespace Doctor.Cli;
 
 /// <summary>
-/// T16 — ponto de entrada da CLI (SPEC §14). A camada de processo apenas converte
-/// <see cref="Environment.ExitCode"/>; toda a decisão testável vive em
-/// <see cref="ScanCommand"/>, que retorna o exit code documentado:
-/// 0 sem anomalias, 1 erro operacional, 2 duplicatas/conflitos, 3 parcial.
+/// Entry point (T16): parses argv, delegates to <see cref="ScanCommand"/>;
+/// <see cref="Environment.ExitCode"/>; all testable decisions live in
+/// <see cref="ScanCommand.Run"/>.
 /// </summary>
-internal static class Program
+public static class Program
 {
-    /// <summary>Códigos de saída estáveis e documentados (SPEC §14; EPIC 09).</summary>
+    /// <summary>Stable, documented exit codes (SPEC §14; EPIC 09).</summary>
     internal static class ExitCodes
     {
-        /// <summary>Scan concluído: nenhum grupo candidato, duplicata ou conflito.</summary>
+        /// <summary>Scan completed: no candidate groups, duplicates, or conflicts.</summary>
         public const int Clean = 0;
 
-        /// <summary>Erro operacional: uso inválido, raiz inexistente ou falha do scan.</summary>
+        /// <summary>Operational error: invalid usage, nonexistent root, or scan failure.</summary>
         public const int OperationalError = 1;
 
-        /// <summary>Scan concluído: duplicatas idênticas e/ou conflitos reais encontrados.</summary>
+        /// <summary>Scan completed: identical duplicates and/or real conflicts found.</summary>
         public const int AnomaliesFound = 2;
 
-        /// <summary>Scan parcialmente concluído: anomalias presentes E arquivos pulados.</summary>
+        /// <summary>Scan partially completed: anomalies present AND files skipped.</summary>
         public const int Partial = 3;
     }
 
-    internal static int Main(string[] args)
+    public static int Main(string[] args)
     {
-        // Contrato mínimo do card T16: 'conflictdoctor scan <path> [--json] [--quiet]'.
-        if (args.Length == 0)
+        // Minimum contract of card T16: 'conflictdoctor scan <path> [--json] [--quiet]'.
+        // For now, only 'scan' exists; future subcommands (quarantine, restore, diff)
+        // will be added as new static methods without changing this entry point.
+
+        var result = ScanCommand.Run(args);
+
+        // SPEC §14: JSON mode is consumed by scripts/RMM — the v1 report ALWAYS goes
+        // to stdout. Human text goes to stdout; operational message (exit 1) goes to
+        // stderr. --quiet with success/anomaly prints nothing (silence is the contract).
+        if (result.JsonOutput is not null)
         {
-            Console.Error.WriteLine("uso: conflictdoctor scan <path> [--json] [--quiet]");
-            return ExitCodes.OperationalError;
+            Console.Write(result.JsonOutput);
+        }
+        else if (!string.IsNullOrEmpty(result.HumanText))
+        {
+            Console.Write(result.HumanText);
         }
 
-        var resultado = ScanCommand.Run(args);
-
-        // SPEC §14: modo JSON é consumido por scripts/RMM — o relatório v1 vai SEMPRE
-        // ao stdout. Texto humano vai ao stdout; mensagem operacional (exit 1) vai ao
-        // stderr. --quiet com sucesso/anomalia imprime nada (silêncio é o contrato).
-        if (resultado.JsonOutput is not null)
-        {
-            Console.Out.WriteLine(resultado.JsonOutput);
-        }
-        else if (!string.IsNullOrEmpty(resultado.HumanText))
-        {
-            var destino = resultado.ExitCode == ExitCodes.OperationalError ? Console.Error : Console.Out;
-            destino.WriteLine(resultado.HumanText);
-        }
-
-        return resultado.ExitCode;
+        return result.ExitCode;
     }
 }

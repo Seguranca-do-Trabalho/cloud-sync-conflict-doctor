@@ -1,26 +1,26 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Level 1 do scanner (SPEC §7; ADR-0004 §5): normalização de nomes de conflito
-/// e agrupamento de candidatos por normalized_base_name + size.
+/// Level 1 of the scanner (SPEC §7; ADR-0004 §5): conflict name normalization
+/// and candidate grouping by normalized_base_name + size.
 ///
-/// Lista FIXA, PEQUENA e AUDITÁVEL — sem máquina de regex e sem heurística infinita.
-/// Sufixo fora da lista permanece intacto: grupos são candidatos; o veredito final é
-/// sempre por hash real no Level 2/3 (risco R6 do threat model). Comparação sempre
-/// Ordinal (bytes), nunca sensível a locale.
+/// FIXED, SMALL and AUDITABLE list — no regex engine and no infinite heuristic.
+/// Suffix outside the list remains intact: groups are candidates; the final verdict is
+/// always by real hash at Level 2/3 (threat model risk R6). Comparison always
+/// Ordinal (bytes), never locale-sensitive.
 ///
-/// Versionamento: qualquer mudança na lista ou na semântica de um padrão exige bump
-/// de <see cref="NormalizerVersion"/> (= normalization_rules_version do schema v1 §3);
-/// relatórios de versões distintas de normalização não são comparáveis em `groups`.
+/// Versioning: any change in the list or in the semantics of a pattern requires bumping
+/// <see cref="NormalizerVersion"/> (= normalization_rules_version of schema v1 §3);
+/// reports from distinct normalization versions are not comparable in `groups`.
 /// </summary>
 public static class Grouping
 {
-    /// <summary>Versão da lista fixa de padrões. Congelada em 1 por este card.</summary>
+    /// <summary>Fixed pattern list version. Frozen at 1 by this card.</summary>
     public const int NormalizerVersion = 1;
 
     /// <summary>
-    /// Lista fixa e ORDENADA dos padrões da SPEC §7, exatamente como declarada lá.
-    /// A ordem é parte da versão: reordenar exige bump de <see cref="NormalizerVersion"/>.
+    /// Fixed and ORDERED list of SPEC §7 patterns, exactly as declared there.
+    /// The order is part of the version: reordering requires bumping <see cref="NormalizerVersion"/>.
     /// </summary>
     public static readonly string[] ConflictSuffixes =
     [
@@ -33,26 +33,26 @@ public static class Grouping
         ".sb-<hex>",
     ];
 
-    /// <summary>Comprimento máximo aceito para o segmento hex de ".sb-&lt;hex&gt;" (limitado e auditável).</summary>
+    /// <summary>Maximum accepted length for the hex segment of ".sb-&lt;hex&gt;" (limited and auditable).</summary>
     private const int MaxSbHexLength = 32;
 
-    // Hostname aceito em "-DESKTOP-XXXX": 6 a 12 caracteres alfanuméricos.
+    // Accepted hostname in "-DESKTOP-XXXX": 6 to 12 alphanumeric characters.
     private const int MinHostLength = 6;
     private const int MaxHostLength = 12;
 
-    // Passes limitados até ponto fixo (não laço infinito): cada padrão é aplicado no
-    // máximo uma vez por passada e o total de passadas tem limite explícito.
+    // Limited passes to fixed point (not infinite loop): each pattern is applied at
+    // most once per pass and the total pass count has an explicit limit.
     private const int MaxStripPasses = 8;
 
     /// <summary>
-    /// Nome base após normalização de conflitos, extensão preservada. Recebe NOME DE
-    /// ARQUIVO (não caminho). Retorna o nome intacto quando nenhum padrão casa.
+    /// Base name after conflict normalization, extension preserved. Receives a
+    /// FILE NAME (not path). Returns the name intact when no pattern matches.
     /// </summary>
     public static string NormalizeBaseName(string fileName)
     {
         var baseName = Path.GetFileName(fileName);
 
-        // Passadas limitadas cobrem padrões compostos reais:
+        // Limited passes cover real compound patterns:
         // "~$Relatorio-DESKTOP-ABC123 (conflicted copy).xlsx" → "Relatorio.xlsx".
         for (var pass = 0; pass < MaxStripPasses; pass++)
         {
@@ -72,21 +72,21 @@ public static class Grouping
     }
 
     /// <summary>
-    /// Agrupa candidatos por (normalized_base_name, size); tamanhos diferentes NUNCA
-    /// agrupam (SPEC §7). Devolve APENAS grupos multi-membro (schema v1 §6.0: inventário
-    /// completo dos grupos com 2 ou mais membros — grupo unitário não é candidato).
+    /// Groups candidates by (normalized_base_name, size); different sizes NEVER
+    /// group (SPEC §7). Returns ONLY multi-member groups (schema v1 §6.0: complete
+    /// inventory of groups with 2 or more members — single-member group is not a candidate).
     ///
-    /// Determinismo (ADR-0004 §1): nenhuma decisão por ordem de chegada. A entrada é
-    /// ordenada pela ordem canônica (<see cref="PathOrder"/>) antes do particionamento,
-    /// e os grupos saem por (base em bytes, depois size ascendente), membros por caminho
-    /// em bytes — schema v1 §1.3/§6.0.
+    /// Determinism (ADR-0004 §1): no decision by arrival order. The input is
+    /// sorted by canonical order (<see cref="PathOrder"/>) before partitioning,
+    /// and groups exit by (base in bytes, then size ascending), members by path
+    /// in bytes — schema v1 §1.3/§6.0.
     /// </summary>
     public static IReadOnlyList<ConflictGroup> Group(IEnumerable<FileEntry> entries)
     {
         var buckets = new Dictionary<(string Base, long Size), List<FileEntry>>();
 
-        // Defesa estrutural: particionamento sobre coleção em ordem canônica,
-        // independente da ordem física em que os FileEntry chegarem.
+        // Structural defense: partitioning over collection in canonical order,
+        // independent of the physical order FileEntry arrived.
         foreach (var entry in entries.OrderBy(e => e, PathOrder.Comparer))
         {
             var key = (NormalizeBaseName(Path.GetFileName(entry.Path)), entry.Size);
@@ -99,8 +99,8 @@ public static class Grouping
             bucket.Add(entry);
         }
 
-        // Grupos ordenados por (base em bytes Ordinal, depois size); membros herdam a
-        // ordem canônica da passada única. Só multi-membro vira candidato (§6.0).
+        // Groups sorted by (base in Ordinal bytes, then size); members inherit the
+        // canonical order from the single pass. Only multi-member becomes candidate (§6.0).
         return buckets
             .Where(kv => kv.Value.Count >= 2)
             .Select(kv => new ConflictGroup(kv.Key.Base, kv.Key.Size, kv.Value.ToArray()))
@@ -120,15 +120,15 @@ public static class Grouping
             "~" => StripTildeSuffix(name),
             "~$" => StripOfficeLockPrefix(name),
             ".sb-<hex>" => StripDropboxSuffix(name),
-            _ => throw new InvalidOperationException($"Padrão sem caso na lista fixa: {pattern}"),
+            _ => throw new InvalidOperationException($"Pattern without case in fixed list: {pattern}"),
         };
     }
 
-    /// <summary>Remove sufixo literal que aparece ANTES da extensão ("foto (1).jpg" → "foto.jpg").</summary>
+    /// <summary>Removes literal suffix appearing BEFORE the extension ("foto (1).jpg" → "foto.jpg").</summary>
     private static string StripSuffixBeforeExtension(string name, string suffix)
     {
         var dot = name.LastIndexOf('.');
-        var stemEnd = dot > 0 ? dot : name.Length; // ".bashrc (1)": ponto inicial não é extensão
+        var stemEnd = dot > 0 ? dot : name.Length; // ".bashrc (1)": leading dot is not extension
         var stem = name[..stemEnd];
 
         if (!stem.EndsWith(suffix, StringComparison.Ordinal))
@@ -139,13 +139,13 @@ public static class Grouping
         var newStemLength = stemEnd - suffix.Length;
         if (newStemLength < 1)
         {
-            return name; // conservador: nunca reduz a vazio
+            return name; // conservative: never reduce to empty
         }
 
         return name[..newStemLength] + (dot > 0 ? name[dot..] : string.Empty);
     }
 
-    /// <summary>"orcamento-DESKTOP-ABC123.xlsx" → "orcamento.xlsx": marcador "-DESKTOP-" + hostname alfanumérico de 6–12 caracteres junto à extensão, Ordinal, sem regex.</summary>
+    /// <summary>"orcamento-DESKTOP-ABC123.xlsx" → "orcamento.xlsx": "-DESKTOP-" marker + 6–12 char alphanumeric hostname next to extension, Ordinal, no regex.</summary>
     private static string StripDesktopSuffix(string name)
     {
         const string marker = "-DESKTOP-";
@@ -179,22 +179,22 @@ public static class Grouping
     private static bool IsAlphanumeric(char c) =>
         c is (>= '0' and <= '9') or (>= 'A' and <= 'Z') or (>= 'a' and <= 'z');
 
-    /// <summary>"backup.txt~" → "backup.txt"; nunca reduz a vazio.</summary>
+    /// <summary>"backup.txt~" → "backup.txt"; never reduces to empty.</summary>
     private static string StripTildeSuffix(string name) =>
         name.EndsWith("~", StringComparison.Ordinal) && name.Length >= 2
             ? name[..^1]
             : name;
 
-    /// <summary>"~$curriculo.docx" → "curriculo.docx" (lockfile Office). Prefixo, não sufixo; nunca reduz a vazio.</summary>
+    /// <summary>"~$curriculo.docx" → "curriculo.docx" (Office lockfile). Prefix, not suffix; never reduces to empty.</summary>
     private static string StripOfficeLockPrefix(string name) =>
         name.StartsWith("~$", StringComparison.Ordinal) && name.Length > 2
             ? name[2..]
             : name;
 
     /// <summary>
-    /// "backup.sb-a3f19c.txt" → "backup.txt": marcador ".sb-" seguido de 1–32 hex
-    /// minúsculos imediatamente antes da extensão. Segmento não-hex não casa:
-    /// sufixo desconhecido permanece intacto (GRP-02, limitado e auditável).
+    /// "backup.sb-a3f19c.txt" → "backup.txt": ".sb-" marker followed by 1–32 lowercase
+    /// hex immediately before the extension. Non-hex segment does not match:
+    /// unknown suffix remains intact (GRP-02, limited and auditable).
     /// </summary>
     private static string StripDropboxSuffix(string name)
     {
@@ -218,7 +218,7 @@ public static class Grouping
             var c = name[i];
             if (c is not ((>= '0' and <= '9') or (>= 'a' and <= 'f')))
             {
-                return name; // ".sb-ZZ": fora do domínio hex → intocado
+                return name; // ".sb-ZZ": outside hex domain → untouched
             }
         }
 
@@ -227,8 +227,8 @@ public static class Grouping
 }
 
 /// <summary>
-/// Grupo candidato do Level 1 (schema v1 §6.0): base normalizada + size compartilhado
-/// pelos membros, sempre ≥ 2. Membros em ordem canônica por caminho (bytes UTF-8).
+/// Level 1 candidate group (schema v1 §6.0): normalized base + shared size
+/// among members, always ≥ 2. Members in canonical path order (UTF-8 bytes).
 /// </summary>
 public sealed record ConflictGroup(
     string NormalizedBaseName,

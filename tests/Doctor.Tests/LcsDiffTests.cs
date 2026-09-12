@@ -3,152 +3,152 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T23 (t_64c4d4c0) — Motor LCS sobre listas de linhas (SPEC §16; ADR-0011 item 5:
-/// LCS próprio, sem dependência externa; §52 anti-overengineering).
+/// T23 (t_64c4d4c0) — LCS engine over line lists (SPEC §16; ADR-0011 item 5:
+/// own LCS, no external dependency; §52 anti-overengineering).
 ///
-/// Contrato de saída (decisão do orquestrador): sequência de <see cref="DiffRegion"/>
-/// que PARTICIONA ambos os documentos em ordem — soma de LeftCount == left.Count,
-/// soma de RightCount == right.Count, regiões em posições crescentes e não
-/// sobrepostas. Equal cobre trechos casados; Added = somente right; Removed =
-/// somente left; Changed = par substituto (uma linha removida pareada 1:1 com uma
-/// linha adicionada no mesmo bloco).
+/// Output contract (orchestrator decision): sequence of <see cref="DiffRegion"/>
+/// that PARTITIONS both documents in order — sum of LeftCount == left.Count,
+/// sum of RightCount == right.Count, regions at increasing positions and non-
+/// overlapping. Equal covers matched spans; Added = right only; Removed =
+/// left only; Changed = substitute pair (one removed line paired 1:1 with one
+/// added line in the same block).
 /// </summary>
 [Trait("Category", "Comparison")]
 public class LcsDiffTests
 {
     [Fact]
-    public void Lcs01_AmbosVazios_NenhumaRegiao()
+    public void Lcs01_BothEmpty_NoRegions()
     {
-        var regioes = LcsDiff.Diff([], []);
+        var regions = LcsDiff.Diff([], []);
 
-        Assert.Empty(regioes);
+        Assert.Empty(regions);
     }
 
     [Fact]
-    public void Lcs02_Identicos_UmaUnicaRegiaoEqualCobrindoTudo()
+    public void Lcs02_Identical_SingleEqualRegionCoveringAll()
     {
-        var linhas = new[] { "a", "b", "c" };
+        var lines = new[] { "a", "b", "c" };
 
-        var regioes = LcsDiff.Diff(linhas, linhas);
+        var regions = LcsDiff.Diff(lines, lines);
 
-        var regiao = Assert.Single(regioes);
-        Assert.Equal(RegionKind.Equal, regiao.Kind);
-        Assert.Equal(0, regiao.LeftStart);
-        Assert.Equal(3, regiao.LeftCount);
-        Assert.Equal(0, regiao.RightStart);
-        Assert.Equal(3, regiao.RightCount);
+        var region = Assert.Single(regions);
+        Assert.Equal(RegionKind.Equal, region.Kind);
+        Assert.Equal(0, region.LeftStart);
+        Assert.Equal(3, region.LeftCount);
+        Assert.Equal(0, region.RightStart);
+        Assert.Equal(3, region.RightCount);
     }
 
     [Fact]
-    public void Lcs03_Prefixo_EqualSeguidoDeAdded()
+    public void Lcs03_Prefix_EqualFollowedByAdded()
     {
         var left = new[] { "a", "b" };
         var right = new[] { "a", "b", "c", "d" };
 
-        var regioes = LcsDiff.Diff(left, right);
+        var regions = LcsDiff.Diff(left, right);
 
-        Assert.Equal(2, regioes.Count);
-        Assert.Equal(RegionKind.Equal, regioes[0].Kind);
-        Assert.Equal((0, 2, 0, 2), (regioes[0].LeftStart, regioes[0].LeftCount, regioes[0].RightStart, regioes[0].RightCount));
-        Assert.Equal(RegionKind.Added, regioes[1].Kind);
-        Assert.Equal((2, 0, 2, 2), (regioes[1].LeftStart, regioes[1].LeftCount, regioes[1].RightStart, regioes[1].RightCount));
+        Assert.Equal(2, regions.Count);
+        Assert.Equal(RegionKind.Equal, regions[0].Kind);
+        Assert.Equal((0, 2, 0, 2), (regions[0].LeftStart, regions[0].LeftCount, regions[0].RightStart, regions[0].RightCount));
+        Assert.Equal(RegionKind.Added, regions[1].Kind);
+        Assert.Equal((2, 0, 2, 2), (regions[1].LeftStart, regions[1].LeftCount, regions[1].RightStart, regions[1].RightCount));
     }
 
     [Fact]
-    public void Lcs04_Sufixo_AddedSeguidoDeEqual()
+    public void Lcs04_Suffix_AddedFollowedByEqual()
     {
         var left = new[] { "c", "d" };
         var right = new[] { "a", "b", "c", "d" };
 
-        var regioes = LcsDiff.Diff(left, right);
+        var regions = LcsDiff.Diff(left, right);
 
-        Assert.Equal(2, regioes.Count);
-        Assert.Equal(RegionKind.Added, regioes[0].Kind);
-        Assert.Equal((0, 0, 0, 2), (regioes[0].LeftStart, regioes[0].LeftCount, regioes[0].RightStart, regioes[0].RightCount));
-        Assert.Equal(RegionKind.Equal, regioes[1].Kind);
-        Assert.Equal((0, 2, 2, 2), (regioes[1].LeftStart, regioes[1].LeftCount, regioes[1].RightStart, regioes[1].RightCount));
+        Assert.Equal(2, regions.Count);
+        Assert.Equal(RegionKind.Added, regions[0].Kind);
+        Assert.Equal((0, 0, 0, 2), (regions[0].LeftStart, regions[0].LeftCount, regions[0].RightStart, regions[0].RightCount));
+        Assert.Equal(RegionKind.Equal, regions[1].Kind);
+        Assert.Equal((0, 2, 2, 2), (regions[1].LeftStart, regions[1].LeftCount, regions[1].RightStart, regions[1].RightCount));
     }
 
     [Fact]
-    public void Lcs05_RemocaoPura_RegiaoRemoved()
+    public void Lcs05_PureRemoval_RegionRemoved()
     {
         var left = new[] { "a", "x", "b" };
         var right = new[] { "a", "b" };
 
-        var regioes = LcsDiff.Diff(left, right);
+        var regions = LcsDiff.Diff(left, right);
 
-        Assert.Equal(3, regioes.Count);
-        Assert.Equal(RegionKind.Equal, regioes[0].Kind);
-        Assert.Equal(RegionKind.Removed, regioes[1].Kind);
-        Assert.Equal((1, 1, 1, 0), (regioes[1].LeftStart, regioes[1].LeftCount, regioes[1].RightStart, regioes[1].RightCount));
-        Assert.Equal(RegionKind.Equal, regioes[2].Kind);
-        Assert.Equal((2, 1, 1, 1), (regioes[2].LeftStart, regioes[2].LeftCount, regioes[2].RightStart, regioes[2].RightCount));
+        Assert.Equal(3, regions.Count);
+        Assert.Equal(RegionKind.Equal, regions[0].Kind);
+        Assert.Equal(RegionKind.Removed, regions[1].Kind);
+        Assert.Equal((1, 1, 1, 0), (regions[1].LeftStart, regions[1].LeftCount, regions[1].RightStart, regions[1].RightCount));
+        Assert.Equal(RegionKind.Equal, regions[2].Kind);
+        Assert.Equal((2, 1, 1, 1), (regions[2].LeftStart, regions[2].LeftCount, regions[2].RightStart, regions[2].RightCount));
     }
 
     [Fact]
-    public void Lcs06_Intercalado_SubstituicaoViraChanged()
+    public void Lcs06_Interleaved_SubstitutionBecomesChanged()
     {
-        var left = new[] { "linha1", "alfa", "linha3" };
-        var right = new[] { "linha1", "beta", "linha3" };
+        var left = new[] { "line1", "alpha", "line3" };
+        var right = new[] { "line1", "beta", "line3" };
 
-        var regioes = LcsDiff.Diff(left, right);
+        var regions = LcsDiff.Diff(left, right);
 
-        Assert.Equal(3, regioes.Count);
-        Assert.Equal(RegionKind.Equal, regioes[0].Kind);
-        Assert.Equal((0, 1, 0, 1), (regioes[0].LeftStart, regioes[0].LeftCount, regioes[0].RightStart, regioes[0].RightCount));
-        Assert.Equal(RegionKind.Changed, regioes[1].Kind);
-        Assert.Equal((1, 1, 1, 1), (regioes[1].LeftStart, regioes[1].LeftCount, regioes[1].RightStart, regioes[1].RightCount));
-        Assert.Equal(RegionKind.Equal, regioes[2].Kind);
-        Assert.Equal((2, 1, 2, 1), (regioes[2].LeftStart, regioes[2].LeftCount, regioes[2].RightStart, regioes[2].RightCount));
+        Assert.Equal(3, regions.Count);
+        Assert.Equal(RegionKind.Equal, regions[0].Kind);
+        Assert.Equal((0, 1, 0, 1), (regions[0].LeftStart, regions[0].LeftCount, regions[0].RightStart, regions[0].RightCount));
+        Assert.Equal(RegionKind.Changed, regions[1].Kind);
+        Assert.Equal((1, 1, 1, 1), (regions[1].LeftStart, regions[1].LeftCount, regions[1].RightStart, regions[1].RightCount));
+        Assert.Equal(RegionKind.Equal, regions[2].Kind);
+        Assert.Equal((2, 1, 2, 1), (regions[2].LeftStart, regions[2].LeftCount, regions[2].RightStart, regions[2].RightCount));
     }
 
     [Fact]
-    public void Lcs07_SinteticoGrande_SeedFixa_ParticaoELcsContraOraculo()
+    public void Lcs07_LargeSynthetic_FixedSeed_PartitionAndLcsAgainstOracle()
     {
-        // Gerador com semente FIXA (proibido Random sem seed).
+        // Generator with FIXED seed (no seedless Random allowed).
         var rnd = new Random(42);
         var left = new List<string>(400);
         var right = new List<string>(400);
         for (int i = 0; i < 400; i++)
         {
-            var linha = $"L{i:D4}";
-            left.Add(linha);
-            right.Add(rnd.Next(4) == 0 ? linha + "-mut" : linha);
+            var line = $"L{i:D4}";
+            left.Add(line);
+            right.Add(rnd.Next(4) == 0 ? line + "-mut" : line);
         }
 
-        // Inserções e deleções espúrias tornam o caso não-trivial.
-        right.Insert(97, "inserida-97");
-        right.Insert(233, "inserida-233");
+        // Spurious insertions and deletions make the case non-trivial.
+        right.Insert(97, "inserted-97");
+        right.Insert(233, "inserted-233");
         left.RemoveAt(151);
 
-        var regioes = LcsDiff.Diff(left, right);
+        var regions = LcsDiff.Diff(left, right);
 
-        // Invariante de partição: cobre os dois documentos por completo, em ordem.
-        int somaLeft = 0, somaRight = 0, ultimoLeft = 0, ultimoRight = 0;
-        foreach (var r in regioes)
+        // Partition invariant: covers both documents completely, in order.
+        int sumLeft = 0, sumRight = 0, lastLeft = 0, lastRight = 0;
+        foreach (var r in regions)
         {
-            Assert.Equal(ultimoLeft, r.LeftStart);
-            Assert.Equal(ultimoRight, r.RightStart);
-            ultimoLeft += r.LeftCount;
-            ultimoRight += r.RightCount;
-            somaLeft += r.LeftCount;
-            somaRight += r.RightCount;
+            Assert.Equal(lastLeft, r.LeftStart);
+            Assert.Equal(lastRight, r.RightStart);
+            lastLeft += r.LeftCount;
+            lastRight += r.RightCount;
+            sumLeft += r.LeftCount;
+            sumRight += r.RightCount;
             if (r.Kind == RegionKind.Changed)
             {
                 Assert.Equal(r.LeftCount, r.RightCount);
             }
         }
 
-        Assert.Equal(left.Count, somaLeft);
-        Assert.Equal(right.Count, somaRight);
+        Assert.Equal(left.Count, sumLeft);
+        Assert.Equal(right.Count, sumRight);
 
-        // Oráculo independente: DP clássica O(n·m) do COMPRIMENTO do LCS.
-        int lcsEsperado = ComprimentoLcsOraculo(left, right);
-        int iguais = regioes.Where(r => r.Kind == RegionKind.Equal).Sum(r => r.LeftCount);
-        Assert.Equal(lcsEsperado, iguais);
+        // Independent oracle: classic O(n·m) DP of LCS LENGTH.
+        int expectedLcs = LcsLengthOracle(left, right);
+        int equalLines = regions.Where(r => r.Kind == RegionKind.Equal).Sum(r => r.LeftCount);
+        Assert.Equal(expectedLcs, equalLines);
 
-        // Regiões Equal realmente casam linha a linha (Ordinal).
-        foreach (var r in regioes.Where(r => r.Kind == RegionKind.Equal))
+        // Equal regions truly match line by line (Ordinal).
+        foreach (var r in regions.Where(r => r.Kind == RegionKind.Equal))
         {
             for (int k = 0; k < r.LeftCount; k++)
             {
@@ -158,23 +158,23 @@ public class LcsDiffTests
     }
 
     [Fact]
-    public void Lcs08_MesmaEntradaDuasExecucoes_ResultadoIdentico()
+    public void Lcs08_SameInputTwoExecutions_IdenticalResult()
     {
         var left = new[] { "a", "x", "b", "y", "c" };
         var right = new[] { "a", "p", "b", "q", "c", "extra" };
 
-        var primeira = LcsDiff.Diff(left, right);
-        var segunda = LcsDiff.Diff(left, right);
+        var first = LcsDiff.Diff(left, right);
+        var second = LcsDiff.Diff(left, right);
 
-        Assert.Equal(primeira.Count, segunda.Count);
-        for (int i = 0; i < primeira.Count; i++)
+        Assert.Equal(first.Count, second.Count);
+        for (int i = 0; i < first.Count; i++)
         {
-            Assert.Equal(primeira[i], segunda[i]);
+            Assert.Equal(first[i], second[i]);
         }
     }
 
-    /// <summary>DP clássica de comprimento de LCS — oráculo independente do motor Hirschberg.</summary>
-    private static int ComprimentoLcsOraculo(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    /// <summary>Classic LCS length DP — oracle independent of the Hirschberg engine.</summary>
+    private static int LcsLengthOracle(IReadOnlyList<string> a, IReadOnlyList<string> b)
     {
         var dp = new int[a.Count + 1, b.Count + 1];
         for (int i = 1; i <= a.Count; i++)

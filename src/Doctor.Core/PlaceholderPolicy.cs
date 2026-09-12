@@ -1,8 +1,8 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Classificação do motivo pelo qual uma entrada é placeholder (SPEC §6).
-/// Ordem de precedência na classificação: OFFLINE → RECALL_ON_OPEN →
+/// Classification of why an entry is a placeholder (SPEC §6).
+/// Classification precedence order: OFFLINE → RECALL_ON_OPEN →
 /// RECALL_ON_DATA_ACCESS → ReparsePoint.
 /// </summary>
 public enum PlaceholderKind
@@ -14,24 +14,24 @@ public enum PlaceholderKind
 }
 
 /// <summary>
-/// Regra crítica de segurança (SPEC §6): entrada marcada como placeholder é "NÃO TOCAR" —
-/// nunca abrir, nunca hashear, nunca obter conteúdo. Policy PURA sobre os metadados já
-/// coletados no Level 0: não faz I/O, não abre arquivo, não depende de plataforma.
+/// Critical security rule (SPEC §6): entry marked as placeholder is "DO NOT TOUCH" —
+/// never open, never hash, never obtain content. PURE policy over the metadata already
+/// collected at Level 0: no I/O, no file opening, no platform dependency.
 /// </summary>
 public static class PlaceholderPolicy
 {
-    // Bits FILE_ATTRIBUTE_* que não existem em System.IO.FileAttributes no .NET 8:
+    // FILE_ATTRIBUTE_* bits that don't exist in System.IO.FileAttributes in .NET 8:
     public const FileAttributes RecallOnOpen = (FileAttributes)0x00040000;       // FILE_ATTRIBUTE_RECALL_ON_OPEN
     public const FileAttributes RecallOnDataAccess = (FileAttributes)0x00400000; // FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
 
-    /// <summary>Verdadeiro se a entrada NUNCA pode ter conteúdo lido.</summary>
+    /// <summary>True if the entry can NEVER have its content read.</summary>
     public static bool IsPlaceholder(FileEntry entry) => Classify(entry) is not null;
 
     /// <summary>
-    /// Sobrecarga sobre atributos crus (sem <see cref="FileEntry"/>): usada pelos
-    /// pontos que decidem ANTES de construir a entrada (ex.: recusa de descida em
-    /// diretório com reparse — ADR-0004 regra 4). Mantém os bits "não tocar"
-    /// centralizados aqui, único ponto de decisão do produto.
+    /// Overload on raw attributes (without <see cref="FileEntry"/>): used by
+    /// points that decide BEFORE building the entry (e.g.: descent refusal in
+    /// directory with reparse — ADR-0004 rule 4). Keeps the "do not touch"
+    /// bits centralized here, the product's single decision point.
     /// </summary>
     public static bool IsPlaceholder(FileAttributes attributes) =>
         (attributes & FileAttributes.Offline) != 0
@@ -40,20 +40,20 @@ public static class PlaceholderPolicy
         || (attributes & FileAttributes.ReparsePoint) != 0;
 
     /// <summary>
-    /// Retorna o kind do placeholder ou null se a entrada for segura para leitura.
-    /// Um único bit suficiente: qualquer um dos quatro dispara "NÃO TOCAR".
-    /// Regra T16 (falha fechada, SPEC §6): marcação já feita na ORIGEM
-    /// (<see cref="FileEntry.PlaceholderKind"/> — convenção T04 de sidecar hoje,
-    /// hook nativo amanhã) é AUTORIDADE MÁXIMA e nunca é apagada por projeção
-    /// posterior de enumerador: quem classifica primeiro decide; bits crus só
-    /// ACRESCENTAM suspeita, nunca removem marca. Em árvore nativa do Windows o
-    /// comportamento é idêntico ao anterior (kind nulo ⇒ decisão pelos bits).
+    /// Returns the placeholder kind or null if the entry is safe to read.
+    /// A single bit is sufficient: any of the four triggers "DO NOT TOUCH".
+    /// T16 rule (fail-closed, SPEC §6): marking already done at ORIGIN
+    /// (<see cref="FileEntry.PlaceholderKind"/> — T04 sidecar convention today,
+    /// native hook tomorrow) is HIGHEST AUTHORITY and is never erased by subsequent
+    /// enumerator projection: whoever classifies first decides; raw bits only
+    /// ADD suspicion, never remove marking. In native Windows tree the
+    /// behavior is identical to before (null kind ⇒ decision by bits).
     /// </summary>
     public static PlaceholderKind? Classify(FileEntry entry)
     {
-        if (entry.PlaceholderKind is { } daOrigem)
+        if (entry.PlaceholderKind is { } fromOrigin)
         {
-            return daOrigem;
+            return fromOrigin;
         }
 
         var a = entry.Attributes;

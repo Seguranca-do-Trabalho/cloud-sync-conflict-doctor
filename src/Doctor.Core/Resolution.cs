@@ -1,25 +1,26 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// T14 — Motor de resolução (SPEC §17; ADR-0003 regra 2). Produz APENAS O PLANO
-/// (<see cref="ResolutionPlan"/>) para cada grupo do ScanPipeline: vencedor e lista
-/// de sacrificados, ambos determinísticos. Nenhuma operação de arquivo acontece aqui
-/// (movimentação/quarentena é fase downstream — SPEC §18, ADR-0002).
+/// T14 — Resolution engine (SPEC §17; ADR-0003 rule 2). Produces ONLY THE PLAN
+/// (<see cref="ResolutionPlan"/>) for each ScanPipeline group: winner and list
+/// of sacrifices, both deterministic. No file operation happens here
+/// (moving/quarantine is a downstream phase — SPEC §18, ADR-0002).
 ///
-/// Desempate obrigatório em QUALQUER decisão entre entradas distintas:
-/// mtime (mais recente vence) → size (maior vence) → path crescente byte-wise
-/// (<see cref="string.CompareOrdinal"/>). Nunca first-seen, nunca ordem de chegada,
-/// nunca ordem do filesystem (SPEC §17 "Empates"; ADR-0003).
+/// Mandatory tie-breaking in ANY decision between distinct entries:
+/// mtime (newest wins) → size (largest wins) → path ascending byte-wise
+/// (<see cref="string.CompareOrdinal"/>). Never first-seen, never arrival order,
+/// never filesystem order (SPEC §17 "Ties"; ADR-0003).
 ///
-/// Falha fechado (SPEC §2.1): entrada inválida (grupo vazio/nulo, escolha manual
-/// fora do grupo, machineId sem representante) lança — não devolve plano plausível.
+/// Fail-closed (SPEC §2.1): invalid entry (empty/null group, manual choice
+/// outside the group, machineId without representative) throws — does not return
+/// a plausible plan.
 /// </summary>
 public static class Resolution
 {
     /// <summary>
-    /// Plano de resolução de um grupo: <paramref name="winner"/> fica no lugar,
-    /// <paramref name="sacrifices"/> seguem para quarentena downstream (fase futura,
-    /// fora deste card). Sacrificados sempre em ordem canônica por caminho byte-wise.
+    /// Resolution plan for a group: <paramref name="winner"/> stays in place,
+    /// <paramref name="sacrifices"/> go to downstream quarantine (future phase,
+    /// outside this card). Sacrifices always in canonical byte-wise path order.
     /// </summary>
     public sealed record ResolutionPlan(
         ConflictGroup Group,
@@ -27,12 +28,12 @@ public static class Resolution
         FileEntry Winner,
         IReadOnlyList<Sacrifice> Sacrifices);
 
-    /// <summary>Membro destinado à quarentena pelo plano, com o motivo auditável.</summary>
+    /// <summary>Member destined for quarantine by the plan, with auditable reason.</summary>
     public sealed record Sacrifice(FileEntry Entry, string Reason);
 
     /// <summary>
-    /// Estratégia keep-newest (SPEC §17 "manter mais recente"): vence o mtime UTC mais
-    /// recente; empate absoluto de mtime cai no desempate size → path.
+    /// Keep-newest strategy (SPEC §17 "keep most recent"): newest UTC mtime
+    /// wins; absolute mtime tie falls through to the size → path tie-breaker.
     /// </summary>
     public static ResolutionPlan Resolve(ConflictGroup group, KeepNewest strategy)
     {
@@ -41,8 +42,8 @@ public static class Resolution
     }
 
     /// <summary>
-    /// Estratégia keep-largest (SPEC §17 "manter maior"): vence o size maior; empate
-    /// absoluto de size cai no desempate obrigatório mtime → path.
+    /// Keep-largest strategy (SPEC §17 "keep largest"): largest size wins; absolute
+    /// size tie falls through to the mandatory mtime → path tie-breaker.
     /// </summary>
     public static ResolutionPlan Resolve(ConflictGroup group, KeepLargest strategy)
     {
@@ -51,10 +52,10 @@ public static class Resolution
     }
 
     /// <summary>
-    /// Estratégia keep-machine (SPEC §17 "manter versão de determinada máquina"):
-    /// vence o membro cujo nome carrega o marcador de conflito "-DESKTOP-&lt;machineId&gt;"
-    /// (SPEC §7), Ordinal. Sem representante no grupo: lança (falha fechada) — nunca
-    /// devolve plano plausível para pedido não atendível.
+    /// Keep-machine strategy (SPEC §17 "keep version from a given machine"):
+    /// the member whose name carries the conflict marker "-DESKTOP-&lt;machineId&gt;"
+    /// (SPEC §7), Ordinal, wins. No representative in the group: throws (fail-closed) —
+    /// never returns a plausible plan for an unfulfillable request.
     /// </summary>
     public static ResolutionPlan Resolve(ConflictGroup group, KeepMachine strategy)
     {
@@ -66,20 +67,20 @@ public static class Resolution
         if (representative.Length == 0)
         {
             throw new InvalidOperationException(
-                $"keep-machine: nenhum membro da máquina '{strategy.MachineId}' no grupo.");
+                $"keep-machine: no member from machine '{strategy.MachineId}' in the group.");
         }
 
-        // Entre representantes da MESMA máquina (caso patológico), desempate padrão.
+        // Among representatives from the SAME machine (pathological case), default tie-break.
         var ordered = OrderByTieBreak(representative, m => m.MtimeUtc);
 
-        // Sacrificados: TODOS os não-vencedores do grupo, em ordem canônica por caminho.
+        // Sacrifices: ALL non-winners from the group, in canonical path order.
         return BuildPlan(group, strategy, ordered, exclude: representative[0]);
     }
 
     /// <summary>
-    /// Estratégia keep-manual (SPEC §17 "escolher manualmente"): vence o membro cujo
-    /// caminho é EXATAMENTE a escolha do usuário (Ordinal). Escolha fora do grupo:
-    /// lança — falha fechada, nunca plano plausível para pedido não atendível.
+    /// Keep-manual strategy (SPEC §17 "choose manually"): the member whose
+    /// path is EXACTLY the user's choice (Ordinal) wins. Choice outside the group:
+    /// throws — fail-closed, never a plausible plan for an unfulfillable request.
     /// </summary>
     public static ResolutionPlan Resolve(ConflictGroup group, KeepManual strategy)
     {
@@ -89,16 +90,16 @@ public static class Resolution
         if (choice is null)
         {
             throw new InvalidOperationException(
-                $"keep-manual: escolha '{strategy.ChoicePath}' não pertence ao grupo.");
+                $"keep-manual: choice '{strategy.ChoicePath}' does not belong to the group.");
         }
 
         return BuildPlan(group, strategy, OrderByTieBreak([choice], m => m.MtimeUtc), exclude: choice);
     }
 
     /// <summary>
-    /// Ordenação canônica de CANDIDATOS a vencedor: chave de estratégia desc (o melhor
-    /// primeiro), depois desempate obrigatório mtime desc → size desc → path asc.
-    /// Primeiro elemento é o vencedor; os demais viram sacrificados em ordem canônica.
+    /// Canonical ordering of winner CANDIDATES: strategy key desc (best first),
+    /// then mandatory tie-break mtime desc → size desc → path asc.
+    /// First element is the winner; the rest become sacrifices in canonical order.
     /// </summary>
     private static IOrderedEnumerable<FileEntry> OrderByTieBreak<Tkey>(
         IEnumerable<FileEntry> members,
@@ -119,15 +120,15 @@ public static class Resolution
         var list = ordered.ToArray();
         if (exclude is null && (list.Length == 0 || list.Length != group.Members.Count))
         {
-            throw new InvalidOperationException("Grupo sem membros ou corrompido: falha fechada.");
+            throw new InvalidOperationException("Group without members or corrupted: fail-closed.");
         }
 
-        // Contrato de ConflictGroup (Grouping.Group): grupo candidato tem sempre >= 2
-        // membros. Entrada violando o contrato nunca gera plano (falha conservadora).
+        // ConflictGroup contract (Grouping.Group): candidate group always has >= 2
+        // members. Entry violating the contract never produces a plan (conservative failure).
         if (group.Members.Count < 2)
         {
             throw new InvalidOperationException(
-                $"Grupo candidato com {group.Members.Count} membro(s): contrato exige >= 2.");
+                $"Candidate group with {group.Members.Count} member(s): contract requires >= 2.");
         }
 
         var winner = exclude ?? list[0];
@@ -146,21 +147,21 @@ public static class Resolution
         KeepLargest => "keep-largest",
         KeepMachine k => $"keep-machine:{k.MachineId}",
         KeepManual m => "keep-manual",
-        _ => throw new InvalidOperationException("Estratégia desconhecida: falha fechada."),
+        _ => throw new InvalidOperationException("Unknown strategy: fail-closed."),
     };
 }
 
-/// <summary>Estratégia abstrata do plano (auditável no manifesto futuro).</summary>
+/// <summary>Abstract plan strategy (auditable in future manifest).</summary>
 public abstract record ResolutionStrategy;
 
-/// <summary>SPEC §17 "manter mais recente".</summary>
+/// <summary>SPEC §17 "keep most recent".</summary>
 public sealed record KeepNewest : ResolutionStrategy;
 
-/// <summary>SPEC §17 "manter maior".</summary>
+/// <summary>SPEC §17 "keep largest".</summary>
 public sealed record KeepLargest : ResolutionStrategy;
 
-/// <summary>SPEC §17 "manter versão de determinada máquina" — máquina identificada pelo marcador de conflito "-DESKTOP-&lt;host&gt;" (SPEC §7) embutido no nome do arquivo.</summary>
+/// <summary>SPEC §17 "keep version from a given machine" — machine identified by the conflict marker "-DESKTOP-&lt;host&gt;" (SPEC §7) embedded in the file name.</summary>
 public sealed record KeepMachine(string MachineId) : ResolutionStrategy;
 
-/// <summary>SPEC §17 "escolher manualmente" — escolha explícita do usuário.</summary>
+/// <summary>SPEC §17 "choose manually" — explicit user choice.</summary>
 public sealed record KeepManual(string ChoicePath) : ResolutionStrategy;

@@ -5,49 +5,49 @@ using Doctor.Gui.Engine;
 namespace Doctor.Gui.ViewModels;
 
 /// <summary>
-/// Tela Resumo (§15): responde as 5 perguntas a partir do relatório em forma
-/// schema v1. Contagens em dígitos crus (InvariantCulture); espaço com
-/// separador decimal vírgula fixo, independente do locale da máquina (§3).
+/// Summary screen (§15): answers the 5 questions from the schema v1 report.
+/// Counts in raw digits (InvariantCulture); space with a fixed comma
+/// decimal separator, independent of the machine locale (§3).
 /// </summary>
 public partial class SummaryViewModel : ObservableObject
 {
     [ObservableProperty]
     private ScanReport? _report;
 
-    // --- As 5 perguntas do §15, derivadas exclusivamente dos dados do relatório ---
+    // --- The 5 questions from §15, derived exclusively from report data ---
 
-    /// <summary>1. Arquivos encontrados = files_enumerated.</summary>
+    /// <summary>1. Files found = files_enumerated.</summary>
     public string FilesFound =>
         (Report?.Telemetry.FilesEnumerated ?? 0).ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>2. Duplicatas idênticas = cópias redundantes de cada classe.</summary>
+    /// <summary>2. Identical duplicates = redundant copies of each class.</summary>
     public string IdenticalDuplicates =>
         (Report?.IdenticalDuplicateCount ?? 0).ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>3. Divergências reais = grupos com divergência real de conteúdo.</summary>
+    /// <summary>3. Real conflicts = groups with real content divergence.</summary>
     public string RealConflicts =>
         (Report?.RealConflicts.Count ?? 0).ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>4. Placeholders ignorados = files_placeholder (nunca abertos).</summary>
+    /// <summary>4. Placeholders ignored = files_placeholder (never opened).</summary>
     public string PlaceholdersIgnored =>
         (Report?.Telemetry.FilesPlaceholder ?? 0).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// 5. Espaço recuperável com segurança: soma dos sizes dos itens elegíveis para
-    /// quarentena — perdedoras das duplicatas idênticas + versões que não serão
-    /// mantidas nos conflitos reais (fórmula testada explicitamente).
+    /// 5. Safely recoverable space: sum of sizes of items eligible for
+    /// quarantine — identical duplicate losers + versions that will not be
+    /// kept in real conflicts (explicitly tested formula).
     /// </summary>
     public string RecoverableSpace => FormatBytes(Report?.RecoverableBytes ?? 0);
 
-    /// <summary>Unidades legíveis; separador decimal vírgula fixo (pt-BR), nunca o locale da máquina.</summary>
+    /// <summary>Human-readable units; fixed dot decimal separator, invariant locale.</summary>
     public static string FormatBytes(long bytes) => bytes switch
     {
-        >= 1_073_741_824 => ComVirgula(bytes / 1_073_741_824.0) + " GB",
-        >= 1_048_576 => ComVirgula(bytes / 1_048_576.0) + " MB",
-        >= 1_024 => ComVirgula(bytes / 1_024.0) + " KB",
+        >= 1_073_741_824 => WithDot(bytes / 1_073_741_824.0) + " GB",
+        >= 1_048_576 => WithDot(bytes / 1_048_576.0) + " MB",
+        >= 1_024 => WithDot(bytes / 1_024.0) + " KB",
         _ => $"{bytes} B",
     };
 
-    private static string ComVirgula(double valor) =>
-        valor.ToString("0.##", CultureInfo.InvariantCulture).Replace('.', ',');
+    private static string WithDot(double value) =>
+        value.ToString("0.##", CultureInfo.InvariantCulture);
 }

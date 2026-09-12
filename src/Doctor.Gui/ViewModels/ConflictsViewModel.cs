@@ -6,22 +6,22 @@ using Doctor.Gui.Engine;
 namespace Doctor.Gui.ViewModels;
 
 /// <summary>
-/// Tela Conflitos reais (§15): grupos com divergência real de conteúdo do relatório
-/// schema v1, cada linha expondo a sugestão determinística de versão a manter
-/// (SPEC §17: mtime → size → path em bytes UTF-8) e os bytes elegíveis a quarentena.
+/// Real conflicts screen (§15): groups with real content divergence from the schema v1
+/// report, each row exposing the deterministic version-to-keep suggestion
+/// (SPEC §17: mtime → size → path in UTF-8 bytes) and the quarantine-eligible bytes.
 /// </summary>
 public partial class ConflictsViewModel : ObservableObject
 {
     [ObservableProperty]
     private ScanReport? _report;
 
-    /// <summary>Linhas prontas para binding: um wrapper por grupo do relatório.</summary>
+    /// <summary>Rows ready for binding: one wrapper per report group.</summary>
     public ObservableCollection<ConflictGroupRow> Groups => Report is null
         ? []
         : [.. Report.RealConflicts.Select(g => new ConflictGroupRow(g))];
 }
 
-/// <summary>Linha da tela Conflitos: um grupo com divergência real.</summary>
+/// <summary>Conflicts screen row: one group with real divergence.</summary>
 public partial class ConflictGroupRow : ObservableObject
 {
     private readonly ConflictGroup _group;
@@ -32,21 +32,21 @@ public partial class ConflictGroupRow : ObservableObject
 
     public string BaseName => _group.BaseName;
 
-    /// <summary>Número de versões divergentes do grupo.</summary>
+    /// <summary>Number of divergent versions in the group.</summary>
     public int VersionCount => _group.Versions.Count;
 
-    /// <summary>Tamanho comum do grupo (schema §6.2), legível, pt-BR fixo.</summary>
+    /// <summary>Common group size (schema §6.2), human-readable, fixed pt-BR.</summary>
     public string TotalSizeLabel => MainWindowViewModel.FormatBytes(_group.TotalBytes);
 
     /// <summary>
-    /// Versão sugerida a manter: mtime mais recente → maior size → menor caminho
-    /// em bytes UTF-8. Nunca "first seen" (determinismo §3).
+    /// Suggested version to keep: newest mtime → largest size → shortest path
+    /// in UTF-8 bytes. Never "first seen" (determinism §3).
     /// </summary>
     public string SuggestedKeepPath => SuggestedKeep().Path;
 
     /// <summary>
-    /// Bytes elegíveis para quarentena neste grupo: soma dos tamanhos das versões
-    /// que NÃO serão mantidas (fórmula do card, testada explicitamente).
+    /// Bytes eligible for quarantine in this group: sum of sizes of versions
+    /// that will NOT be kept (card formula, explicitly tested).
     /// </summary>
     public long BytesToQuarantine =>
         _group.SumVersionsBytes() - SuggestedKeep().SizeBytes;

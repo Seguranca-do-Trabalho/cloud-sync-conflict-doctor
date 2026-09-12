@@ -1,28 +1,29 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Ordem canônica do produto (SPEC §3, ADR-0003, docs/contratos.md): caminho comparado
-/// byte a byte em UTF-8 — StringComparer.Ordinal — e NUNCA OrdinalIgnoreCase.
+/// Product canonical order (SPEC §3, ADR-0003, docs/contracts.md): path compared
+/// byte by byte in UTF-8 — StringComparer.Ordinal — and NEVER OrdinalIgnoreCase.
 ///
-/// Escolha documentada: StringComparer.Ordinal compara ponto de código Unicode a ponto
-/// de código; como .NET strings são UTF-16 e todos os caracteres BMP relevantes de
-/// caminhos se codificam em UTF-8 na mesma ordem relativa dos pontos de código
-/// (ordem de code point preserva a ordem dos bytes UTF-8 para escalares válidos),
-/// Ordinal é a materialização estável e independente de locale da "ordem por bytes
-/// UTF-8". Qualquer comparador cultural ou case-insensitive variaria entre máquinas
-/// e versões de ICU/NLS, violando o determinismo byte-a-byte do §3.
-/// Empate de caminho é impossível dentro de uma árvore (caminhos são únicos);
-/// o desempate mtime → size → path do ADR-0003 aplica-se a decisões entre ENTRADAS
-/// distintas (grupos, conflitos) e vive no pipeline, não nesta comparação de caminhos.
+/// Documented choice: StringComparer.Ordinal compares Unicode code point to code
+/// point; since .NET strings are UTF-16 and all BMP-relevant path characters encode
+/// in UTF-8 in the same relative order of code points (code point order preserves
+/// UTF-8 byte order for valid scalars), Ordinal is a stable, locale-independent
+/// materialization of the "UTF-8 byte order". Any cultural or case-insensitive
+/// comparator would vary between machines and ICU/NLS versions, violating the byte-
+/// by-byte determinism of §3.
+/// Path tie is impossible within a tree (paths are unique);
+/// the mtime → size → path tie-breaking of ADR-0003 applies to decisions between
+/// DISTINCT entries (groups, conflicts) and lives in the pipeline, not in this
+/// path comparison.
 /// </summary>
 public static class PathOrder
 {
-    /// <summary>Comparador canônico de FileEntry por caminho byte-a-byte.</summary>
+    /// <summary>Canonical FileEntry comparer by path byte-by-byte.</summary>
     public static readonly IComparer<FileEntry> Comparer =
         Comparer<FileEntry>.Create((a, b) =>
             string.CompareOrdinal(a.Path, b.Path));
 
-    /// <summary>Ordena qualquer coleção pela chave canônica de um FileEntry associado.</summary>
+    /// <summary>Sorts any collection by the canonical key of an associated FileEntry.</summary>
     public static IOrderedEnumerable<T> Sort<T>(
         IEnumerable<T> items,
         Func<T, FileEntry> key) => items.OrderBy(key, Comparer);

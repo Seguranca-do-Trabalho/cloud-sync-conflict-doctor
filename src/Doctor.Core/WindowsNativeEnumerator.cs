@@ -4,18 +4,18 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
 /// <summary>
-/// Enumerador Level 0 nativo do Windows (SPEC §5, §33): P/Invoke FindFirstFileExW
-/// com FindExInfoBasic + FIND_FIRST_EX_LARGE_FETCH (0x2). Metadados na própria
-/// enumeração — zero stat extra. FileId NTFS 128-bit obtido via
-/// GetFileInformationByHandleEx(FileIdInfo). VolumeId = volume GUID da raiz.
+/// Native Windows Level 0 enumerator (SPEC §5, §33): P/Invoke FindFirstFileExW
+/// with FindExInfoBasic + FIND_FIRST_EX_LARGE_FETCH (0x2). Metadata in the
+/// enumeration itself — zero extra stat. 128-bit NTFS FileId obtained via
+/// GetFileInformationByHandleEx(FileIdInfo). VolumeId = root's volume GUID.
 ///
-/// Contratos fixos:
-///   - nunca atravessa reparse point de diretório (folha registrada em Errors);
-///   - placeholders marcados via PlaceholderPolicy.IsPlaceholder (mesmos bits);
-///   - saída ordenada por PathOrder (determinismo byte-a-byte).
+/// Fixed contracts:
+///   - never crosses directory reparse points (leaf registered in Errors);
+///   - placeholders marked via PlaceholderPolicy.IsPlaceholder (same bits);
+///   - output sorted by PathOrder (byte-by-byte determinism).
 ///
-/// Compila em qualquer plataforma; corpo só existe em #if WINDOWS.
-/// Em Linux, instanciar lança PlatformNotSupportedException — use CrossPlatformEnumerator.
+/// Compiles on any platform; body only exists in #if WINDOWS.
+/// On Linux, instantiation throws PlatformNotSupportedException — use CrossPlatformEnumerator.
 /// </summary>
 public sealed class WindowsNativeEnumerator : IFileEnumerator
 {
@@ -24,15 +24,15 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
     private const int FindExInfoBasic = 1;
 
     /// <summary>
-    /// FINDEX_SEARCH_OPS.FindExSearchNameMatch — retorna TODAS as entradas.
+    /// FINDEX_SEARCH_OPS.FindExSearchNameMatch — returns ALL entries.
     ///
-    /// O codigo passava FindExSearchLimitToDirectories (valor 2) neste
-    /// parametro, que instrui o Windows a devolver SOMENTE DIRETORIOS. Num
-    /// enumerador de arquivos o efeito era: na raiz so os subdiretorios eram
-    /// vistos (e empilhados), nenhum arquivo entrava na lista, e a varredura
-    /// terminava com ZERO arquivos e ZERO erros — falha silenciosa. Como o
-    /// corpo nativo nunca foi compilado (`#if WINDOWS` sem o simbolo definido),
-    /// isso jamais apareceu.
+    /// The code previously passed FindExSearchLimitToDirectories (value 2) in this
+    /// parameter, which instructed Windows to return ONLY DIRECTORIES. In a
+    /// file enumerator the effect was: at root only subdirectories were
+    /// seen (and pushed), no file entered the list, and the scan
+    /// ended with ZERO files and ZERO errors — silent failure. Since the
+    /// native body was never compiled (`#if WINDOWS` without the symbol defined),
+    /// this never appeared.
     /// </summary>
     private const int FindExSearchNameMatch = 0;
     private const uint FIND_FIRST_EX_LARGE_FETCH = 0x2;
@@ -46,30 +46,30 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
         var files = new List<FileEntry>();
         var errors = new List<ScanError>();
 
-        // Normaliza caminho para formato Windows.
-        var raizNormalizada = rootPath.Replace('/', '\\').TrimEnd('\\', '/');
+        // Normalizes path to Windows format.
+        var normalizedRoot = rootPath.Replace('/', '\\').TrimEnd('\\', '/');
 
-        // Obtém volume GUID uma única vez.
-        var volumeId = ObtemVolumeGuid(raizNormalizada);
+        // Gets volume GUID once.
+        var volumeId = GetVolumeGuid(normalizedRoot);
 
-        // Enumeração recursiva com pilha explícita (evita stack overflow).
-        var pilha = new Stack<(string Caminho, int Profundidade)>();
-        pilha.Push((raizNormalizada, 0));
+        // Recursive enumeration with explicit stack (avoids stack overflow).
+        var stack = new Stack<(string Path, int Depth)>();
+        stack.Push((normalizedRoot, 0));
 
-        while (pilha.Count > 0)
+        while (stack.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
 
-            var (caminhoAtual, profundidade) = pilha.Pop();
+            var (currentPath, depth) = stack.Pop();
 
-            if (!EnumeraDiretorio(caminhoAtual, raizNormalizada, volumeId, profundidade, files, errors, ref pilha))
+            if (!EnumerateDirectory(currentPath, normalizedRoot, volumeId, depth, files, errors, ref stack))
             {
-                errors.Add(new ScanError(caminhoAtual, $"Erro ao acessar diretório '{caminhoAtual}'"));
+                errors.Add(new ScanError(currentPath, $"Error accessing directory '{currentPath}'"));
             }
         }
 
-        // Ordenação canônica byte-a-byte (contrato de determinismo §3).
-        var ordenados = files
+        // Byte-by-byte canonical ordering (determinism §3 contract).
+        var ordered = files
             .OrderBy(e => e.Path, StringComparer.Ordinal)
             .Select(e => e with
             {
@@ -81,32 +81,32 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
 
         var telemetry = new ScanTelemetry
         {
-            FilesEnumerated = ordenados.Length,
-            FilesPlaceholder = ordenados.Count(f => f.IsPlaceholder),
+            FilesEnumerated = ordered.Length,
+            FilesPlaceholder = ordered.Count(f => f.IsPlaceholder),
         };
 
-        return new EnumerationResult(ordenados, errors, telemetry);
+        return new EnumerationResult(ordered, errors, telemetry);
     }
 
     /// <summary>
-    /// Enumera um único diretório usando FindFirstFileExW.
-    /// Retorna false se não conseguir abrir o diretório.
+    /// Enumerates a single directory using FindFirstFileExW.
+    /// Returns false if the directory cannot be opened.
     /// </summary>
-    private static bool EnumeraDiretorio(
-        string caminho,
-        string raizNormalizada,
+    private static bool EnumerateDirectory(
+        string path,
+        string normalizedRoot,
         string volumeId,
-        int profundidade,
+        int depth,
         List<FileEntry> files,
         List<ScanError> errors,
-        ref Stack<(string Caminho, int Profundidade)> pilha)
+        ref Stack<(string Path, int Depth)> stack)
     {
-        var caminhoWin32 = "\\\\?\\" + caminho.Replace('/', '\\');
-        var padraoBusca = caminhoWin32 + "\\*";
+        var win32Path = "\\\\?\\" + path.Replace('/', '\\');
+        var searchPattern = win32Path + "\\*";
 
         var findData = new WIN32_FIND_DATAW();
         var hFind = NativeMethods.FindFirstFileExW(
-            padraoBusca,
+            searchPattern,
             FindExInfoBasic,
             out findData,
             FindExSearchNameMatch,
@@ -121,51 +121,51 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
             {
                 do
                 {
-                    var nome = findData.cFileName;
+                    var name = findData.cFileName;
 
-                    if (nome == "." || nome == "..")
+                    if (name == "." || name == "..")
                     {
                         continue;
                     }
 
-                    var caminhoCompleto = caminho + "\\" + nome;
-                    var atributos = (FileAttributes)findData.dwFileAttributes;
+                    var fullPath = path + "\\" + name;
+                    var attributes = (FileAttributes)findData.dwFileAttributes;
 
-                    var eDiretorio = (atributos & FileAttributes.Directory) != 0;
-                    var ehReparse = (atributos & FileAttributes.ReparsePoint) != 0;
+                    var isDirectory = (attributes & FileAttributes.Directory) != 0;
+                    var isReparse = (attributes & FileAttributes.ReparsePoint) != 0;
 
-                    if (eDiretorio && ehReparse)
+                    if (isDirectory && isReparse)
                     {
-                        // Regra 4 do ADR-0004: diretório com reparse é SEMPRE folha.
+                        // ADR-0004 rule 4: directory with reparse is ALWAYS a leaf.
                         errors.Add(new ScanError(
-                            caminhoCompleto,
-                            "reparse point de diretorio (junction/symlink) nao atravessado - folha registrada (ADR-0004 regra 4; threat-model T-02)"));
+                            fullPath,
+                            "directory reparse point (junction/symlink) not crossed — leaf registered (ADR-0004 rule 4; threat-model T-02)"));
                         continue;
                     }
 
-                    if (eDiretorio && !ehReparse)
+                    if (isDirectory && !isReparse)
                     {
-                        // Empilha para processamento posterior.
-                        pilha.Push((caminhoCompleto, profundidade + 1));
+                        // Pushes for later processing.
+                        stack.Push((fullPath, depth + 1));
                         continue;
                     }
 
-                    if (!eDiretorio)
+                    if (!isDirectory)
                     {
-                        // Arquivo: obtém file ID.
-                        var fileId = ObtemFileId(caminhoCompleto, atributos);
+                        // File: obtains file ID.
+                        var fileId = GetFileId(fullPath, attributes);
 
-                        var entrada = new FileEntry
+                        var entry = new FileEntry
                         {
-                            Path = caminhoCompleto,
+                            Path = fullPath,
                             Size = findData.nFileSizeLow | ((long)findData.nFileSizeHigh << 32),
                             MtimeUtc = FileTimeToDateTimeUtc(findData.ftLastWriteTime),
-                            Attributes = atributos,
+                            Attributes = attributes,
                             VolumeId = volumeId,
                             FileId = fileId,
                         };
 
-                        files.Add(entrada);
+                        files.Add(entry);
                     }
                 }
                 while (NativeMethods.FindNextFileW(safeFindHandle, out findData));
@@ -180,28 +180,27 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
     }
 
     /// <summary>
-    /// Identidade do volume da raiz: o NUMERO DE SERIE, via GetVolumeInformationW.
+    /// Root volume identity: SERIAL NUMBER, via GetVolumeInformationW.
     ///
-    /// Duas correcoes em relacao a versao anterior:
+    /// Two fixes relative to the previous version:
     ///
-    /// 1. Chamava 'GetVolumeInformationForRootW', que nao existe em kernel32.dll
-    ///    (EntryPointNotFoundException em toda invocacao).
-    /// 2. Devolvia o conteudo de lpVolumeNameBuffer, que e o ROTULO do volume
-    ///    ("Windows", "Dados"), nao o GUID que a documentacao prometia. Rotulo e
-    ///    editavel pelo usuario e pode repetir entre volumes: nao serve como
-    ///    identidade.
+    /// 1. Previously called 'GetVolumeInformationForRootW', which does not exist in kernel32.dll
+    ///    (EntryPointNotFoundException on every invocation).
+    /// 2. Returned the content of lpVolumeNameBuffer, which is the volume LABEL
+    ///    ("Windows", "Dados"), not the GUID the documentation promised. Label is
+    ///    user-editable and can repeat across volumes: not usable as identity.
     ///
-    /// O numero de serie e o que efetivamente identifica o volume e e o mesmo
-    /// campo que FILE_ID_INFO pareia com o FileId de 128 bits — a chave
-    /// (VolumeId, FileId) usada na deteccao de ciclo de OrderedFileEnumerator.
+    /// The serial number is what effectively identifies the volume and is the same
+    /// field that FILE_ID_INFO pairs with the 128-bit FileId — the key
+    /// (VolumeId, FileId) used in OrderedFileEnumerator's cycle detection.
     /// </summary>
-    private static string ObtemVolumeGuid(string raizWin32)
+    private static string GetVolumeGuid(string win32Root)
     {
-        // GetVolumeInformationW exige a RAIZ DO VOLUME ("C:\"), nao um diretorio
-        // qualquer: passar o caminho da varredura faz a chamada falhar e cair no
-        // fallback de MachineName, perdendo a distincao entre volumes.
-        var raizVolume = Path.GetPathRoot(raizWin32);
-        if (string.IsNullOrEmpty(raizVolume))
+        // GetVolumeInformationW requires the VOLUME ROOT ("C:\"), not an arbitrary
+        // directory: passing the scan path makes the call fail and fall back to
+        // MachineName, losing distinction between volumes.
+        var volumeRoot = Path.GetPathRoot(win32Root);
+        if (string.IsNullOrEmpty(volumeRoot))
         {
             return Environment.MachineName;
         }
@@ -209,7 +208,7 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
         var volumeNameBuffer = new char[261];   // MAX_PATH + 1
         var fsNameBuffer = new char[261];
         var success = NativeMethods.GetVolumeInformationW(
-            raizVolume,
+            volumeRoot,
             volumeNameBuffer,
             (uint)volumeNameBuffer.Length,
             out var volumeSerialNumber,
@@ -220,8 +219,8 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
 
         if (!success)
         {
-            // Degrada para um identificador estavel da maquina em vez de lancar:
-            // sem volume id o scan ainda roda, apenas com dedup por maquina.
+            // Degrades to a stable machine identifier instead of throwing:
+            // without volume id the scan still runs, just with per-machine dedup.
             return Environment.MachineName;
         }
 
@@ -229,24 +228,24 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
     }
 
     /// <summary>
-    /// Obtém o NTFS FileId (128-bit) do arquivo usando GetFileInformationByHandleEx.
-    /// Em caso de falha, retorna hash do caminho como fallback.
+    /// Obtains the 128-bit NTFS FileId using GetFileInformationByHandleEx.
+    /// On failure, returns a hash of the path as fallback.
     /// </summary>
-    private static string ObtemFileId(string caminho, FileAttributes atributos)
+    private static string GetFileId(string path, FileAttributes attributes)
     {
-        // Symlinks e reparse points não podem ter handle aberto normalmente.
-        if ((atributos & FileAttributes.ReparsePoint) != 0)
+        // Symlinks and reparse points cannot have a normally opened handle.
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
         {
-            return HashCaminho(caminho);
+            return HashPath(path);
         }
 
-        var win32Path = "\\\\?\\" + caminho.Replace('/', '\\');
+        var win32Path = "\\\\?\\" + path.Replace('/', '\\');
 
         try
         {
             var hFile = NativeMethods.CreateFileW(
                 win32Path,
-                0, // dwDesiredAccess = 0 (somente obter info)
+                0, // dwDesiredAccess = 0 (query only)
                 (uint)FileShare.Read,
                 IntPtr.Zero,
                 3, // OPEN_EXISTING
@@ -255,7 +254,7 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
 
             if (hFile == INVALID_HANDLE_VALUE)
             {
-                return HashCaminho(caminho);
+                return HashPath(path);
             }
 
             using var safeHandle = new SafeFileHandle(hFile, true);
@@ -272,10 +271,10 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
 
                 if (!success)
                 {
-                    return HashCaminho(caminho);
+                    return HashPath(path);
                 }
 
-                // Copia os 16 bytes do FileId (offset 8)
+                // Copies the 16 bytes of FileId (offset 8)
                 var fileIdBytes = new byte[16];
                 Marshal.Copy(IntPtr.Add(buffer, 8), fileIdBytes, 0, 16);
 
@@ -288,14 +287,14 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
         }
         catch
         {
-            return HashCaminho(caminho);
+            return HashPath(path);
         }
     }
 
-    private static string HashCaminho(string caminho)
+    private static string HashPath(string path)
     {
         using var sha = System.Security.Cryptography.SHA256.Create();
-        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(caminho));
+        var bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(path));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..16];
     }
 
@@ -309,14 +308,14 @@ public sealed class WindowsNativeEnumerator : IFileEnumerator
 
     public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default)
         => throw new PlatformNotSupportedException(
-            "WindowsNativeEnumerator é exclusivo de Windows (build #if WINDOWS). " +
-            "Em Linux, use CrossPlatformEnumerator.");
+            "WindowsNativeEnumerator is Windows-only (build #if WINDOWS). " +
+            "On Linux, use CrossPlatformEnumerator.");
 
 #endif
 }
 
 /// <summary>
-/// Interop com Windows API para o enumerador nativo.
+/// Windows API interop for the native enumerator.
 /// </summary>
 #if WINDOWS
 internal static class NativeMethods
@@ -330,14 +329,14 @@ internal static class NativeMethods
         IntPtr lpSearchFilter,
         uint dwAdditionalFlags);
 
-    // ATENCAO: nao existe 'FindNextFileExW' em kernel32.dll.
+    // NOTE: 'FindNextFileExW' does not exist in kernel32.dll.
     //
-    // A continuacao de uma enumeracao aberta por FindFirstFileEx e feita por
-    // FindNextFileW, que recebe APENAS DOIS argumentos (handle e buffer): o
-    // nivel de informacao e a operacao de busca sao fixados na chamada
-    // FindFirstFileEx e nao se repetem. A declaracao anterior inventava uma
-    // funcao com quatro parametros. Nunca foi compilada, entao o erro so
-    // existia no papel.
+    // The continuation of an enumeration opened by FindFirstFileEx is done by
+    // FindNextFileW, which takes ONLY TWO arguments (handle and buffer): the
+    // information level and search operation are fixed in the
+    // FindFirstFileEx call and are not repeated. The previous declaration invented
+    // a function with four parameters. It was never compiled, so the error only
+    // existed on paper.
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true,
                EntryPoint = "FindNextFileW")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -345,14 +344,14 @@ internal static class NativeMethods
         SafeFindHandle hFindFile,
         out WIN32_FIND_DATAW lpFindFileData);
 
-    // Recebe IntPtr, nao SafeFindHandle.
+    // Takes IntPtr, not SafeFindHandle.
     //
-    // Esta funcao e chamada de dentro de SafeFindHandle.ReleaseHandle(), ou
-    // seja, DURANTE o descarte do proprio handle. Marshalar um SafeHandle nesse
-    // momento faz o runtime tentar DangerousAddRef num objeto ja em fechamento,
-    // e a chamada morre com ObjectDisposedException — a enumeracao nativa
-    // inteira falhava no primeiro diretorio por causa disto. A sobrecarga com
-    // IntPtr fecha o handle cru, que e o contrato esperado de ReleaseHandle.
+    // This function is called from within SafeFindHandle.ReleaseHandle(), i.e.,
+    // DURING the disposal of the handle itself. Marshaling a SafeHandle at this
+    // point makes the runtime try DangerousAddRef on an object already closing,
+    // and the call dies with ObjectDisposedException — the entire native
+    // enumeration failed at the first directory because of this. The IntPtr overload
+    // closes the raw handle, which is the expected contract of ReleaseHandle.
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool FindClose(IntPtr hFindFile);
@@ -375,15 +374,15 @@ internal static class NativeMethods
         IntPtr lpBuffer,
         uint dwBufferSize);
 
-    // ATENCAO: a entrada correta e GetVolumeInformationW.
+    // NOTE: the correct entry is GetVolumeInformationW.
     //
-    // Este P/Invoke declarava 'GetVolumeInformationForRootW' — funcao que NAO
-    // EXISTE em kernel32.dll. A assinatura abaixo e, byte a byte, a de
-    // GetVolumeInformationW; so o nome estava errado. Como o corpo nativo vivia
-    // sob `#if WINDOWS` e o simbolo nunca era definido (ver Directory.Build.props),
-    // este codigo jamais foi compilado nem executado, e o erro so aparecia em
-    // runtime como EntryPointNotFoundException. Todos os sete testes de
-    // WindowsNativeEnumeratorTests falhavam por esta unica linha.
+    // This P/Invoke previously declared 'GetVolumeInformationForRootW' — a function that
+    // DOES NOT EXIST in kernel32.dll. The signature below is, byte by byte, that of
+    // GetVolumeInformationW; only the name was wrong. Since the native body lived
+    // under `#if WINDOWS` and the symbol was never defined (see Directory.Build.props),
+    // this code was never compiled or executed, and the error only appeared at
+    // runtime as EntryPointNotFoundException. All seven
+    // WindowsNativeEnumeratorTests failed because of this single line.
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true,
                EntryPoint = "GetVolumeInformationW")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -431,9 +430,9 @@ internal sealed class SafeFindHandle : SafeHandleZeroOrMinusOneIsInvalid
 
     protected override bool ReleaseHandle()
     {
-        // `handle` (o IntPtr cru), nunca `this`: passar o proprio SafeHandle
-        // aqui provoca ObjectDisposedException, pois o objeto ja esta sendo
-        // descartado quando ReleaseHandle roda.
+        // `handle` (the raw IntPtr), never `this`: passing the SafeHandle itself
+        // here causes ObjectDisposedException, because the object is already being
+        // disposed when ReleaseHandle runs.
         return NativeMethods.FindClose(handle);
     }
 }

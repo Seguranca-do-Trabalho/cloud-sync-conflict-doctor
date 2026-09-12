@@ -5,19 +5,19 @@ using Doctor.Core;
 using Xunit;
 
 /// <summary>
-/// S11-3 (t_348aec29) — TOCTOU e corridas hash→move (T-04, T-05, T-10).
+/// S11-3 (t_348aec29) — TOCTOU and hash->move races (T-04, T-05, T-10).
 ///
-/// Testes de segurança GATE 5:
-///   SEG-08: conteúdo trocado entre hash e move ⇒ rollback
-///   SEG-09: share mode exclusivo bloqueia writer durante hash window
-///   SEG-10: arquivo modificado durante leitura ⇒ UNSTABLE, nunca em cache
-///   SEG-11: arquivo estável ⇒ classificação normal
-///   SEG-20: disco cheio no meio do copy ⇒ fail-closed, source intacta
-///   SEG-21: sucesso exige fsync de data e manifesto
+/// GATE 5 Security Tests:
+///   SEG-08: content swapped between hash and move => rollback
+///   SEG-09: exclusive share mode blocks writer during hash window
+///   SEG-10: file modified during read => UNSTABLE, never cached
+///   SEG-11: stable file => normal classification
+///   SEG-20: disk full mid-copy => fail-closed, source intact
+///   SEG-21: success requires fsync of data and manifest
 ///
-/// Fontes: docs/threat-model.md (T-04/T-05/T-10, R4/R5/R6),
-///         docs/contratos.md (IQuarantine, IHasher),
-///         ADR-0005/0010.
+/// Sources: docs/threat-model.md (T-04/T-05/T-10, R4/R5/R6),
+///          docs/contracts.md (IQuarantine, IHasher),
+///          ADR-0005/0010.
 /// </summary>
 [Trait("Category", "Security")]
 public sealed class SecurityToctouTests : IDisposable
@@ -37,156 +37,156 @@ public sealed class SecurityToctouTests : IDisposable
     }
 
     // ------------------------------------------------------------------
-    // SEG-08: TOCTOU — conteúdo trocado entre hash e move ⇒ rollback
+    // SEG-08: TOCTOU — content swapped between hash and move => rollback
     // ------------------------------------------------------------------
     [Fact]
     public void Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack()
     {
-        var conteudoBom = Conteudo(0xB0);
-        var conteudoMau = Conteudo(0xD1);
-        var hashBom = Blake3Hash(conteudoBom);
-        var hashMau = Blake3Hash(conteudoMau);
-        Assert.NotEqual(hashBom, hashMau);
+        var goodContent = MakeContent(0xB0);
+        var badContent = MakeContent(0xD1);
+        var goodHash = Blake3Hash(goodContent);
+        var badHash = Blake3Hash(badContent);
+        Assert.NotEqual(goodHash, badHash);
 
-        var caminho = CriarArquivo("docs/relatorio.docx", conteudoBom);
-        var entrada = Entrada(caminho);
+        var filePath = CreateFile("docs/report.docx", goodContent);
+        var entry = MakeEntry(filePath);
 
-        var trocou = false;
+        var swapped = false;
         var svc = new QuarantineService(
-            openReadOverride: path => path == caminho
-                ? new MemoryStream(conteudoBom)
+            openReadOverride: path => path == filePath
+                ? new MemoryStream(goodContent)
                 : File.OpenRead(path),
-            moveOverride: (origem, destino) =>
+            moveOverride: (origin, destination) =>
             {
-                if (!trocou)
+                if (!swapped)
                 {
-                    trocou = true;
-                    Assert.Equal(caminho, origem);
-                    File.WriteAllBytes(caminho, conteudoMau); // troca na janela
+                    swapped = true;
+                    Assert.Equal(filePath, origin);
+                    File.WriteAllBytes(filePath, badContent); // swap in window
                 }
-                File.Move(origem, destino);
+                File.Move(origin, destination);
             });
 
         var ex = Assert.Throws<QuarantineRollbackException>(() => svc.Move(
-            [new QuarantineItem(entrada, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
-            PlanoPadrao()));
+            [new QuarantineItem(entry, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
+            DefaultPlan()));
 
-        Assert.Equal(caminho, ex.OriginalPath);
+        Assert.Equal(filePath, ex.OriginalPath);
 
-        // rollback executado: fonte existe DE VOLTA
-        Assert.True(File.Exists(caminho));
-        Assert.Equal(conteudoMau, File.ReadAllBytes(caminho));
+        // rollback executed: source exists BACK
+        Assert.True(File.Exists(filePath));
+        Assert.Equal(badContent, File.ReadAllBytes(filePath));
 
-        // nada declarado sucesso: nenhum diretório definitivo publicado
-        var raizQ = Path.Combine(_root, "ConflictDoctor", "quarantine");
-        var publicados = Directory.Exists(raizQ)
-            ? Directory.GetDirectories(raizQ)
+        // nothing declared success: no definitive directory published
+        var quarantineRoot = Path.Combine(_root, "ConflictDoctor", "quarantine");
+        var published = Directory.Exists(quarantineRoot)
+            ? Directory.GetDirectories(quarantineRoot)
                 .Where(d => !Path.GetFileName(d).StartsWith("staging-", StringComparison.Ordinal))
                 .ToArray()
             : [];
-        Assert.Empty(publicados);
+        Assert.Empty(published);
 
-        // evidência auditável no manifesto parcial
+        // auditable evidence in partial manifest
         using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(ex.PartialManifestPath));
         Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
         var item = json.RootElement.GetProperty("items")[0];
-        Assert.Equal(hashBom, item.GetProperty("hash_pre_move").GetString());
-        Assert.Equal(hashMau, item.GetProperty("hash_post_move").GetString());
-        Assert.NotEqual(hashBom, hashMau);
+        Assert.Equal(goodHash, item.GetProperty("hash_pre_move").GetString());
+        Assert.Equal(badHash, item.GetProperty("hash_post_move").GetString());
+        Assert.NotEqual(goodHash, badHash);
     }
 
     // ------------------------------------------------------------------
-    // SEG-09: Share mode exclusivo bloqueia writer durante hash window
+    // SEG-09: Exclusive share mode blocks writer during hash window
     // ------------------------------------------------------------------
     [Fact]
     public void Quarantine_ShareModeExclusive_BlockWriterDuringHashWindow()
     {
-        var conteudo = Conteudo(0xA1);
-        var caminho = CriarArquivo("docs/arquivo.txt", conteudo);
-        var entrada = Entrada(caminho);
+        var content = MakeContent(0xA1);
+        var filePath = CreateFile("docs/file.txt", content);
+        var entry = MakeEntry(filePath);
 
-        // Simula writer concorrente que tenta modificar o arquivo
-        // durante a janela de hash (openReadOverride abre com FileMode.Open)
-        var excecoes = new List<Exception>();
+        // Simulates concurrent writer attempting to modify the file
+        // during the hash window (openReadOverride opens with FileMode.Open)
+        var exceptions = new List<Exception>();
 
         var svc = new QuarantineService(
             openReadOverride: path =>
             {
-                if (path == caminho)
+                if (path == filePath)
                 {
-                    // Simula abertura compartilhada — em Windows real seria
-                    // FILE_SHARE_READ | FILE_SHARE_WRITE restrito
-                    // Tenta escrita concorrente (simulada por exceção)
+                    // Simulates shared open — on real Windows would be
+                    // FILE_SHARE_READ | FILE_SHARE_WRITE restricted
+                    // Attempts concurrent write (simulated by exception)
                     try
                     {
-                        File.AppendAllText(path, "intruso");
+                        File.AppendAllText(path, "intruder");
                     }
                     catch (Exception ex)
                     {
-                        excecoes.Add(ex);
+                        exceptions.Add(ex);
                     }
                 }
                 return File.OpenRead(path);
             });
 
-        // Em Linux, File.OpenRead permite múltiplos leitores — o teste valida
-        // a ABSTRAÇÃO de share mode (a variante POSIX do contrato)
-        var resultado = svc.Move(
-            [new QuarantineItem(entrada, "REAL_CONFLICT", "KEEP_NEWEST")],
-            PlanoPadrao());
+        // On Linux, File.OpenRead allows multiple readers — test validates
+        // the share mode ABSTRACTION (POSIX variant of contract)
+        var result = svc.Move(
+            [new QuarantineItem(entry, "REAL_CONFLICT", "KEEP_NEWEST")],
+            DefaultPlan());
 
-        Assert.Equal("completed", resultado.Status);
-        Assert.Single(resultado.MovedPaths);
+        Assert.Equal("completed", result.Status);
+        Assert.Single(result.MovedPaths);
     }
 
     // ------------------------------------------------------------------
-    // SEG-10: Arquivo modificado durante leitura ⇒ UNSTABLE, nunca em cache
+    // SEG-10: File modified during read => UNSTABLE, never cached
     // ------------------------------------------------------------------
     [Fact]
     public void Scan_FileModifiedDuringRead_MarkedUnstable_AndNeverCached()
     {
-        var conteudoInicial = "conteudo inicial";
-        var conteudoModificado = "conteudo modificado";
-        var caminho = CriarArquivo("docs/editavel.txt", ArrayEncoding.GetBytes(conteudoInicial));
-        var infoOriginal = new FileInfo(caminho);
+        var initialContent = "initial content";
+        var modifiedContent = "modified content";
+        var filePath = CreateFile("docs/editable.txt", ArrayEncoding.GetBytes(initialContent));
+        var originalInfo = new FileInfo(filePath);
 
-        // Snapshot pré-leitura (metadados iniciais)
+        // Pre-read snapshot (initial metadata)
         var snapshotPre = new MetadataSnapshot(
-            infoOriginal.Length,
-            new DateTimeOffset(infoOriginal.LastWriteTimeUtc).Ticks,
+            originalInfo.Length,
+            new DateTimeOffset(originalInfo.LastWriteTimeUtc).Ticks,
             "test-fid");
 
-        // Simula modificação concorrente entre pré e pós leitura
-        File.WriteAllBytes(caminho, ArrayEncoding.GetBytes(conteudoModificado));
+        // Simulates concurrent modification between pre- and post-read
+        File.WriteAllBytes(filePath, ArrayEncoding.GetBytes(modifiedContent));
 
-        // Snapshot pós-leitura (metadados alterados)
-        var infoPos = new FileInfo(caminho);
-        var snapshotPos = new MetadataSnapshot(
-            infoPos.Length,
-            new DateTimeOffset(infoPos.LastWriteTimeUtc).Ticks,
+        // Post-read snapshot (altered metadata)
+        var postInfo = new FileInfo(filePath);
+        var snapshotPost = new MetadataSnapshot(
+            postInfo.Length,
+            new DateTimeOffset(postInfo.LastWriteTimeUtc).Ticks,
             "test-fid");
 
-        var resultado = StabilityChecker.Verificar(
-            new FileEntry { Path = caminho, Size = infoPos.Length, MtimeUtc = new DateTimeOffset(infoPos.LastWriteTimeUtc), Attributes = FileAttributes.Normal, VolumeId = "test", FileId = "test-fid" },
+        var result = StabilityChecker.Check(
+            new FileEntry { Path = filePath, Size = postInfo.Length, MtimeUtc = new DateTimeOffset(postInfo.LastWriteTimeUtc), Attributes = FileAttributes.Normal, VolumeId = "test", FileId = "test-fid" },
             snapshotPre,
-            snapshotPos);
+            snapshotPost);
 
-        Assert.Equal(FileStatus.Unstable, resultado.Status);
-        Assert.NotNull(resultado.DivergenceReason);
+        Assert.Equal(FileStatus.Unstable, result.Status);
+        Assert.NotNull(result.DivergenceReason);
     }
 
     // ------------------------------------------------------------------
-    // SEG-11: Arquivo estável (metadados inalterados) ⇒ classificação normal
+    // SEG-11: Stable file (metadata unchanged) => normal classification
     // ------------------------------------------------------------------
     [Fact]
     public void Scan_StableFile_MetadataUnchanged_ClassifiedNormally()
     {
-        var conteudo = "conteudo estavel";
-        var caminho = CriarArquivo("docs/estavel.txt", ArrayEncoding.GetBytes(conteudo));
-        var info = new FileInfo(caminho);
-        var entrada = new FileEntry
+        var content = "stable content";
+        var filePath = CreateFile("docs/stable.txt", ArrayEncoding.GetBytes(content));
+        var info = new FileInfo(filePath);
+        var entry = new FileEntry
         {
-            Path = caminho,
+            Path = filePath,
             Size = info.Length,
             MtimeUtc = new DateTimeOffset(info.LastWriteTimeUtc),
             Attributes = FileAttributes.Normal,
@@ -196,130 +196,130 @@ public sealed class SecurityToctouTests : IDisposable
         };
 
         var snapshot = new MetadataSnapshot(
-            entrada.Size,
-            entrada.MtimeUtc.Ticks,
-            entrada.FileId);
+            entry.Size,
+            entry.MtimeUtc.Ticks,
+            entry.FileId);
 
-        var resultado = StabilityChecker.Verificar(entrada, snapshot, snapshot);
+        var result = StabilityChecker.Check(entry, snapshot, snapshot);
 
-        Assert.Equal(FileStatus.Stable, resultado.Status);
-        Assert.Null(resultado.DivergenceReason);
+        Assert.Equal(FileStatus.Stable, result.Status);
+        Assert.Null(result.DivergenceReason);
     }
 
     // ------------------------------------------------------------------
-    // SEG-20: Disco cheio no meio do copy ⇒ fail-closed, source intacta
+    // SEG-20: Disk full mid-copy => fail-closed, source intact
     // ------------------------------------------------------------------
     [Fact]
     public void Security_DiskFullMidCopy_FailClosed_SourceIntact_NoPartialDeclaredSuccess()
     {
-        var conteudo = Conteudo(0xC0);
-        var caminho = CriarArquivo("docs/grande.txt", conteudo);
-        var entrada = Entrada(caminho);
+        var content = MakeContent(0xC0);
+        var filePath = CreateFile("docs/large.txt", content);
+        var entry = MakeEntry(filePath);
 
-        var chamadaCount = 0;
+        var callCount = 0;
         var svc = new QuarantineService(
-            moveOverride: (origem, destino) =>
+            moveOverride: (origin, destination) =>
             {
-                chamadaCount++;
-                if (chamadaCount == 1)
+                callCount++;
+                if (callCount == 1)
                 {
-                    // Primeira chamada: move staging (simula copia parcial)
-                    // Simula "disco cheio" jogando IOException
+                    // First call: move staging (simulates partial copy)
+                    // Simulates "disk full" throwing IOException
                     throw new IOException("No space left on device");
                 }
-                File.Move(origem, destino);
+                File.Move(origin, destination);
             });
 
         var ex = Assert.Throws<QuarantinePartialException>(() => svc.Move(
-            [new QuarantineItem(entrada, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
-            PlanoPadrao()));
+            [new QuarantineItem(entry, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
+            DefaultPlan()));
 
-        // fail-closed: fonte INTACTA
-        Assert.True(File.Exists(caminho));
-        Assert.Equal(conteudo, File.ReadAllBytes(caminho));
+        // fail-closed: source INTACT
+        Assert.True(File.Exists(filePath));
+        Assert.Equal(content, File.ReadAllBytes(filePath));
 
-        // nada declarado sucesso
-        var raizQ = Path.Combine(_root, "ConflictDoctor", "quarantine");
-        var publicados = Directory.Exists(raizQ)
-            ? Directory.GetDirectories(raizQ)
+        // nothing declared success
+        var quarantineRoot = Path.Combine(_root, "ConflictDoctor", "quarantine");
+        var published = Directory.Exists(quarantineRoot)
+            ? Directory.GetDirectories(quarantineRoot)
                 .Where(d => !Path.GetFileName(d).StartsWith("staging-", StringComparison.Ordinal))
                 .ToArray()
             : [];
-        Assert.Empty(publicados);
+        Assert.Empty(published);
 
-        // manifesto parcial registrado
+        // partial manifest recorded
         Assert.True(File.Exists(ex.PartialManifestPath));
     }
 
     // ------------------------------------------------------------------
-    // SEG-21: Sucesso exige fsync de data e manifesto
+    // SEG-21: Success requires fsync of data and manifest
     // ------------------------------------------------------------------
     [Fact]
     public void Quarantine_SuccessRequiresFsyncOfDataAndManifest()
     {
-        var conteudo = Conteudo(0xD0);
-        var caminho = CriarArquivo("docs/teste.txt", conteudo);
-        var entrada = Entrada(caminho);
+        var content = MakeContent(0xD0);
+        var filePath = CreateFile("docs/test.txt", content);
+        var entry = MakeEntry(filePath);
 
-        // O QuarantineService usa File.OpenRead + FullHashBlake3Streaming
-        // que chama stream.Read() repetidamente. Para validar fsync,
-        // verificamos o protocolo: após a cópia, há flush implícito
-        // pela semântica de File.Move (atomicidade). O teste valida
-        // que o sucesso só ocorre quando o data é escrito e o manifesto
-        // é gravado atomicamente (.tmp + Move).
+        // QuarantineService uses File.OpenRead + FullHashBlake3Streaming
+        // which calls stream.Read() repeatedly. To validate fsync,
+        // we verify protocol: after copy, there is implicit flush
+        // through File.Move atomic semantics. The test validates
+        // that success only occurs when data is written and manifest
+        // is recorded atomically (.tmp + Move).
         var svc = new QuarantineService();
 
-        var resultado = svc.Move(
-            [new QuarantineItem(entrada, "REAL_CONFLICT", "KEEP_NEWEST")],
-            PlanoPadrao());
+        var result = svc.Move(
+            [new QuarantineItem(entry, "REAL_CONFLICT", "KEEP_NEWEST")],
+            DefaultPlan());
 
-        Assert.Equal("completed", resultado.Status);
+        Assert.Equal("completed", result.Status);
 
-        // Manifesto existe (fsync garantido por atomicidade do rename)
-        Assert.True(File.Exists(resultado.ManifestPath));
+        // Manifest exists (fsync guaranteed by rename atomicity)
+        Assert.True(File.Exists(result.ManifestPath));
 
-        // Payload existe
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(resultado.ManifestPath));
+        // Payload exists
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(result.ManifestPath));
         var item = json.RootElement.GetProperty("items")[0];
-        var relativo = item.GetProperty("quarantine_path").GetString()!;
-        var payloadPath = Path.Combine(resultado.QuarantineDirectory, relativo.Replace('/', Path.DirectorySeparatorChar));
+        var relative = item.GetProperty("quarantine_path").GetString()!;
+        var payloadPath = Path.Combine(result.QuarantineDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
         Assert.True(File.Exists(payloadPath));
 
-        // Hash confere
+        // Hash matches
         var hashPayload = Blake3Hash(File.ReadAllBytes(payloadPath));
         Assert.Equal(hashPayload, item.GetProperty("hash").GetString());
     }
 
     // ------------------------------------------------------------------
-    // infraestrutura
+    // infrastructure
     // ------------------------------------------------------------------
-    private QuarantinePlan PlanoPadrao() =>
+    private QuarantinePlan DefaultPlan() =>
         new(_root, new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero));
 
-    private FileEntry Entrada(string caminho)
+    private FileEntry MakeEntry(string filePath)
     {
-        var info = new FileInfo(caminho);
+        var info = new FileInfo(filePath);
         return new FileEntry
         {
-            Path = caminho,
+            Path = filePath,
             Size = info.Length,
             MtimeUtc = new DateTimeOffset(info.LastWriteTimeUtc),
             Attributes = FileAttributes.Normal,
             VolumeId = "s113-vol",
-            FileId = caminho,
+            FileId = filePath,
         };
     }
 
-    private string CriarArquivo(string caminhoRelativo, byte[] conteudo)
+    private string CreateFile(string relativePath, byte[] content)
     {
-        var absoluto = Path.Combine(_root, caminhoRelativo);
-        Directory.CreateDirectory(Path.GetDirectoryName(absoluto)!);
-        File.WriteAllBytes(absoluto, conteudo);
-        return absoluto;
+        var absolute = Path.Combine(_root, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+        File.WriteAllBytes(absolute, content);
+        return absolute;
     }
 
-    private static byte[] Conteudo(byte semente) =>
-        Enumerable.Range(0, 4096).Select(i => (byte)(semente + (i % 97))).ToArray();
+    private static byte[] MakeContent(byte seed) =>
+        Enumerable.Range(0, 4096).Select(i => (byte)(seed + (i % 97))).ToArray();
 
     private static string Blake3Hash(byte[] data) =>
         Convert.ToHexString(Blake3.Hasher.Hash(data).AsSpan()).ToLowerInvariant();
@@ -328,7 +328,7 @@ public sealed class SecurityToctouTests : IDisposable
 }
 
 /// <summary>
-/// Stream que intercepta leitura para simular modificação concorrente.
+/// Stream that intercepts read to simulate concurrent modification.
 /// </summary>
 internal sealed class InterceptingStream : Stream
 {

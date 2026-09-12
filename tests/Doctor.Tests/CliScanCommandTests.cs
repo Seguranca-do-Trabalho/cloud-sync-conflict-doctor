@@ -5,25 +5,25 @@ using Doctor.Cli;
 using Doctor.Core;
 
 /// <summary>
-/// T16 (t_71afe316) — CLI 'conflictdoctor scan &lt;path&gt; [--json] [--quiet]' (SPEC §14,
-/// EPIC 09). Invocação IN-PROCESS via ScanCommand.Run com árvore em tmp cobrindo os
-/// 4 exit codes documentados + validade estrutural do JSON v1. A CLI é camada fina:
-/// compõe o pipeline de produção exatamente como o card T12 a definiu
-/// (Sidecar → Ordered → CrossPlatform; Blake3Hasher), formata e traduz veredito.
+/// T16 (t_71afe316) — CLI 'conflictdoctor scan <path> [--json] [--quiet]' (SPEC §14,
+/// EPIC 09). In-process invocation via ScanCommand.Run with tree in tmp covering
+/// 4 documented exit codes + structural validity of JSON v1. The CLI is a thin layer:
+/// composes production pipeline exactly as card T12 defined it
+/// (Sidecar → Ordered → CrossPlatform; Blake3Hasher), formats and translates verdict.
 ///
-/// [Collection] serializa com SecuritySeg12Tests porque ambos chamam ScanCommand.Run
-/// que usa DefaultEnumeration (static mutável); ComErroDeAcessoSimulado substitui
-/// temporariamente essa propriedade, e execução paralela injeta erros sintéticos.
+/// [Collection] serializes with SecuritySeg12Tests because both call ScanCommand.Run
+/// which uses DefaultEnumeration (mutable static); WithSimulatedAccessError temporarily
+/// replaces this property, and parallel execution would inject synthetic errors.
 /// </summary>
 [Collection("ScanCommand")]
 public sealed class CliScanCommandTests : IDisposable
 {
     private const int Kib = 1024;
 
-    // > 128 KiB: hash parcial = janelas [0,64K)+[fim-64K,fim); miolos distintos forçam
-    // colisão parcial com full hash divergente ⇒ conflito real EXIGE o Level 3.
-    private const int ArquivoConflito = 200 * Kib;
-    private const int Janela = 64 * Kib;
+    // > 128 KiB: partial hash = windows [0,64K)+[end-64K,end); distinct cores force
+    // partial collision with divergent full hash ⇒ real conflict REQUIRES Level 3.
+    private const int ConflictFileSize = 200 * Kib;
+    private const int WindowSize = 64 * Kib;
 
     private readonly string _root;
 
@@ -41,18 +41,18 @@ public sealed class CliScanCommandTests : IDisposable
         }
         catch (IOException)
         {
-            // limpeza best-effort: tmp do SO recolhe depois (padrão da suíte)
+            // best-effort cleanup: OS tmp reclaims later (suite pattern)
         }
     }
 
-    // ---- EXIT 0 — árvore limpa -------------------------------------------------------
+    // ---- EXIT 0 — clean tree -------------------------------------------------------
 
     [Fact]
-    public void ArvoreLimpa_SemJson_SemQuiet_ExitZero_TextoResumo()
+    public void CleanTree_WithoutJson_WithoutQuiet_ExitZero_SummaryText()
     {
-        var antes = new HashSet<string>(Directory.EnumerateFileSystemEntries(_root));
-        File.WriteAllText(Caminho("leia-me.txt"), "arquivo unico, sem par");
-        var depois = new HashSet<string>(Directory.EnumerateFileSystemEntries(_root));
+        var before = new HashSet<string>(Directory.EnumerateFileSystemEntries(_root));
+        File.WriteAllText(MakePath("readme.txt"), "single file, no pair");
+        var after = new HashSet<string>(Directory.EnumerateFileSystemEntries(_root));
 
         var r = ScanCommand.Run(new[] { "scan", _root });
 
@@ -60,57 +60,57 @@ public sealed class CliScanCommandTests : IDisposable
         Assert.Null(r.JsonOutput);
         Assert.NotNull(r.HumanText);
         Assert.DoesNotContain("duplicat", r.HumanText, StringComparison.OrdinalIgnoreCase);
-        // NUNCA delete: a CLI não toca no conteúdo do usuário — nem lê além da lista,
-        // nem escreve nada de volta (sem cache/sidecar criado dentro da raiz escaneada).
-        Assert.Equal(depois, new HashSet<string>(Directory.EnumerateFileSystemEntries(_root)));
+        // NEVER delete: CLI does not touch user content — neither reads beyond list,
+        // nor writes anything back (no cache/sidecar created inside scanned root).
+        Assert.Equal(after, new HashSet<string>(Directory.EnumerateFileSystemEntries(_root)));
     }
 
     [Fact]
-    public void ArvoreLimpa_ComJson_ExitZero_JsonValidoSemAnomalias()
+    public void CleanTree_WithJson_ExitZero_ValidJsonWithoutAnomalies()
     {
-        File.WriteAllText(Caminho("unico.dat"), "conteudo qualquer");
+        File.WriteAllText(MakePath("single.dat"), "sample content");
 
         var r = ScanCommand.Run(new[] { "scan", _root, "--json" });
 
         Assert.Equal(0, r.ExitCode);
         Assert.Null(r.HumanText);
-        var doc = JsonDocument.Parse(r.JsonOutput!); // JSON válido (schema vigente)
-        // Schema v2 (SEG-12/t_694bc7ce): files_excluded_conflictdoctor adicionado à
-        // telemetria ⇒ bump 1→2 por §7.1 do schema-report-v1 (mudança aditiva = bump).
+        var doc = JsonDocument.Parse(r.JsonOutput!); // Valid JSON (current schema)
+        // Schema v2 (SEG-12/t_694bc7ce): files_excluded_conflictdoctor added to
+        // telemetry ⇒ bump 1→2 per §7.1 of schema-report-v1 (additive change = bump).
         Assert.Equal(2, doc.RootElement.GetProperty("report_schema_version").GetInt32());
         Assert.Empty(doc.RootElement.GetProperty("identical_duplicates").EnumerateArray());
         Assert.Empty(doc.RootElement.GetProperty("real_conflicts").EnumerateArray());
     }
 
-    // ---- EXIT 2 — duplicatas idênticas ----------------------------------------------
+    // ---- EXIT 2 — identical duplicates ----------------------------------------------
 
     [Fact]
-    public void DuplicatasIdenticas_SemFlags_ExitDois_ListaNoTexto()
+    public void IdenticalDuplicates_WithoutFlags_ExitTwo_ListedInText()
     {
-        var conteudo = "par de duplicatas identicas para o exit code 2";
-        // Mesmo NOME BASE normalizado em diretórios distintos: o agrupamento da SPEC §7
-        // é por (normalized_base_name, size) — nomes distintos nunca são duplicatas.
-        Directory.CreateDirectory(Caminho("docs"));
-        File.WriteAllText(Caminho("docs/foto.txt"), conteudo);
+        var content = "pair of identical duplicates for exit code 2";
+        // Same normalized BASE NAME in distinct directories: SPEC §7 grouping
+        // is by (normalized_base_name, size) — distinct names are never duplicates.
+        Directory.CreateDirectory(MakePath("docs"));
+        File.WriteAllText(MakePath("docs/photo.txt"), content);
         Directory.CreateDirectory(Path.Combine(_root, "docs", "backup"));
-        File.WriteAllText(Caminho("docs/backup/foto.txt"), conteudo);
+        File.WriteAllText(MakePath("docs/backup/photo.txt"), content);
 
         var r = ScanCommand.Run(new[] { "scan", _root });
 
         Assert.Equal(2, r.ExitCode);
-        Assert.Contains("foto.txt", r.HumanText);
-        Assert.DoesNotContain("PARCIAL", r.HumanText);
+        Assert.Contains("photo.txt", r.HumanText);
+        Assert.DoesNotContain("PARTIAL", r.HumanText);
     }
 
     [Fact]
-    public void DuplicatasIdenticas_ComJson_ExitDois_JsonComDuplicata()
+    public void IdenticalDuplicates_WithJson_ExitTwo_JsonWithDuplicates()
     {
-        var conteudo = new byte[64];
-        Random.Shared.NextBytes(conteudo);
-        Directory.CreateDirectory(Caminho("a"));
-        Directory.CreateDirectory(Caminho("b"));
-        File.WriteAllBytes(Caminho("a/dados.bin"), conteudo);
-        File.WriteAllBytes(Caminho("b/dados.bin"), conteudo);
+        var content = new byte[64];
+        Random.Shared.NextBytes(content);
+        Directory.CreateDirectory(MakePath("a"));
+        Directory.CreateDirectory(MakePath("b"));
+        File.WriteAllBytes(MakePath("a/data.bin"), content);
+        File.WriteAllBytes(MakePath("b/data.bin"), content);
 
         var r = ScanCommand.Run(new[] { "scan", _root, "--json" });
 
@@ -119,84 +119,84 @@ public sealed class CliScanCommandTests : IDisposable
         var dup = doc.RootElement.GetProperty("identical_duplicates");
         Assert.Single(dup.EnumerateArray());
         Assert.Empty(doc.RootElement.GetProperty("real_conflicts").EnumerateArray());
-        // BLAKE3 hex minúscula de 32 bytes (ADR-0005 §1) — 64 caracteres.
+        // BLAKE3 lowercase hex 32 bytes (ADR-0005 §1) — 64 characters.
         var hash = dup[0].GetProperty("hash").GetString();
         Assert.Equal(64, hash!.Length);
         Assert.Equal(hash, hash.ToLowerInvariant());
     }
 
-    // ---- EXIT 2 — conflito real exige L3 (mesmo size, janelas iguais, miolo distinto)
+    // ---- EXIT 2 — real conflict requires L3 (same size, same windows, distinct core)
 
     [Fact]
-    public void ConflitoReal_ExigeLevel3_ExitDois_JsonComConflito()
+    public void RealConflict_RequiresLevel3_ExitTwo_JsonWithConflict()
     {
-        File.WriteAllBytes(Caminho("orcamento.xlsx"), ConteudoConflito(0x11));
-        File.WriteAllBytes(Caminho("orcamento-DESKTOP-ABC123.xlsx"), ConteudoConflito(0x22));
+        File.WriteAllBytes(MakePath("budget.xlsx"), ConflictContent(0x11));
+        File.WriteAllBytes(MakePath("budget-DESKTOP-ABC123.xlsx"), ConflictContent(0x22));
 
         var r = ScanCommand.Run(new[] { "scan", _root, "--json" });
 
         Assert.Equal(2, r.ExitCode);
         var doc = JsonDocument.Parse(r.JsonOutput!);
-        var conflitos = doc.RootElement.GetProperty("real_conflicts");
-        Assert.Single(conflitos.EnumerateArray());
-        Assert.Equal("orcamento.xlsx", conflitos[0].GetProperty("normalized_base_name").GetString());
-        Assert.Equal(2, conflitos[0].GetProperty("files").GetArrayLength());
+        var conflicts = doc.RootElement.GetProperty("real_conflicts");
+        Assert.Single(conflicts.EnumerateArray());
+        Assert.Equal("budget.xlsx", conflicts[0].GetProperty("normalized_base_name").GetString());
+        Assert.Equal(2, conflicts[0].GetProperty("files").GetArrayLength());
         Assert.NotEqual(
-            conflitos[0].GetProperty("files")[0].GetProperty("hash").GetString(),
-            conflitos[0].GetProperty("files")[1].GetProperty("hash").GetString());
+            conflicts[0].GetProperty("files")[0].GetProperty("hash").GetString(),
+            conflicts[0].GetProperty("files")[1].GetProperty("hash").GetString());
     }
 
-    // ---- EXIT 3 — parcial: anomalias E arquivos pulados -----------------------------
+    // ---- EXIT 3 — partial: anomalies AND skipped files -----------------------------
 
     [Fact]
-    public void AnomaliasComArquivosPulados_ExitTres_MarcaParcial()
+    public void AnomaliesWithSkippedFiles_ExitThree_MarksPartial()
     {
-        var conteudo = "conteudo compartilhado entre as duas copias do par";
-        File.WriteAllText(Caminho("doc.txt"), conteudo);
-        Directory.CreateDirectory(Caminho("copia"));
-        File.WriteAllText(Caminho("copia/doc.txt"), conteudo);
+        var content = "content shared between both copies of pair";
+        File.WriteAllText(MakePath("doc.txt"), content);
+        Directory.CreateDirectory(MakePath("copy"));
+        File.WriteAllText(MakePath("copy/doc.txt"), content);
 
-        // Erro de acesso individual injetado na fronteira da CLI (contratos.md R10:
-        // erro não aborta o scan; o veredito parcial é decisão da CAMADA CLI).
-        ComErroDeAcessoSimulado(() =>
+        // Individual access error injected at CLI boundary (contracts.md R10:
+        // error does not abort scan; partial verdict is decided by CLI LAYER).
+        WithSimulatedAccessError(() =>
         {
             var r = ScanCommand.Run(new[] { "scan", _root });
             Assert.Equal(3, r.ExitCode);
-            Assert.Contains("doc.txt", r.HumanText);      // anomalia listada
-            Assert.Contains("intocavel.bin", r.HumanText); // pulado listado
-            Assert.Contains("PARCIAL", r.HumanText);
+            Assert.Contains("doc.txt", r.HumanText);        // listed anomaly
+            Assert.Contains("untouchable.bin", r.HumanText); // listed skipped
+            Assert.Contains("PARTIAL", r.HumanText);
         });
     }
 
     [Fact]
-    public void ErrosSemAnomalias_PermaneceExitZero()
+    public void ErrorsWithoutAnomalies_RemainsExitZero()
     {
-        // Parcial (3) exige anomalia E pulado; erro sem anomalias não sobe para 3.
-        File.WriteAllText(Caminho("unico-sem-par.txt"), "arquivo solitario");
+        // Partial (3) requires anomaly AND skipped; error without anomalies stays 0.
+        File.WriteAllText(MakePath("single-no-pair.txt"), "solitary file");
 
-        ComErroDeAcessoSimulado(() =>
+        WithSimulatedAccessError(() =>
         {
             var r = ScanCommand.Run(new[] { "scan", _root });
             Assert.Equal(0, r.ExitCode);
-            Assert.Contains("intocavel.bin", r.HumanText); // evidência do pulado
+            Assert.Contains("untouchable.bin", r.HumanText); // evidence of skipped file
         });
     }
 
-    /// <summary>Injeta um ScanError sintético sobre o L0 real e restaura ao final.</summary>
-    private void ComErroDeAcessoSimulado(Action prova)
+    /// <summary>Injects synthetic ScanError on real L0 and restores at end.</summary>
+    private void WithSimulatedAccessError(Action proof)
     {
         var original = ScanCommand.DefaultEnumeration;
-        ScanCommand.DefaultEnumeration = raiz =>
+        ScanCommand.DefaultEnumeration = root =>
         {
-            var resultado = original(raiz);
-            var comErro = resultado.Errors.Append(
-                new ScanError(Path.Combine(_root, "vedado", "intocavel.bin"), "permissao negada (simulada)")).ToArray();
-            return resultado with { Errors = comErro };
+            var result = original(root);
+            var withError = result.Errors.Append(
+                new ScanError(Path.Combine(_root, "forbidden", "untouchable.bin"), "permission denied (simulated)")).ToArray();
+            return result with { Errors = withError };
         };
 
         try
         {
-            prova();
+            proof();
         }
         finally
         {
@@ -204,96 +204,96 @@ public sealed class CliScanCommandTests : IDisposable
         }
     }
 
-    // ---- EXIT 1 — erros operacionais -------------------------------------------------
+    // ---- EXIT 1 — operational errors -------------------------------------------------
 
     [Fact]
-    public void UsoInvalido_ExitUm_MensagemNoStderr()
+    public void InvalidUsage_ExitOne_MessageOnStderr()
     {
         Assert.Equal(1, ScanCommand.Run(new[] { "scan" }).ExitCode);
         Assert.Equal(1, ScanCommand.Run(Array.Empty<string>()).ExitCode);
-        Assert.Equal(1, ScanCommand.Run(new[] { "comando-desconhecido", "/tmp" }).ExitCode);
-        Assert.Equal(1, ScanCommand.Run(new[] { "scan", _root, "--flag-inexistente" }).ExitCode);
+        Assert.Equal(1, ScanCommand.Run(new[] { "unknown-command", "/tmp" }).ExitCode);
+        Assert.Equal(1, ScanCommand.Run(new[] { "scan", _root, "--nonexistent-flag" }).ExitCode);
     }
 
     [Fact]
-    public void RaizInexistente_ExitUm_MensagemOperacional()
+    public void NonexistentRoot_ExitOne_OperationalMessage()
     {
-        var fantasma = Path.Combine(_root, "nao-existe");
+        var ghost = Path.Combine(_root, "nonexistent");
 
-        var r = ScanCommand.Run(new[] { "scan", fantasma });
+        var r = ScanCommand.Run(new[] { "scan", ghost });
 
         Assert.Equal(1, r.ExitCode);
         Assert.Null(r.JsonOutput);
-        Assert.Contains(fantasma, r.HumanText);
+        Assert.Contains(ghost, r.HumanText);
     }
 
     [Fact]
-    public void RaizArquivo_NaoDiretorio_ExitUm()
+    public void RootIsFile_NotDirectory_ExitOne()
     {
-        var arquivo = Caminho("um-arquivo.txt");
-        File.WriteAllText(arquivo, "não é raiz de scan");
+        var file = MakePath("a-file.txt");
+        File.WriteAllText(file, "not a scan root");
 
-        Assert.Equal(1, ScanCommand.Run(new[] { "scan", arquivo }).ExitCode);
+        Assert.Equal(1, ScanCommand.Run(new[] { "scan", file }).ExitCode);
     }
 
     // ---- --quiet ----------------------------------------------------------------------
 
     [Fact]
-    public void Quiet_Duplicatas_ExitDois_TextoVazio()
+    public void Quiet_Duplicates_ExitTwo_EmptyText()
     {
-        var conteudo = "mesmo conteudo nas duas copias para quiet";
-        Directory.CreateDirectory(Caminho("q1"));
-        Directory.CreateDirectory(Caminho("q2"));
-        File.WriteAllText(Caminho("q1/x.txt"), conteudo);
-        File.WriteAllText(Caminho("q2/x.txt"), conteudo);
+        var content = "same content in two copies for quiet";
+        Directory.CreateDirectory(MakePath("q1"));
+        Directory.CreateDirectory(MakePath("q2"));
+        File.WriteAllText(MakePath("q1/x.txt"), content);
+        File.WriteAllText(MakePath("q2/x.txt"), content);
 
         var r = ScanCommand.Run(new[] { "scan", _root, "--quiet" });
 
         Assert.Equal(2, r.ExitCode);
         Assert.Null(r.JsonOutput);
-        Assert.Equal(string.Empty, r.HumanText); // silencioso mesmo com anomalia
+        Assert.Equal(string.Empty, r.HumanText); // silent even with anomaly
     }
 
-    // ---- Determinismo do relatório pela CLI (ADR-0003 regra CI mínima) ---------------
+    // ---- CLI report determinism (ADR-0003 minimal CI rule) ---------------
 
     [Fact]
-    public void Json_DuasExecucoesNaMesmaArvore_IguaisByteAByte()
+    public void Json_TwoRunsOnSameTree_ByteIdentical()
     {
-        var conteudo = "determinismo do json emitido pela cli";
-        Directory.CreateDirectory(Caminho("d1"));
-        Directory.CreateDirectory(Caminho("d2"));
-        File.WriteAllText(Caminho("d1/p.txt"), conteudo);
-        File.WriteAllText(Caminho("d2/p.txt"), conteudo);
+        var content = "json determinism emitted by cli";
+        Directory.CreateDirectory(MakePath("d1"));
+        Directory.CreateDirectory(MakePath("d2"));
+        File.WriteAllText(MakePath("d1/p.txt"), content);
+        File.WriteAllText(MakePath("d2/p.txt"), content);
 
         var r1 = ScanCommand.Run(new[] { "scan", _root, "--json" });
         var r2 = ScanCommand.Run(new[] { "scan", _root, "--json" });
 
-        // ADR-0003: timestamps vivem SÓ em generated_from — mascarados, todo o resto
-        // do relatório v1 tem de ser idêntico byte a byte entre execuções.
+        // ADR-0003: timestamps live ONLY in generated_from — masked, everything else
+        // in report v1 must be byte-identical between runs.
         Assert.Equal(
-            MascararTimestamps(r1.JsonOutput!),
-            MascararTimestamps(r2.JsonOutput!));
+            MaskTimestamps(r1.JsonOutput!),
+            MaskTimestamps(r2.JsonOutput!));
     }
 
-    /// <summary>Campos de relógio de parede do schema v1 (ADR-0003): variam por
-    /// execução; tudo o demais é canônico. Mesmo padrão do T13 (ReportWriterTests).</summary>
-    private static string MascararTimestamps(string json) =>
+    /// <summary>Wall clock fields of schema v1 (ADR-0003): vary per
+    /// execution; everything else is canonical. Same pattern as T13 (ReportWriterTests).</summary>
+    private static string MaskTimestamps(string json) =>
         System.Text.RegularExpressions.Regex.Replace(
             json,
             "\"(scan_started_utc|scan_finished_utc)\": \"[^\"]*\"",
             "$1: \"MASKED\"");
 
     [Fact]
-    public void PlaceholderNuncaELido_ContaComoNaoAnomalia()
+    public void PlaceholderNeverRead_CountsAsNonAnomaly()
     {
-        // Placeholders entram na lista §6.3 mas NÃO são anomalia de conflito/duplicata.
-        var alvo = Caminho("offline.bin");
-        File.WriteAllBytes(alvo, new byte[4096]);
-        File.WriteAllText(alvo + ".placeholder-meta.json", "{\"kind\":\"offline\"}");
+        // Placeholders enter §6.3 list but are NOT a conflict/duplicate anomaly.
+        var target = MakePath("offline.bin");
+        File.WriteAllBytes(target, new byte[4096]);
+        File.WriteAllText(target + ".placeholder-meta.json", "{\"kind\":\"offline\"}");
 
         var r = ScanCommand.Run(new[] { "scan", _root, "--json" });
 
-        Assert.Equal(0, r.ExitCode); // placeholder isolado não vira exit 2/3
+        Assert.Equal(0, r.ExitCode); // isolated placeholder does not become exit 2/3
         var doc = JsonDocument.Parse(r.JsonOutput!);
         var ph = doc.RootElement.GetProperty("placeholders");
         Assert.Single(ph.EnumerateArray());
@@ -302,31 +302,31 @@ public sealed class CliScanCommandTests : IDisposable
 
     // ---- fixtures ---------------------------------------------------------------------
 
-    private string Caminho(string relativo)
+    private string MakePath(string relative)
     {
-        var partes = relativo.Split('/');
-        return Path.Combine(new[] { _root }.Concat(partes).ToArray());
+        var parts = relative.Split('/');
+        return Path.Combine(new[] { _root }.Concat(parts).ToArray());
     }
 
-    /// <summary>Cabeça e cauda fixas (colisão parcial garantida no L2); miolo varia —
-    /// mesmo padrão do teste DET-03 do T12.</summary>
-    private static byte[] ConteudoConflito(byte miolo)
+    /// <summary>Fixed head and tail (guaranteed L2 partial collision); varying core —
+    /// same pattern as T12 DET-03 test.</summary>
+    private static byte[] ConflictContent(byte core)
     {
-        var bytes = new byte[ArquivoConflito];
+        var bytes = new byte[ConflictFileSize];
 
-        for (var i = 0; i < Janela; i++)
+        for (var i = 0; i < WindowSize; i++)
         {
             bytes[i] = (byte)(0xAA + (i % 13));
         }
 
-        for (var i = ArquivoConflito - Janela; i < ArquivoConflito; i++)
+        for (var i = ConflictFileSize - WindowSize; i < ConflictFileSize; i++)
         {
             bytes[i] = (byte)(0xBB + (i % 17));
         }
 
-        for (var i = Janela; i < ArquivoConflito - Janela; i++)
+        for (var i = WindowSize; i < ConflictFileSize - WindowSize; i++)
         {
-            bytes[i] = miolo;
+            bytes[i] = core;
         }
 
         return bytes;

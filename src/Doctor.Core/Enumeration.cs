@@ -2,20 +2,20 @@ namespace Doctor.Core;
 
 using System.Diagnostics;
 
-// ScanTelemetry mudou de lugar: fonte única em Telemetry.cs (contrato do T06,
-// SPEC §10 completo + gate placeholder_bytes_read). Este arquivo mantém apenas
-// os tipos de enumeração Level 0.
+// ScanTelemetry moved: single source in Telemetry.cs (T06 contract,
+// SPEC §10 complete + placeholder_bytes_read gate). This file keeps only
+// Level 0 enumeration types.
 /// <summary>
-/// Erro individual de scan (permissão, caminho longo, etc.). Nunca aborta o scan:
-/// vira registro no relatório — sem falha silenciosa (docs/contratos.md, risco R10).
+/// Individual scan error (permission, long path, etc.). Never aborts the scan:
+/// becomes a record in the report — no silent failure (docs/contracts.md, risk R10).
 /// </summary>
 [DebuggerDisplay("{" + nameof(ToString) + "(),nq}")]
 public sealed record ScanError(string Path, string Message);
 
 /// <summary>
-/// Resultado da enumeração Level 0 (docs/contratos.md): <see cref="Files"/> vem SEMPRE
-/// ordenado pela ordem canônica (<see cref="PathOrder"/>) — independente da ordem física
-/// do filesystem; erros individuais não abortam o scan.
+/// Level 0 enumeration result (docs/contracts.md): <see cref="Files"/> is ALWAYS
+/// sorted by canonical order (<see cref="PathOrder"/>) — independent of the physical
+/// filesystem order; individual errors never abort the scan.
 /// </summary>
 public sealed record EnumerationResult(
     IReadOnlyList<FileEntry> Files,
@@ -23,9 +23,9 @@ public sealed record EnumerationResult(
     ScanTelemetry Telemetry);
 
 /// <summary>
-/// Contrato de enumeração Level 0 — somente metadados, zero leitura de conteúdo
-/// (SPEC §5; docs/contratos.md). Implementadores podem varrer em qualquer ordem física;
-/// nunca atravessam reparse points de diretório; nunca abrem placeholder (SPEC §6).
+/// Level 0 enumeration contract — metadata only, zero content reading
+/// (SPEC §5; docs/contracts.md). Implementors may scan in any physical order;
+/// never cross directory reparse points; never open placeholders (SPEC §6).
 /// </summary>
 public interface IFileEnumerator
 {
@@ -33,14 +33,14 @@ public interface IFileEnumerator
 }
 
 /// <summary>
-/// Wrapper determinístico sobre um enumerador físico qualquer (SPEC §3):
-/// reordena pela ordem canônica byte-a-byte de caminho (<see cref="PathOrder"/>),
-/// marca placeholders via <see cref="PlaceholderPolicy"/>, aplica a <see cref="ReparsePolicy"/>
-/// (marcação IsReparsePoint, guarda de visitados por inode e teto de profundidade —
-/// threat-model T-02) e deriva a telemetria da lista final ordenada.
-/// Não lê conteúdo — delega ao enumerador interno apenas metadados.
-/// Rejeições da policy viram <see cref="ScanError"/> em <see cref="EnumerationResult.Errors"/>:
-/// nunca falha silenciosa (contratos.md R10).
+/// Deterministic wrapper over any physical enumerator (SPEC §3):
+/// reorders by the byte-by-byte canonical path order (<see cref="PathOrder"/>),
+/// marks placeholders via <see cref="PlaceholderPolicy"/>, applies <see cref="ReparsePolicy"/>
+/// (IsReparsePoint marking, per-inode visited guard and depth ceiling —
+/// threat-model T-02) and derives telemetry from the final sorted list.
+/// Does not read content — delegates only metadata to the inner enumerator.
+/// Policy rejections become <see cref="ScanError"/> in <see cref="EnumerationResult.Errors"/>:
+/// never silent failure (contracts.md R10).
 /// </summary>
 public sealed class OrderedFileEnumerator : IFileEnumerator
 {
@@ -59,8 +59,8 @@ public sealed class OrderedFileEnumerator : IFileEnumerator
 
         var physical = _inner.Enumerate(rootPath, ct);
 
-        // ---- ordenação canônica + marcações (ordem física nunca decide; §3) -------------
-        var ordenados = PathOrder.Sort(physical.Files, e => e)
+        // ---- canonical ordering + markings (physical order never decides; §3) -------------
+        var ordered = PathOrder.Sort(physical.Files, e => e)
             .Select(e => e with
             {
                 IsPlaceholder = PlaceholderPolicy.IsPlaceholder(e),
@@ -69,54 +69,54 @@ public sealed class OrderedFileEnumerator : IFileEnumerator
             })
             .ToArray();
 
-        // ---- ReparsePolicy: loop detection por inode + teto de profundidade --------------
-        // Guarda de visitados por (VolumeId, FileId) sobre a lista JÁ ordenada: decisão
-        // determinística — fica sempre a PRIMEIRA ocorrência na ordem canônica, qualquer
-        // que seja a ordem física de chegada (mitigação T-02; contratos.md §3).
-        var visitados = new HashSet<(string VolumeId, string FileId)>();
-        var files = new List<FileEntry>(ordenados.Length);
+        // ---- ReparsePolicy: loop detection by inode + depth ceiling --------------
+        // Per-inode visited guard on the ALREADY sorted list: deterministic decision
+        // — always keeps the FIRST occurrence in canonical order, regardless of
+        // physical arrival order (T-02 mitigation; contracts.md §3).
+        var visited = new HashSet<(string VolumeId, string FileId)>();
+        var files = new List<FileEntry>(ordered.Length);
         var errors = new List<ScanError>(physical.Errors);
-        var raizNormalizada = rootPath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+        var normalizedRoot = rootPath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
             .TrimEnd(Path.DirectorySeparatorChar);
 
-        // ---- SEG-12 (adendo T-15; caso T-06/R1): subárvore reservada fora da enumeração --
-        // <raiz>/ConflictDoctor/ é território da ferramenta (quarentena §18/SPEC,
-        // ADR-0002): qualquer entrada sob esse prefixo é política estrutural da
-        // fronteira canônica Level 0 — nunca candidato, nunca erro (contratos.md R10),
-        // nunca contagem em files_enumerated. Comparação de PREFIXO EM BYTES sobre o
-        // caminho canônico (Ordinal), separador já normalizado dos dois lados.
-        var prefixoReservado = raizNormalizada
+        // ---- SEG-12 (T-15 addendum; threat-model T-06/R1): reserved subtree outside enumeration --
+        // <root>/ConflictDoctor/ is the tool's territory (quarantine §18/SPEC,
+        // ADR-0002): any entry under this prefix is structural policy of the
+        // Level 0 canonical boundary — never a candidate, never an error (contracts.md R10),
+        // never counted in files_enumerated. PREFIX-BYTES comparison on the
+        // canonical path (Ordinal), separator already normalized on both sides.
+        var reservedPrefix = normalizedRoot
             + Path.DirectorySeparatorChar
-            + SubarvoreReservada.NomeDiretorio
+            + ReservedSubtree.DirectoryName
             + Path.DirectorySeparatorChar;
 
-        var excluidosReservados = 0;
+        var excludedReserved = 0;
 
-        foreach (var entry in ordenados)
+        foreach (var entry in ordered)
         {
-            var caminhoCanônico = entry.Path.Replace(
+            var canonicalPath = entry.Path.Replace(
                 Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
 
-            if (caminhoCanônico.StartsWith(prefixoReservado, StringComparison.Ordinal))
+            if (canonicalPath.StartsWith(reservedPrefix, StringComparison.Ordinal))
             {
-                excluidosReservados++;
+                excludedReserved++;
                 continue;
             }
 
-            if (!visitados.Add((entry.VolumeId, entry.FileId)))
+            if (!visited.Add((entry.VolumeId, entry.FileId)))
             {
                 errors.Add(new ScanError(
                     entry.Path,
-                    "reparse: caminho volta ao mesmo inode ja visitado - entrada rejeitada (loop detection, threat-model T-02)"));
+                    "reparse: path returns to the same already-visited inode — entry rejected (loop detection, threat-model T-02)"));
                 continue;
             }
 
-            var depth = Profundidade(entry.Path, raizNormalizada);
+            var depth = GetDepth(entry.Path, normalizedRoot);
             if (depth > _reparsePolicy.MaxDepth)
             {
                 errors.Add(new ScanError(
                     entry.Path,
-                    $"reparse: profundidade {depth} excede o teto de {_reparsePolicy.MaxDepth} - entrada rejeitada (threat-model T-02)"));
+                    $"reparse: depth {depth} exceeds ceiling of {_reparsePolicy.MaxDepth} — entry rejected (threat-model T-02)"));
                 continue;
             }
 
@@ -127,40 +127,40 @@ public sealed class OrderedFileEnumerator : IFileEnumerator
         {
             FilesEnumerated = files.Count,
             FilesPlaceholder = files.Count(f => f.IsPlaceholder),
-            // Cumulativo entre camadas: a composição de produção sofre wrap duplo
-            // (pipeline → Ordered sobre Ordered+CrossPlatform) e a camada interna já
-            // excluiu; recontar zeraria o contador (idempotência §20).
+            // Cumulative across layers: production composition suffers double wrap
+            // (pipeline → Ordered over Ordered+CrossPlatform) and the inner layer already
+            // excluded; recounting would zero the counter (idempotency §20).
             FilesExcludedConflictDoctor =
-                physical.Telemetry.FilesExcludedConflictDoctor + excluidosReservados,
+                physical.Telemetry.FilesExcludedConflictDoctor + excludedReserved,
         };
 
         return new EnumerationResult(files, errors, telemetry);
     }
 
-    /// <summary>Profundidade relativa à raiz em segmentos de diretório (raiz = 0).</summary>
-    private static int Profundidade(string path, string raizNormalizada)
+    /// <summary>Relative depth from root in directory segments (root = 0).</summary>
+    private static int GetDepth(string path, string normalizedRoot)
     {
-        var normalizado = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-        if (!normalizado.StartsWith(raizNormalizada, StringComparison.Ordinal))
+        var normalized = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        if (!normalized.StartsWith(normalizedRoot, StringComparison.Ordinal))
         {
-            return 0; // caminho fora da raiz não tem profundidade relativa mensurável
+            return 0; // path outside root has no measurable relative depth
         }
 
-        var relativo = normalizado.AsSpan(raizNormalizada.Length).TrimStart(Path.DirectorySeparatorChar);
-        if (relativo.IsEmpty)
+        var relative = normalized.AsSpan(normalizedRoot.Length).TrimStart(Path.DirectorySeparatorChar);
+        if (relative.IsEmpty)
         {
             return 0;
         }
 
-        var profundidade = 1; // o primeiro segmento após a raiz é o próprio arquivo
-        foreach (var c in relativo)
+        var depth = 1; // the first segment after root is the file itself
+        foreach (var c in relative)
         {
             if (c == Path.DirectorySeparatorChar)
             {
-                profundidade++;
+                depth++;
             }
         }
 
-        return profundidade;
+        return depth;
     }
 }

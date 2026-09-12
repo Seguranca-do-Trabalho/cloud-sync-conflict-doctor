@@ -1,43 +1,43 @@
-# EPIC 19 — Auditoria Final: "CAN I TRUST THE DELETE BUTTON?"
-**Data:** 2026-08-23 · **Executor:** orquestrador (André Santo / forg3) · **Veredito: SIM, CONFIÁVEL**
+# EPIC 19 — Final Audit: "CAN I TRUST THE DELETE BUTTON?"
+**Date:** 2026-08-23 · **Executor:** forg3 · **Verdict: YES, TRUSTWORTHY**
 
-## Eixos auditados (evidências reais de execução)
+## Audited Axes (Real Execution Evidence)
 
-### 1. Nenhuma deleção direta existe
-`grep` por `File.Delete|File.Replace|Directory.Delete` em `src/`: **zero ocorrências**
-(forum comentários doc). A única primitiva permissiva é `File.Move` para a quarentena
-interna (`Quarantine.cs` L133/L175), confinada a `<raiz>/ConflictDoctor/quarantine/<op_id>/`.
+### 1. No Direct Deletion Exists
+`grep` for `File.Delete|File.Replace|Directory.Delete` in `src/`: **zero occurrences**
+(doc comments forum). The only permissive primitive is `File.Move` to internal
+quarantine (`Quarantine.cs` L133/L175), confined to `<root>/ConflictDoctor/quarantine/<op_id>/`.
 
-### 2. Quarentena é sempre reversível
-- Manifesto escrito **atomicamente** (`.tmp` → `File.Move overwrite:false`) — L344–350;
-- Publicação por rename de diretório staging → `<op_id>` — nunca parcial;
-- Histórico `restored` nunca apagado do manifesto (L503).
+### 2. Quarantine Is Always Reversible
+- Manifest written **atomically** (`.tmp` → `File.Move overwrite:false`) — L344–350;
+- Published by staging directory rename → `<op_id>` — never partial;
+- `restored` history never deleted from manifest (L503).
 
-### 3. Restore nunca sobrescreve silenciosamente
-- `File.Move(payload, destino, overwrite: false)` — L499;
-- Destino ocupado ⇒ `RestoreConflictException`, **nada** é restaurado (fail-closed na fase inteira).
+### 3. Restore Never Silently Overwrites
+- `File.Move(payload, destination, overwrite: false)` — L499;
+- Occupied destination ⇒ `RestoreConflictException`, **nothing** restored (fail-closed across entire phase).
 
-### 4. Fail-closed ponta a ponta (T-11)
-- Hash não verificável ⇒ sentinela `UNRESOLVED::motivo` ⇒ grupo vira `UnresolvedGroup`
-  e **nunca** chega à resolução/quarentena (FCT-01..04);
-- Resolução só opera sobre `ConflictGroup` pós-L3 com hash completo verificado.
+### 4. End-to-End Fail-Closed (T-11)
+- Unverifiable hash ⇒ `UNRESOLVED::reason` sentinel ⇒ group becomes `UnresolvedGroup`
+  and **never** reaches resolution/quarantine (FCT-01..04);
+- Resolution operates only on post-L3 `ConflictGroup` with verified full hash.
 
-### 5. Quarentena fora da enumeração (SEG-12)
-`SubarvoreReservada` exclui `<raiz>/ConflictDoctor/` da varredura; segundo scan é
-byte-idêntico ao primeiro (idempotência §20). `files_excluded_conflictdoctor` no schema v2.
+### 5. Quarantine Excluded from Enumeration (SEG-12)
+`ReservedSubtree` excludes `<root>/ConflictDoctor/` from scan; second scan is
+byte-identical to first (idempotency §20). `files_excluded_conflictdoctor` in v2 schema.
 
-### 6. Provas automatizadas (executadas agora)
-- Suíte de segurança agregada (SEG/TOCTOU/Containment/FailClosed/PathCanonical/Cache/NDES/GUI guards): **33/33 verde**
-- Suíte completa: **541/541 verde**, 0 falhas
-- Cobertura Doctor.Core: **93,37%** linhas
+### 6. Automated Proofs (Executed Now)
+- Aggregated security suite (SEG/TOCTOU/Containment/FailClosed/PathCanonical/Cache/NDES/GUI guards): **33/33 green**
+- Full suite: **541/541 green**, 0 failures
+- Doctor.Core coverage: **93.37%** lines
 
-## Riscos remanescentes (honestos)
-1. TOCTOU residual entre hash e move é mitigado por StabilityChecker (S11-3) mas um
-   adversário com acesso simultâneo ao FS pode sempre vencer uma janela mínima —
-   mitigação estrutural: rollback por hash pós-move (S11-6a).
-2. Placeholders reais OneDrive/Drive só são exercitáveis em Windows nativo
-   (PLH-03) — coberto pelo job Windows do CI quando Actions reativarem.
-3. GATE 6 permanece pendência estrutural: exige checks remotos + Windows.
+## Remaining Risks (Honest)
+1. Residual TOCTOU between hash and move is mitigated by StabilityChecker (S11-3) but an
+   adversary with simultaneous FS access can always win a minimal window —
+   structural mitigation: post-move hash rollback (S11-6a).
+2. Real OneDrive/Drive placeholders are only exercisable on native Windows
+   (PLH-03) — covered by Windows CI job when Actions reactivate.
+3. GATE 6 remains structural pending: requires remote checks + Windows.
 
-**Resposta à pergunta-título: sim — o botão "mover para quarentena" é confiável,
-reversível e audível. Não existe botão de delete.**
+**Answer to the title question: yes — the "move to quarantine" button is trustworthy,
+reversible, and auditable. There is no delete button.**

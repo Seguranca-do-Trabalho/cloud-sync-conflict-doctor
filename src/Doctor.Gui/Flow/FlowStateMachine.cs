@@ -3,9 +3,9 @@ using Doctor.Gui.Flow;
 namespace Doctor.Gui.Flow;
 
 /// <summary>
-/// Máquina de estados do fluxo §15 da SPEC — pura, sem Avalonia, determinística.
+/// §15 SPEC flow state machine — pure, no Avalonia, deterministic.
 ///
-/// GRAFO DE TRANSIÇÕES (origem → destino, pelo gatilho):
+/// TRANSITION GRAPH (origin → destination, by trigger):
 ///
 ///   ChooseFolder  --StartScan--------------------------→ Scanning
 ///   Scanning      --ScanCompleted [report]------------→ Summary
@@ -13,39 +13,39 @@ namespace Doctor.Gui.Flow;
 ///   Summary       --OpenConflicts  [report]-----------→ Conflicts
 ///   Duplicates    --OpenConflicts  [report]-----------→ Conflicts
 ///   Duplicates    --Back          [report]------------→ Summary
-///   Conflicts     --CompareConflict[report+selecao]--→ Compare
+///   Conflicts     --CompareConflict[report+selection]--→ Compare
 ///   Conflicts     --Back          [report]------------→ Duplicates
-///   Compare       --QueueOtherVersions[fila]---------→ ChooseAction
-///   Compare       --Back          [report+selecao]----→ Conflicts
-///   ChooseAction  --ConfirmQuarantine[fila]----------→ Quarantine
-///   ChooseAction  --Back          [fila]--------------→ Compare
+///   Compare       --QueueOtherVersions[queue]---------→ ChooseAction
+///   Compare       --Back          [report+selection]--→ Conflicts
+///   ChooseAction  --ConfirmQuarantine[queue]----------→ Quarantine
+///   ChooseAction  --Back          [queue]-------------→ Compare
 ///   Quarantine    --OpenConfirmation[opid]-----------→ Confirmation
-///   Quarantine    --Back          [fila]--------------→ ChooseAction
+///   Quarantine    --Back          [queue]-------------→ ChooseAction
 ///   Confirmation  --Restart------------------------------→ ChooseFolder
 ///
-/// GUARDAS (pré-condições por transição):
-///   [report]        — só sai de Scanning com relatório completo; Duplicatas e
-///                     Conflitos exigem relatório presente;
-///   [selecao]       — não entra em Comparar sem item selecionado em Conflitos;
-///   [fila]          — não entra em Escolher ação/Quarentena com fila vazia;
-///   [opid]          — não entra em Confirmação sem operation_id atribuído (§18).
+/// GUARDS (preconditions per transition):
+///   [report]        — only leaves Scanning with a complete report; Duplicates and
+///                     Conflicts require a report to be present;
+///   [selection]     — does not enter Compare without a selected item in Conflicts;
+///   [queue]         — does not enter Choose Action/Quarantine with an empty queue;
+///   [opid]          — does not enter Confirmation without an assigned operation_id (§18).
 ///
-/// MAPA DO BOTÃO VOLTAR (documentado; "Repensar" é o Back de ChooseAction):
-///   Duplicatas → Resumo; Conflitos → Duplicatas; Comparar → Conflitos;
-///   Escolher ação → Comparar (limpa a fila: a escolha anterior deixa de valer);
-///   Quarentena → Escolher ação. BLOQUEADO em Escolher pasta (não há para onde
-///   voltar), Escaneando (abortaria scan sem relatório), Resumo (voltaria ao
-///   início sem reinício limpo) e Confirmação (operação já registrada — voltar
-///   exporia estado inconsistente pós-operação).
+/// BACK BUTTON MAP (documented; "Rethink" is the Back from ChooseAction):
+///   Duplicates → Summary; Conflicts → Duplicates; Compare → Conflicts;
+///   Choose Action → Compare (clears the queue: the previous choice becomes invalid);
+///   Quarantine → Choose Action. BLOCKED at Choose Folder (nowhere to go
+///   back to), Scanning (would abort scan without a report), Summary (would go
+///   back to the start without a clean restart) and Confirmation (operation already
+///   recorded — going back would expose inconsistent post-operation state).
 ///
-/// Transição inválida LANÇA TransicaoInvalidaException e mantém o estado
-/// (fail-fast); CanFire consulta a mesma tabela sem lançar, para a UI
-/// desabilitar botões. A MainWindowViewModel delega toda navegação aqui:
-/// nenhuma sequência de cliques leva a um estado fora da ordem válida.
+/// Invalid transition THROWS InvalidTransitionException and keeps the state
+/// (fail-fast); CanFire queries the same table without throwing, so the UI
+/// can disable buttons. MainWindowViewModel delegates all navigation here:
+/// no sequence of clicks leads to a state outside the valid order.
 /// </summary>
 public sealed class FlowStateMachine
 {
-    /// <summary>Estado mutável interno; encapsulado para o grafo estático não vazar.</summary>
+    /// <summary>Mutable internal state; encapsulated so the static graph cannot leak.</summary>
     private sealed class ScreenState
     {
         public FlowScreen Screen { get; set; } = FlowScreen.ChooseFolder;
@@ -55,131 +55,131 @@ public sealed class FlowStateMachine
         public bool HasOperationId { get; set; }
     }
 
-    private readonly record struct Transition(FlowScreen Destino, Func<ScreenState, bool> Guarda);
+    private readonly record struct Transition(FlowScreen Destination, Func<ScreenState, bool> Guard);
 
-    private static readonly IReadOnlyDictionary<(FlowScreen Origem, FlowTrigger Gatilho), Transition> Grafo =
+    private static readonly IReadOnlyDictionary<(FlowScreen Origin, FlowTrigger Trigger), Transition> Graph =
         new Dictionary<(FlowScreen, FlowTrigger), Transition>
         {
-            [(FlowScreen.ChooseFolder, FlowTrigger.StartScan)] = new(FlowScreen.Scanning, Sempre),
+            [(FlowScreen.ChooseFolder, FlowTrigger.StartScan)] = new(FlowScreen.Scanning, Always),
 
             [(FlowScreen.Scanning, FlowTrigger.ScanCompleted)] =
-                new(FlowScreen.Summary, ExigeRelatorio),
+                new(FlowScreen.Summary, RequiresReport),
 
             [(FlowScreen.Summary, FlowTrigger.OpenDuplicates)] =
-                new(FlowScreen.Duplicates, ExigeRelatorio),
+                new(FlowScreen.Duplicates, RequiresReport),
             [(FlowScreen.Summary, FlowTrigger.OpenConflicts)] =
-                new(FlowScreen.Conflicts, ExigeRelatorio),
+                new(FlowScreen.Conflicts, RequiresReport),
 
             [(FlowScreen.Duplicates, FlowTrigger.OpenConflicts)] =
-                new(FlowScreen.Conflicts, ExigeRelatorio),
+                new(FlowScreen.Conflicts, RequiresReport),
             [(FlowScreen.Duplicates, FlowTrigger.Back)] =
-                new(FlowScreen.Summary, ExigeRelatorio),
+                new(FlowScreen.Summary, RequiresReport),
 
             [(FlowScreen.Conflicts, FlowTrigger.CompareConflict)] =
                 new(FlowScreen.Compare, s => s.HasReport && s.HasSelectedConflict),
             [(FlowScreen.Conflicts, FlowTrigger.Back)] =
-                new(FlowScreen.Duplicates, ExigeRelatorio),
+                new(FlowScreen.Duplicates, RequiresReport),
 
             [(FlowScreen.Compare, FlowTrigger.QueueOtherVersions)] =
-                new(FlowScreen.ChooseAction, ExigeFila),
+                new(FlowScreen.ChooseAction, RequiresQueue),
             [(FlowScreen.Compare, FlowTrigger.Back)] =
                 new(FlowScreen.Conflicts, s => s.HasReport && s.HasSelectedConflict),
 
             [(FlowScreen.ChooseAction, FlowTrigger.ConfirmQuarantine)] =
-                new(FlowScreen.Quarantine, ExigeFila),
-            [(FlowScreen.ChooseAction, FlowTrigger.Back)] = new(FlowScreen.Compare, ExigeFila),
+                new(FlowScreen.Quarantine, RequiresQueue),
+            [(FlowScreen.ChooseAction, FlowTrigger.Back)] = new(FlowScreen.Compare, RequiresQueue),
 
             [(FlowScreen.Quarantine, FlowTrigger.OpenConfirmation)] =
                 new(FlowScreen.Confirmation, s => s.HasOperationId),
-            [(FlowScreen.Quarantine, FlowTrigger.Back)] = new(FlowScreen.ChooseAction, ExigeFila),
+            [(FlowScreen.Quarantine, FlowTrigger.Back)] = new(FlowScreen.ChooseAction, RequiresQueue),
 
             [(FlowScreen.Confirmation, FlowTrigger.Restart)] =
-                new(FlowScreen.ChooseFolder, Sempre),
+                new(FlowScreen.ChooseFolder, Always),
         };
 
-    private readonly ScreenState _estado = new();
+    private readonly ScreenState _state = new();
 
-    /// <summary>Tela corrente.</summary>
-    public FlowScreen Current => _estado.Screen;
+    /// <summary>Current screen.</summary>
+    public FlowScreen Current => _state.Screen;
 
-    // --- Guardas: dados do mundo que a GUI liga antes de disparar o gatilho ---
+    // --- Guards: world data the GUI sets before firing a trigger ---
 
-    /// <summary>Relatório completo disponível (scan concluído).</summary>
-    public bool HasReport { get => _estado.HasReport; set => _estado.HasReport = value; }
+    /// <summary>Complete report available (scan finished).</summary>
+    public bool HasReport { get => _state.HasReport; set => _state.HasReport = value; }
 
-    /// <summary>Há grupo selecionado em Conflitos (pré-condição de Comparar).</summary>
+    /// <summary>Conflict group selected in Conflicts (precondition for Compare).</summary>
     public bool HasSelectedConflict
     {
-        get => _estado.HasSelectedConflict;
-        set => _estado.HasSelectedConflict = value;
+        get => _state.HasSelectedConflict;
+        set => _state.HasSelectedConflict = value;
     }
 
-    /// <summary>Fila da quarentena não vazia.</summary>
+    /// <summary>Non-empty quarantine queue.</summary>
     public bool HasQueuedItems
     {
-        get => _estado.HasQueuedItems;
-        set => _estado.HasQueuedItems = value;
+        get => _state.HasQueuedItems;
+        set => _state.HasQueuedItems = value;
     }
 
-    /// <summary>operation_id fake atribuído à operação (§18).</summary>
+    /// <summary>Fake operation_id assigned to the operation (§18).</summary>
     public bool HasOperationId
     {
-        get => _estado.HasOperationId;
-        set => _estado.HasOperationId = value;
+        get => _state.HasOperationId;
+        set => _state.HasOperationId = value;
     }
 
     /// <summary>
-    /// Consulta se o gatilho é válido no estado corrente, sem lançar e sem mudar estado.
-    /// A UI usa isto para habilitar/desabilitar botões.
+    /// Queries whether the trigger is valid in the current state, without throwing
+    /// or changing state. The UI uses this to enable/disable buttons.
     /// </summary>
-    public bool CanFire(FlowTrigger gatilho) =>
-        Grafo.TryGetValue((_estado.Screen, gatilho), out var transicao)
-        && transicao.Guarda(_estado);
+    public bool CanFire(FlowTrigger trigger) =>
+        Graph.TryGetValue((_state.Screen, trigger), out var transition)
+        && transition.Guard(_state);
 
     /// <summary>
-    /// Dispara o gatilho. Transição inexistente ou com guarda falsa lança
-    /// TransicaoInvalidaException e mantém o estado corrente.
+    /// Fires the trigger. Nonexistent transition or false guard throws
+    /// InvalidTransitionException and keeps the current state.
     /// </summary>
-    public void Fire(FlowTrigger gatilho)
+    public void Fire(FlowTrigger trigger)
     {
-        if (!Grafo.TryGetValue((_estado.Screen, gatilho), out var transicao)
-            || !transicao.Guarda(_estado))
+        if (!Graph.TryGetValue((_state.Screen, trigger), out var transition)
+            || !transition.Guard(_state))
         {
-            throw new TransicaoInvalidaException(_estado.Screen, gatilho);
+            throw new InvalidTransitionException(_state.Screen, trigger);
         }
 
-        if (gatilho == FlowTrigger.Back && transicao.Destino == FlowScreen.Compare)
+        if (trigger == FlowTrigger.Back && transition.Destination == FlowScreen.Compare)
         {
-            // "Repensar": a escolha anterior deixa de valer — a fila esvazia.
-            _estado.HasQueuedItems = false;
+            // "Rethink": the previous choice becomes invalid — the queue empties.
+            _state.HasQueuedItems = false;
         }
 
-        if (gatilho == FlowTrigger.Restart)
+        if (trigger == FlowTrigger.Restart)
         {
             Reset();
             return;
         }
 
-        _estado.Screen = transicao.Destino;
+        _state.Screen = transition.Destination;
     }
 
     /// <summary>
-    /// Reinício seguro: volta a Escolher pasta zerando TODAS as guardas — nenhum
-    /// resíduo de uma análise vaza para a seguinte (provado por teste no card).
+    /// Safe restart: returns to Choose Folder resetting ALL guards — no
+    /// residue from one scan leaks into the next (proven by test in the card).
     /// </summary>
     public void Reset()
     {
-        _estado.Screen = FlowScreen.ChooseFolder;
-        _estado.HasReport = false;
-        _estado.HasSelectedConflict = false;
-        _estado.HasQueuedItems = false;
-        _estado.HasOperationId = false;
+        _state.Screen = FlowScreen.ChooseFolder;
+        _state.HasReport = false;
+        _state.HasSelectedConflict = false;
+        _state.HasQueuedItems = false;
+        _state.HasOperationId = false;
     }
 
-    private static bool Sempre(ScreenState _) => true;
+    private static bool Always(ScreenState _) => true;
 
-    private static bool ExigeRelatorio(ScreenState s) => s.HasReport;
+    private static bool RequiresReport(ScreenState s) => s.HasReport;
 
-    private static bool ExigeFila(ScreenState s) =>
+    private static bool RequiresQueue(ScreenState s) =>
         s.HasReport && s.HasSelectedConflict && s.HasQueuedItems;
 }

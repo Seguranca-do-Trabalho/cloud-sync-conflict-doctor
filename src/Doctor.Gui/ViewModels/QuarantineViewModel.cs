@@ -5,9 +5,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Doctor.Gui.ViewModels;
 
 /// <summary>
-/// Sub-ViewModel da tela Quarentena: fila de itens marcados para mover para a
-/// quarentena (ADR-0002), sem duplicar item repetido. Contagem em dígitos crus
-/// (InvariantCulture). A MainWindow apenas orquestra; nenhum arquivo real é tocado.
+/// Quarantine screen sub-ViewModel: queue of items marked to be moved to
+/// quarantine (ADR-0002), without duplicating repeated items. Count in raw digits
+/// (InvariantCulture). MainWindow only orchestrates; no real file is touched.
 /// </summary>
 public partial class QuarantineViewModel : ObservableObject
 {
@@ -17,27 +17,27 @@ public partial class QuarantineViewModel : ObservableObject
 
     public bool HasItems => Count > 0;
 
-    /// <summary>Contagem em dígitos crus, nunca locale (§3).</summary>
+    /// <summary>Count in raw digits, never locale (§3).</summary>
     public string CountLabel => Count.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Enfileira caminho para mover para a quarentena, sem duplicar.</summary>
+    /// <summary>Enqueues a path for quarantine move, without duplicating.</summary>
     public void Queue(string filePath)
     {
         if (!string.IsNullOrEmpty(filePath) && !Paths.Contains(filePath))
         {
             Paths.Add(filePath);
-            NotificarContagens();
+            NotifyCounts();
         }
     }
 
-    /// <summary>Esvazia a fila (novo scan começa do zero).</summary>
+    /// <summary>Empties the queue (new scan starts from scratch).</summary>
     public void Clear()
     {
         Paths.Clear();
-        NotificarContagens();
+        NotifyCounts();
     }
 
-    private void NotificarContagens()
+    private void NotifyCounts()
     {
         OnPropertyChanged(nameof(Count));
         OnPropertyChanged(nameof(HasItems));

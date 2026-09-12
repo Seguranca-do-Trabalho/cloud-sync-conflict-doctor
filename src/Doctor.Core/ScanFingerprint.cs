@@ -5,28 +5,28 @@ using System.Globalization;
 using System.Text;
 
 /// <summary>
-/// Fingerprint de conteúdo do <see cref="ScanResult"/> (card T19; consolida S11-4
-/// e a regra R9 do threat-model — operation_id nunca depende do relógio):
+/// Content fingerprint of <see cref="ScanResult"/> (card T19; consolidates S11-4
+/// and threat-model rule R9 — operation_id never depends on the clock):
 ///
-///   operation_id = BLAKE3("ccd-scanresult-op-v1" || serialização canônica v1)
-///                  truncado a 64 bits, hex minúscula (16 caracteres).
+///   operation_id = BLAKE3("ccd-scanresult-op-v1" || v1 canonical serialization)
+///                  truncated to 64 bits, lowercase hex (16 characters).
 ///
-/// A serialização canônica percorre o grafo em ordem FIXA — listas ordenadas por
-/// caminho canônico (<see cref="PathOrder"/>) e campos na ordem declarada abaixo —
-/// de modo que DOIS ScanResults com o mesmo CONTEÚDO produzem o mesmo id,
-/// independentemente da ordem física com que as listas foram construídas
-/// (determinismo §3). Qualquer mudança de conteúdo (um hash, um membro, um size)
-/// muda o id: ele é FUNÇÃO do conteúdo. Campos derivados ou informativos
-/// (<c>BytesRead</c>, telemetria) não entram — só o que define o veredito.
+/// Canonical serialization traverses the graph in FIXED order — lists sorted by
+/// canonical path (<see cref="PathOrder"/>) and fields in the order declared below —
+/// so that TWO ScanResults with the same CONTENT produce the same id,
+/// regardless of the physical order lists were built
+/// (determinism §3). Any content change (a hash, a member, a size)
+/// changes the id: it is a FUNCTION of the content. Derived or informational
+/// fields (<c>BytesRead</c>, telemetry) do not enter — only what defines the verdict.
 /// </summary>
 public static class ScanFingerprint
 {
-    /// <summary>Prefixo de domínio da receita v1 do operation_id.</summary>
+    /// <summary>v1 recipe operation_id domain prefix.</summary>
     internal const string DomainTag = "ccd-scanresult-op-v1";
 
     /// <summary>
-    /// Deriva o operation_id do CONTEÚDO do scan. Puro e determinístico:
-    /// mesma árvore classificada ⇒ mesmo id; relógio não participa (R9).
+    /// Derives the operation_id from scan CONTENT. Pure and deterministic:
+    /// same classified tree ⇒ same id; clock does not participate (R9).
     /// </summary>
     public static string OperationId(ScanResult result)
     {
@@ -35,7 +35,7 @@ public static class ScanFingerprint
         using var hasher = Blake3.Hasher.New();
         hasher.Update(Encoding.ASCII.GetBytes(DomainTag));
 
-        // Grupos candidatos — ordem canônica por primeiro membro.
+        // Candidate groups — canonical order by first member.
         foreach (var g in result.Groups.OrderBy(g => g.Members.FirstOrDefault(), (IComparer<FileEntry?>)PathOrder.Comparer))
         {
             hasher.Update(Tag("g"));
@@ -48,7 +48,7 @@ public static class ScanFingerprint
             }
         }
 
-        // Duplicatas idênticas — ordem por hash (Ordinal); membros em ordem canônica.
+        // Identical duplicates — order by hash (Ordinal); members in canonical order.
         foreach (var d in result.IdenticalDuplicates
                      .OrderBy(d => d.Hash, StringComparer.Ordinal)
                      .ThenBy(d => d.Files.FirstOrDefault(), (IComparer<FileEntry?>)PathOrder.Comparer))
@@ -63,8 +63,8 @@ public static class ScanFingerprint
             }
         }
 
-        // Conflitos reais — ordem por nome base normalizado (Ordinal);
-        // membros pelo par (caminho, hash) em ordem canônica.
+        // Real conflicts — order by normalized base name (Ordinal);
+        // members by (path, hash) pair in canonical order.
         foreach (var c in result.RealConflicts
                      .OrderBy(c => c.NormalizedBaseName, StringComparer.Ordinal)
                      .ThenBy(c => c.SizeBytes))
@@ -80,7 +80,7 @@ public static class ScanFingerprint
             }
         }
 
-        // Truncação a 64 bits (big-endian) ⇒ 16 hex minúsculas.
+        // Truncation to 64 bits (big-endian) ⇒ 16 lowercase hex chars.
         var full = hasher.Finalize();
         Span<byte> digest = stackalloc byte[32];
         full.AsSpan().CopyTo(digest);
@@ -103,7 +103,7 @@ public static class ScanFingerprint
         hasher.Update(Field(entry.FileId));
     }
 
-    /// <summary>Campo com comprimento prefixado (sem ambiguidade de concatenação).</summary>
+    /// <summary>Length-prefixed field (no concatenation ambiguity).</summary>
     private static ReadOnlySpan<byte> Tag(string tag) => Field(tag);
 
     private static byte[] Field(string value)

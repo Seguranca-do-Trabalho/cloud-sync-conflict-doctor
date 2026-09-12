@@ -3,28 +3,28 @@ namespace Doctor.Tests;
 using Doctor.Core;
 
 /// <summary>
-/// CD-01 (t_57b34881) — HSH-02, HSH-03 e HSH-04 do test-strategy (§3.6).
+/// CD-01 (t_57b34881) — HSH-02, HSH-03, and HSH-04 from test-strategy (§3.6).
 ///
 /// HSH-02 FullHash_ExecutedOnlyForPartialSurvivors:
-///   arvore com pares mesmo-tamanho/conteudo-distinto (morrem no L2) ao lado
-///   de par com colisao parcial garantida (cabeca+cauda fixas, miolo diferente);
-///   CountingHasher prova que arquivo morto no L2 NUNCA recebe FullHash e que o
-///   sobrevivente recebe exatamente 1 full hash por membro.
+///   Tree with same-size/distinct-content pairs (eliminated in L2) alongside
+///   pair with guaranteed partial collision (fixed head+tail, distinct core);
+///   CountingHasher proves that file eliminated in L2 NEVER receives FullHash and that
+///   survivor receives exactly 1 full hash per member.
 ///
 /// HSH-03 IdenticalContent_FullHashEqual_ClassifiedIdenticalDuplicate:
-///   copias byte-identicas -> exatamente 1 IdenticalDuplicate, zero RealConflicts,
-///   hash BLAKE3 hex 64 minusculo, ordem canonica em Files.
+///   Byte-identical copies -> exactly 1 IdenticalDuplicate, zero RealConflicts,
+///   BLAKE3 hex 64 lowercase hash, canonical order in Files.
 ///
 /// HSH-04 DifferentContent_SameNormalizedBase_ClassifiedRealConflict:
-///   mesmo nome normalizado, conteudo diferente -> RealConflict cobrindo TODOS os
-///   membros com hash individual; conflito real NUNCA aparece em IdenticalDuplicates
-///   (Q9/Q10 do SPEC 58).
+///   Same normalized name, distinct content -> RealConflict covering ALL
+///   members with individual hash; real conflict NEVER appears in IdenticalDuplicates
+///   (Q9/Q10 of SPEC §8).
 /// </summary>
 public sealed class ConflictDetectionTests : IDisposable
 {
     private const int Kib = 1024;
-    private const int ArquivoGrande = 200 * Kib; // > 128 KiB: janelas parcial distintas
-    private const int Janela = 64 * Kib;
+    private const int LargeFileSize = 200 * Kib; // > 128 KiB: distinct partial windows
+    private const int WindowSize = 64 * Kib;
 
     private readonly string _root;
     private readonly List<string> _tempFiles = new();
@@ -45,62 +45,62 @@ public sealed class ConflictDetectionTests : IDisposable
     }
 
     // ================================================================
-    // HSH-02: FullHash executado SO para sobreviventes do Level 2
+    // HSH-02: FullHash executed ONLY for Level 2 survivors
     // ================================================================
 
     [Fact]
-    public void FullHash_ExecutadoApenasParaSobreviventesDoL2_SemChamadaEmMortos()
+    public void FullHash_ExecutedOnlyForL2Survivors_NoCallOnEliminated()
     {
-        // Arvore com:
-        //   - Par mesmo-tamanho/conteudo-distinto (parciais DIFERENTES -> morre no L2)
-        //   - Par com colisao parcial (cabeca+cauda fixas, miolo diferente -> sobrevive ao L2)
-        var conteudoDistintoA = ConteudoPadronizado(semente: 0xA1);
-        var conteudoDistintoB = ConteudoPadronizado(semente: 0xB2); // mesmo tamanho, bytes diferentes
-        var conteudoColisaoA = ConteudoComColisaoParcial(miolo: 0x11);
-        var conteudoColisaoB = ConteudoComColisaoParcial(miolo: 0x22);
+        // Tree with:
+        //   - Same-size/distinct-content pair (DIFFERENT partials -> eliminated in L2)
+        //   - Partial collision pair (fixed head+tail, distinct core -> survives L2)
+        var distinctContentA = StandardContent(seed: 0xA1);
+        var distinctContentB = StandardContent(seed: 0xB2); // same size, different bytes
+        var collisionContentA = ContentWithPartialCollision(core: 0x11);
+        var collisionContentB = ContentWithPartialCollision(core: 0x22);
 
-        var caminhoDistintoA = CriarArquivo("pasta/distintoA.bin", conteudoDistintoA);
-        var caminhoDistintoB = CriarArquivo("pasta/distintoB.bin", conteudoDistintoB);
-        var caminhoColisaoA = CriarArquivo("conflito/arquivo.xlsx", conteudoColisaoA);
-        var caminhoColisaoB = CriarArquivo("conflito/arquivo-DESKTOP-ABC123.xlsx", conteudoColisaoB);
+        var distinctPathA = CreateFile("folder/distinctA.bin", distinctContentA);
+        var distinctPathB = CreateFile("folder/distinctB.bin", distinctContentB);
+        var collisionPathA = CreateFile("conflict/file.xlsx", collisionContentA);
+        var collisionPathB = CreateFile("conflict/file-DESKTOP-ABC123.xlsx", collisionContentB);
 
         var entries = new[]
         {
-            Entrada(caminhoDistintoA),
-            Entrada(caminhoDistintoB),
-            Entrada(caminhoColisaoA),
-            Entrada(caminhoColisaoB),
+            Entry(distinctPathA),
+            Entry(distinctPathB),
+            Entry(collisionPathA),
+            Entry(collisionPathB),
         };
 
         var counting = new CountingHasher();
         var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), counting);
         var result = pipeline.Run(_root);
 
-        // ---- veredito esperado -----------------------------------------------
-        // Par distinto: parcial diferente -> NAO survive L2 -> NAO entra nem em identical nem em conflicts
-        // Par colisao:  parcial igual -> survive L2 -> full hash calculado -> resultado
-        Assert.Empty(result.IdenticalDuplicates); // nao ha copia identica
-        Assert.Single(result.RealConflicts);     // so o par de colisao
-        Assert.Single(result.Groups);           // um grupo (base normalizada + size iguais)
+        // ---- expected verdict -----------------------------------------------
+        // Distinct pair: different partial -> NOT survivor in L2 -> does NOT enter identical or conflicts
+        // Collision pair: equal partial -> survives L2 -> full hash computed -> result
+        Assert.Empty(result.IdenticalDuplicates); // no identical copy
+        Assert.Single(result.RealConflicts);     // only collision pair
+        Assert.Single(result.Groups);           // one group (normalized base + equal sizes)
 
-        // ---- prova via CountingHasher ----------------------------------------
-        var distintAEntrada = entries.Single(e => e.Path == caminhoDistintoA);
-        var distintBEntrada = entries.Single(e => e.Path == caminhoDistintoB);
-        var colisaoAEntrada = entries.Single(e => e.Path == caminhoColisaoA);
-        var colisaoBEntrada = entries.Single(e => e.Path == caminhoColisaoB);
+        // ---- proof via CountingHasher ----------------------------------------
+        var distinctAEntry = entries.Single(e => e.Path == distinctPathA);
+        var distinctBEntry = entries.Single(e => e.Path == distinctPathB);
+        var collisionAEntry = entries.Single(e => e.Path == collisionPathA);
+        var collisionBEntry = entries.Single(e => e.Path == collisionPathB);
 
-        // Arquivos mortos no L2 NUNCA receberam FullHash
-        Assert.DoesNotContain(caminhoDistintoA, counting.FullHashPaths);
-        Assert.DoesNotContain(caminhoDistintoB, counting.FullHashPaths);
+        // Files eliminated in L2 NEVER received FullHash
+        Assert.DoesNotContain(distinctPathA, counting.FullHashPaths);
+        Assert.DoesNotContain(distinctPathB, counting.FullHashPaths);
 
-        // Sobreviventes do L2 receberam exatamente 1 FullHash cada
-        Assert.Contains(caminhoColisaoA, counting.FullHashPaths);
-        Assert.Contains(caminhoColisaoB, counting.FullHashPaths);
+        // L2 survivors received exactly 1 FullHash each
+        Assert.Contains(collisionPathA, counting.FullHashPaths);
+        Assert.Contains(collisionPathB, counting.FullHashPaths);
         Assert.Equal(2, counting.FullHashPaths.Count);
 
-        // Todos os membros do grupo sobrevivalente tem FullHash chamado uma vez
-        Assert.Equal(1, counting.FullHashCalls[caminhoColisaoA]);
-        Assert.Equal(1, counting.FullHashCalls[caminhoColisaoB]);
+        // All members of surviving group have FullHash called once
+        Assert.Equal(1, counting.FullHashCalls[collisionPathA]);
+        Assert.Equal(1, counting.FullHashCalls[collisionPathB]);
     }
 
     // ================================================================
@@ -110,33 +110,33 @@ public sealed class ConflictDetectionTests : IDisposable
     [Fact]
     public void IdenticalContent_FullHashEqual_ClassifiedAsIdenticalDuplicate()
     {
-        var conteudo = new byte[50 * Kib];
-        (new Random(77)).NextBytes(conteudo);
+        var content = new byte[50 * Kib];
+        (new Random(77)).NextBytes(content);
 
-        // Mesma base normalizada: "a (1).txt" e "a (2).txt" normalizam para "a.txt"
-        // => agrupam por base + tamanho; conteudo identico => IdenticalDuplicate.
-        var c1 = CriarArquivo("dir/a (1).txt", conteudo);
-        var c2 = CriarArquivo("dir/a (2).txt", conteudo);
-        var c3 = CriarArquivo("outro/a (1).txt", conteudo); // terceiro copiado
+        // Same normalized base: "a (1).txt" and "a (2).txt" normalize to "a.txt"
+        // => group by base + size; identical content => IdenticalDuplicate.
+        var c1 = CreateFile("dir/a (1).txt", content);
+        var c2 = CreateFile("dir/a (2).txt", content);
+        var c3 = CreateFile("other/a (1).txt", content); // third copied
 
-        var entries = new[] { Entrada(c1), Entrada(c2), Entrada(c3) };
+        var entries = new[] { Entry(c1), Entry(c2), Entry(c3) };
         var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
         var result = pipeline.Run(_root);
 
-        // exactamente 1 IdenticalDuplicate
+        // exactly 1 IdenticalDuplicate
         Assert.Single(result.IdenticalDuplicates);
         Assert.Empty(result.RealConflicts);
 
         var dup = result.IdenticalDuplicates[0];
 
-        // hash BLAKE3 hex 64 minusculo
+        // BLAKE3 hex 64 lowercase hash
         Assert.Matches(@"^[0-9a-f]{64}$", dup.Hash);
 
-        // tamanho comum
-        Assert.Equal(conteudo.Length, dup.SizeBytes);
+        // common size
+        Assert.Equal(content.Length, dup.SizeBytes);
 
-        // 3 arquivos na lista, ordem canonica por bytes UTF-8
-        // dir/a (1).txt < dir/a (2).txt < outro/a (1).txt (ordem de bytes)
+        // 3 files in list, canonical order by UTF-8 bytes
+        // dir/a (1).txt < dir/a (2).txt < other/a (1).txt (byte order)
         Assert.Equal(3, dup.Files.Count);
         Assert.Equal(c1, dup.Files[0].Path);
         Assert.Equal(c2, dup.Files[1].Path);
@@ -150,38 +150,38 @@ public sealed class ConflictDetectionTests : IDisposable
     [Fact]
     public void DifferentContent_SameNormalizedBase_ClassifiedAsRealConflict()
     {
-        // Cabeca+cauda fixas (colisao parcial garantida), miolos diferentes.
-        // Tamanho > 128 KiB para que o parcial cubra apenas janelas e o full cubra tudo.
-        var conteudoA = ConteudoComColisaoParcial(miolo: 0x11);
-        var conteudoB = ConteudoComColisaoParcial(miolo: 0x22);
+        // Fixed head+tail (guaranteed partial collision), distinct cores.
+        // Size > 128 KiB so partial covers only windows and full covers all.
+        var contentA = ContentWithPartialCollision(core: 0x11);
+        var contentB = ContentWithPartialCollision(core: 0x22);
 
-        // "orcamento-DESKTOP-ABC123.xlsx" normaliza para "orcamento.xlsx" (hostname 6 chars valido).
-        var c1 = CriarArquivo("projeto/orcamento.xlsx", conteudoA);
-        var c2 = CriarArquivo("projeto/orcamento-DESKTOP-ABC123.xlsx", conteudoB);
+        // "budget-DESKTOP-ABC123.xlsx" normalizes to "budget.xlsx" (valid 6-char hostname).
+        var c1 = CreateFile("project/budget.xlsx", contentA);
+        var c2 = CreateFile("project/budget-DESKTOP-ABC123.xlsx", contentB);
 
-        var entries = new[] { Entrada(c1), Entrada(c2) };
+        var entries = new[] { Entry(c1), Entry(c2) };
         var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
         var result = pipeline.Run(_root);
 
-        // exatamente 1 RealConflict
+        // exactly 1 RealConflict
         Assert.Empty(result.IdenticalDuplicates);
         Assert.Single(result.RealConflicts);
 
-        var conflito = result.RealConflicts[0];
+        var conflict = result.RealConflicts[0];
 
-        // nome normalizado identico
-        Assert.Equal("orcamento.xlsx", conflito.NormalizedBaseName);
-        Assert.Equal(conteudoA.Length, conflito.SizeBytes);
+        // identical normalized name
+        Assert.Equal("budget.xlsx", conflict.NormalizedBaseName);
+        Assert.Equal(contentA.Length, conflict.SizeBytes);
 
-        // todos os membros cobertos com hash individual
-        Assert.Equal(2, conflito.Files.Count);
-        var memberA = conflito.Files.First(f => f.Path == c1);
-        var memberB = conflito.Files.First(f => f.Path == c2);
+        // all members covered with individual hash
+        Assert.Equal(2, conflict.Files.Count);
+        var memberA = conflict.Files.First(f => f.Path == c1);
+        var memberB = conflict.Files.First(f => f.Path == c2);
         Assert.Matches(@"^[0-9a-f]{64}$", memberA.Hash);
         Assert.Matches(@"^[0-9a-f]{64}$", memberB.Hash);
-        Assert.NotEqual(memberA.Hash, memberB.Hash); // hashes individuais distintos
+        Assert.NotEqual(memberA.Hash, memberB.Hash); // distinct individual hashes
 
-        // conflito real NUNCA aparece em IdenticalDuplicates (Q9/Q10 do SPEC §58)
+        // real conflict NEVER appears in IdenticalDuplicates (Q9/Q10 of SPEC §8)
         foreach (var dup in result.IdenticalDuplicates)
         {
             Assert.DoesNotContain(c1, dup.Files.Select(f => f.Path));
@@ -190,190 +190,189 @@ public sealed class ConflictDetectionTests : IDisposable
     }
 
     // ================================================================
-    // CD-02 (t_a77122c3) — Contrato de mútua exclusão do schema v1 §6.1/§6.2:
-    // grupo classificado como IdenticalDuplicate NUNCA gera entrada em
-    // RealConflicts e vice-versa; a classificação é POR GRUPO.
+    // CD-02 (t_a77122c3) — Mutual exclusion contract of schema v1 §6.1/§6.2:
+    // group classified as IdenticalDuplicate NEVER generates entry in
+    // RealConflicts and vice-versa; classification is PER GROUP.
     // ================================================================
 
     // ----------------------------------------------------------------
-    // Caso 1 — Grupo misto: 2 membros idênticos entre si + 1 divergente.
-    // Schema §6.2: o elemento de real_conflicts cobre TODOS os membros,
-    // incluindo o subconjunto internamente idêntico; §6.1: duplicata só se
-    // forma de grupo cujos hashes completos são TODOS iguais. O subconjunto
-    // interno NÃO vira IdenticalDuplicate — o consumidor reconstrói
-    // subgrupos pelos hashes por arquivo.
+    // Case 1 — Mixed group: 2 members identical to each other + 1 divergent.
+    // Schema §6.2: real_conflicts item covers ALL members, including internally
+    // identical subset; §6.1: duplicate only forms from group whose full hashes
+    // are ALL equal. The internal subset does NOT become IdenticalDuplicate —
+    // the consumer reconstructs subgroups by per-file hashes.
     // ----------------------------------------------------------------
     [Fact]
-    public void GrupoMisto_SubconjuntoInternoIdentico_NaoViraIdenticalDuplicate_ViraUmUnicoRealConflict()
+    public void MixedGroup_InternallyIdenticalSubset_DoesNotBecomeIdenticalDuplicate_BecomesSingleRealConflict()
     {
-        // Três membros, mesma base normalizada ("relatorio.xlsx") e mesmo tamanho:
-        //   A = relatorio.xlsx            (conteudo X)
-        //   A = relatorio (1).xlsx        (conteudo X — identico a A)
-        //   B = relatorio-DESKTOP-ABC123.xlsx (conteudo Y — divergente)
-        // Cabeca+cauda fixas garantem colisao parcial (sobrevivem ao L2);
-        // miolos distintos garantem full hashes distintos (X != Y).
-        var conteudoX = ConteudoComColisaoParcial(miolo: 0x11);
-        var conteudoY = ConteudoComColisaoParcial(miolo: 0x22);
+        // Three members, same normalized base ("report.xlsx") and same size:
+        //   A = report.xlsx            (content X)
+        //   A = report (1).xlsx        (content X — identical to A)
+        //   B = report-DESKTOP-ABC123.xlsx (content Y — divergent)
+        // Fixed head+tail guarantees partial collision (survives L2);
+        // distinct cores guarantee distinct full hashes (X != Y).
+        var contentX = ContentWithPartialCollision(core: 0x11);
+        var contentY = ContentWithPartialCollision(core: 0x22);
 
-        var caminhoA1 = CriarArquivo("financas/relatorio.xlsx", conteudoX);
-        var caminhoA2 = CriarArquivo("financas/relatorio (1).xlsx", conteudoX);
-        var caminhoB = CriarArquivo("backup/relatorio-DESKTOP-ABC123.xlsx", conteudoY);
+        var pathA1 = CreateFile("finance/report.xlsx", contentX);
+        var pathA2 = CreateFile("finance/report (1).xlsx", contentX);
+        var pathB = CreateFile("backup/report-DESKTOP-ABC123.xlsx", contentY);
 
-        var entries = new[] { Entrada(caminhoA1), Entrada(caminhoA2), Entrada(caminhoB) };
+        var entries = new[] { Entry(pathA1), Entry(pathA2), Entry(pathB) };
         var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
         var result = pipeline.Run(_root);
 
-        // UMA entrada única em RealConflicts cobrindo os 3 membros.
+        // SINGLE entry in RealConflicts covering all 3 members.
         Assert.Single(result.RealConflicts);
-        var conflito = result.RealConflicts[0];
-        Assert.Equal("relatorio.xlsx", conflito.NormalizedBaseName);
-        Assert.Equal(conteudoX.Length, conflito.SizeBytes);
-        Assert.Equal(3, conflito.Files.Count);
+        var conflict = result.RealConflicts[0];
+        Assert.Equal("report.xlsx", conflict.NormalizedBaseName);
+        Assert.Equal(contentX.Length, conflict.SizeBytes);
+        Assert.Equal(3, conflict.Files.Count);
         Assert.Equal(
-            new[] { caminhoA1, caminhoA2, caminhoB }.OrderBy(p => p, StringComparer.Ordinal),
-            conflito.Files.Select(f => f.Path));
+            new[] { pathA1, pathA2, pathB }.OrderBy(p => p, StringComparer.Ordinal),
+            conflict.Files.Select(f => f.Path));
 
-        // ZERO entradas em IdenticalDuplicates: o par interno identico NAO vira duplicata.
+        // ZERO entries in IdenticalDuplicates: internally identical pair does NOT become duplicate.
         Assert.Empty(result.IdenticalDuplicates);
 
-        // Reconstrutibilidade do subconjunto pelos hashes por arquivo (schema §6.2):
-        // exatamente dois valores de hash, o par identico compartilha um deles.
-        var hashA1 = conflito.Files.First(f => f.Path == caminhoA1).Hash;
-        var hashA2 = conflito.Files.First(f => f.Path == caminhoA2).Hash;
-        var hashB = conflito.Files.First(f => f.Path == caminhoB).Hash;
+        // Reconstructibility of subset via per-file hashes (schema §6.2):
+        // exactly two hash values, identical pair shares one of them.
+        var hashA1 = conflict.Files.First(f => f.Path == pathA1).Hash;
+        var hashA2 = conflict.Files.First(f => f.Path == pathA2).Hash;
+        var hashB = conflict.Files.First(f => f.Path == pathB).Hash;
         Assert.Equal(hashA1, hashA2);
         Assert.NotEqual(hashA1, hashB);
     }
 
     // ----------------------------------------------------------------
-    // Caso 2 — Propriedade de varredura: para qualquer ScanResult, todo
-    // normalized_base_name aparece em no máximo uma das duas listas
-    // (schema §6.2, último parágrafo). Árvore composta que exerce todos
-    // os desfechos de classificação no mesmo resultado: grupo misto
-    // (RealConflict), trio idêntico (IdenticalDuplicate), par morto no L2
-    // (presente só em Groups — trilha de auditoria §6.0) e arquivo único.
+    // Case 2 — Sweep property: for any ScanResult, every
+    // normalized_base_name appears in at most one of the two lists
+    // (schema §6.2, final paragraph). Composite tree exercising all
+    // classification outcomes in the same result: mixed group
+    // (RealConflict), identical trio (IdenticalDuplicate), pair eliminated in L2
+    // (present only in Groups — audit trail §6.0) and single file.
     // ----------------------------------------------------------------
     [Fact]
-    public void Propriedade_BaseNormalizada_ApareceEmNoMaximoUmaDasDuasListas_ParaQualquerScanResult()
+    public void Property_NormalizedBaseName_AppearsInAtMostOneOfTwoLists_ForAnyScanResult()
     {
-        // Grupo misto -> RealConflict.
-        var mistoX = ConteudoComColisaoParcial(miolo: 0x11);
-        var mistoY = ConteudoComColisaoParcial(miolo: 0x22);
-        var m1 = CriarArquivo("financas/relatorio.xlsx", mistoX);
-        var m2 = CriarArquivo("financas/relatorio (1).xlsx", mistoX);
-        var m3 = CriarArquivo("backup/relatorio-DESKTOP-ABC123.xlsx", mistoY);
+        // Mixed group -> RealConflict.
+        var mixedX = ContentWithPartialCollision(core: 0x11);
+        var mixedY = ContentWithPartialCollision(core: 0x22);
+        var m1 = CreateFile("finance/report.xlsx", mixedX);
+        var m2 = CreateFile("finance/report (1).xlsx", mixedX);
+        var m3 = CreateFile("backup/report-DESKTOP-ABC123.xlsx", mixedY);
 
-        // Trio byte-idêntico -> IdenticalDuplicate.
-        var identico = new byte[30 * Kib];
-        for (var i = 0; i < identico.Length; i++)
+        // Byte-identical trio -> IdenticalDuplicate.
+        var identical = new byte[30 * Kib];
+        for (var i = 0; i < identical.Length; i++)
         {
-            identico[i] = (byte)(i % 253);
+            identical[i] = (byte)(i % 253);
         }
-        var d1 = CriarArquivo("docs/notas.txt", identico);
-        var d2 = CriarArquivo("docs/notas (1).txt", identico);
-        var d3 = CriarArquivo("docs/notas (2).txt", identico);
+        var d1 = CreateFile("docs/notes.txt", identical);
+        var d2 = CreateFile("docs/notes (1).txt", identical);
+        var d3 = CreateFile("docs/notes (2).txt", identical);
 
-        // Par mesmo-tamanho/conteúdo-distinto -> morre no L2 (sem colisão parcial),
-        // fica somente em Groups (auditoria), fora das duas listas finais.
-        var mortoA = CriarArquivo("tmp/morto.bin", ConteudoPadronizado(semente: 0x01));
-        var mortoB = CriarArquivo("tmp/morto-DESKTOP-ABC123.bin", ConteudoPadronizado(semente: 0x02));
+        // Same-size/distinct-content pair -> eliminated in L2 (no partial collision),
+        // remains only in Groups (audit trail), outside both final lists.
+        var deadA = CreateFile("tmp/dead.bin", StandardContent(seed: 0x01));
+        var deadB = CreateFile("tmp/dead-DESKTOP-ABC123.bin", StandardContent(seed: 0x02));
 
-        // Arquivo único -> nunca é candidato.
-        var solo = CriarArquivo("raiz/solo.txt", [0x53, 0x4F, 0x4C, 0x4F]);
+        // Single file -> never a candidate.
+        var solo = CreateFile("root/solo.txt", [0x53, 0x4F, 0x4C, 0x4F]);
 
-        var entries = new[] { Entrada(m1), Entrada(m2), Entrada(m3), Entrada(d1), Entrada(d2), Entrada(d3), Entrada(mortoA), Entrada(mortoB), Entrada(solo) };
+        var entries = new[] { Entry(m1), Entry(m2), Entry(m3), Entry(d1), Entry(d2), Entry(d3), Entry(deadA), Entry(deadB), Entry(solo) };
         var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
         var result = pipeline.Run(_root);
 
-        // Cenário montado como esperado: 3 grupos candidatos, 1 de cada veredito.
+        // Scenario prepared as expected: 3 candidate groups, 1 for each verdict.
         Assert.Equal(3, result.Groups.Count);
         Assert.Single(result.IdenticalDuplicates);
         Assert.Single(result.RealConflicts);
 
-        // PROPRIEDADE: interseção vazia entre os nomes normalizados das duas listas.
-        var nomesEmConflitos = result.RealConflicts
+        // PROPERTY: empty intersection between normalized names of both lists.
+        var namesInConflicts = result.RealConflicts
             .Select(c => c.NormalizedBaseName)
             .ToHashSet(StringComparer.Ordinal);
-        var nomesEmDuplicatas = result.IdenticalDuplicates
+        var namesInDuplicates = result.IdenticalDuplicates
             .SelectMany(d => d.Files.Select(f => Grouping.NormalizeBaseName(Path.GetFileName(f.Path))))
             .ToHashSet(StringComparer.Ordinal);
-        Assert.Empty(nomesEmConflitos.Intersect(nomesEmDuplicatas));
+        Assert.Empty(namesInConflicts.Intersect(namesInDuplicates));
 
-        // Reforço concreto: o grupo morto no L2 ("morto.bin") existe em Groups
-        // (trilha de auditoria) mas aparece em NENHUMA das duas listas — zero
-        // também respeita "no máximo uma".
-        Assert.Contains(result.Groups, g => g.NormalizedBaseName == "morto.bin");
-        Assert.DoesNotContain("morto.bin", nomesEmConflitos);
-        Assert.DoesNotContain("morto.bin", nomesEmDuplicatas);
+        // Concrete reinforcement: dead group in L2 ("dead.bin") exists in Groups
+        // (audit trail) but appears in NEITHER list — zero
+        // also satisfies "at most one".
+        Assert.Contains(result.Groups, g => g.NormalizedBaseName == "dead.bin");
+        Assert.DoesNotContain("dead.bin", namesInConflicts);
+        Assert.DoesNotContain("dead.bin", namesInDuplicates);
 
-        // E cada lista contém exatamente o nome do seu próprio veredito.
-        Assert.Equal(new[] { "relatorio.xlsx" }, nomesEmConflitos);
-        Assert.Equal(new[] { "notas.txt" }, nomesEmDuplicatas);
+        // And each list contains exactly the name of its own verdict.
+        Assert.Equal(new[] { "report.xlsx" }, namesInConflicts);
+        Assert.Equal(new[] { "notes.txt" }, namesInDuplicates);
     }
 
     // ----------------------------------------------------------------
-    // Caso 3 — Único par do grupo sobrevive ao L2 (colisão parcial) mas
-    // full hashes distintos: SOMENTE RealConflict, ZERO IdenticalDuplicates
-    // (schema §6.2: ao menos dois hashes distintos após o L2 ⇒ conflito real).
+    // Case 3 — Single pair of group survives L2 (partial collision) but
+    // distinct full hashes: ONLY RealConflict, ZERO IdenticalDuplicates
+    // (schema §6.2: at least two distinct hashes after L2 => real conflict).
     // ----------------------------------------------------------------
     [Fact]
-    public void ParSobreviveAoL2_ComFullHashesDistintos_SoRealConflict_ZeroIdenticalDuplicates()
+    public void PairSurvivesL2_WithDistinctFullHashes_OnlyRealConflict_ZeroIdenticalDuplicates()
     {
-        var conteudoA = ConteudoComColisaoParcial(miolo: 0x33);
-        var conteudoB = ConteudoComColisaoParcial(miolo: 0x44);
+        var contentA = ContentWithPartialCollision(core: 0x33);
+        var contentB = ContentWithPartialCollision(core: 0x44);
 
-        var caminhoA = CriarArquivo("contratos/termo.xlsx", conteudoA);
-        var caminhoB = CriarArquivo("contratos/termo (1).xlsx", conteudoB);
+        var pathA = CreateFile("contracts/agreement.xlsx", contentA);
+        var pathB = CreateFile("contracts/agreement (1).xlsx", contentB);
 
-        var entries = new[] { Entrada(caminhoA), Entrada(caminhoB) };
+        var entries = new[] { Entry(pathA), Entry(pathB) };
         var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
         var result = pipeline.Run(_root);
 
-        // O grupo sobreviveu ao L2 e virou conflito — nada na lista de duplicatas.
+        // Group survived L2 and became conflict — nothing in duplicates list.
         Assert.Single(result.RealConflicts);
         Assert.Empty(result.IdenticalDuplicates);
 
-        var conflito = result.RealConflicts[0];
-        Assert.Equal("termo.xlsx", conflito.NormalizedBaseName);
-        Assert.Equal(2, conflito.Files.Count);
+        var conflict = result.RealConflicts[0];
+        Assert.Equal("agreement.xlsx", conflict.NormalizedBaseName);
+        Assert.Equal(2, conflict.Files.Count);
 
-        var hashA = conflito.Files.First(f => f.Path == caminhoA).Hash;
-        var hashB = conflito.Files.First(f => f.Path == caminhoB).Hash;
+        var hashA = conflict.Files.First(f => f.Path == pathA).Hash;
+        var hashB = conflict.Files.First(f => f.Path == pathB).Hash;
         Assert.Matches(@"^[0-9a-f]{64}$", hashA);
         Assert.Matches(@"^[0-9a-f]{64}$", hashB);
         Assert.NotEqual(hashA, hashB);
     }
 
     // ----------------------------------------------------------------
-    // Caso 4 — Triplo byte-idêntico: UMA única IdenticalDuplicate com 3
-    // Files e ZERO RealConflicts (schema §6.1: um elemento por classe de
-    // equivalência por conteúdo pleno, com 2 ou mais arquivos).
+    // Case 4 — Byte-identical trio: SINGLE IdenticalDuplicate with 3
+    // Files and ZERO RealConflicts (schema §6.1: one element per class of
+    // full content equivalence, with 2 or more files).
     // ----------------------------------------------------------------
     [Fact]
-    public void TriploByteIdentico_UnicaIdenticalDuplicate_ComTresArquivos_ZeroRealConflicts()
+    public void ByteIdenticalTrio_SingleIdenticalDuplicate_WithThreeFiles_ZeroRealConflicts()
     {
-        var conteudo = new byte[12 * Kib];
-        for (var i = 0; i < conteudo.Length; i++)
+        var content = new byte[12 * Kib];
+        for (var i = 0; i < content.Length; i++)
         {
-            conteudo[i] = (byte)(0xC3 ^ (i % 31));
+            content[i] = (byte)(0xC3 ^ (i % 31));
         }
 
-        // Bases que normalizam todas para "config.ini".
-        var c1 = CriarArquivo("app/config.ini", conteudo);
-        var c2 = CriarArquivo("app/config (1).ini", conteudo);
-        var c3 = CriarArquivo("bak/config-DESKTOP-ZZZ999.ini", conteudo);
+        // Bases that all normalize to "config.ini".
+        var c1 = CreateFile("app/config.ini", content);
+        var c2 = CreateFile("app/config (1).ini", content);
+        var c3 = CreateFile("bak/config-DESKTOP-ZZZ999.ini", content);
 
-        var entries = new[] { Entrada(c1), Entrada(c2), Entrada(c3) };
+        var entries = new[] { Entry(c1), Entry(c2), Entry(c3) };
         var pipeline = new ScanPipeline(new FakeFileEnumerator(entries), new Blake3Hasher());
         var result = pipeline.Run(_root);
 
-        // UMA entrada única, três arquivos, nenhum conflito real.
+        // SINGLE entry, three files, zero real conflicts.
         Assert.Single(result.IdenticalDuplicates);
         Assert.Empty(result.RealConflicts);
 
         var dup = result.IdenticalDuplicates[0];
         Assert.Matches(@"^[0-9a-f]{64}$", dup.Hash);
-        Assert.Equal(conteudo.Length, dup.SizeBytes);
+        Assert.Equal(content.Length, dup.SizeBytes);
         Assert.Equal(3, dup.Files.Count);
         Assert.Equal(
             new[] { c1, c2, c3 }.OrderBy(p => p, StringComparer.Ordinal),
@@ -382,64 +381,64 @@ public sealed class ConflictDetectionTests : IDisposable
 
     // ---- helpers ----------------------------------------------------------
 
-    private string CriarArquivo(string relativo, byte[] conteudo)
+    private string CreateFile(string relative, byte[] content)
     {
-        var caminho = Path.Combine(_root, relativo.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(caminho)!);
-        File.WriteAllBytes(caminho, conteudo);
-        _tempFiles.Add(caminho);
-        return caminho;
+        var path = Path.Combine(_root, relative.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, content);
+        _tempFiles.Add(path);
+        return path;
     }
 
-    private static FileEntry Entrada(string caminho) => new()
+    private static FileEntry Entry(string path) => new()
     {
-        Path = caminho,
-        Size = new FileInfo(caminho).Length,
+        Path = path,
+        Size = new FileInfo(path).Length,
         MtimeUtc = DateTime.UtcNow,
         Attributes = FileAttributes.Normal,
         VolumeId = "cd01-vol",
-        FileId = caminho,
+        FileId = path,
     };
 
-    private static byte[] ConteudoPadronizado(byte semente)
+    private static byte[] StandardContent(byte seed)
     {
-        var bytes = new byte[ArquivoGrande];
+        var bytes = new byte[LargeFileSize];
         for (var i = 0; i < bytes.Length; i++)
         {
-            bytes[i] = (byte)(semente + (i % 251));
+            bytes[i] = (byte)(seed + (i % 251));
         }
         return bytes;
     }
 
-    /// <summary>Cabeca e cauda fixas (colisao parcial garantida); miolo varia por semente.</summary>
-    private static byte[] ConteudoComColisaoParcial(byte miolo)
+    /// <summary>Fixed head and tail (guaranteed partial collision); core varies by seed.</summary>
+    private static byte[] ContentWithPartialCollision(byte core)
     {
-        var bytes = new byte[ArquivoGrande];
-        for (var i = 0; i < Janela; i++)
+        var bytes = new byte[LargeFileSize];
+        for (var i = 0; i < WindowSize; i++)
         {
             bytes[i] = (byte)(0xAA + (i % 13));
         }
-        for (var i = ArquivoGrande - Janela; i < ArquivoGrande; i++)
+        for (var i = LargeFileSize - WindowSize; i < LargeFileSize; i++)
         {
             bytes[i] = (byte)(0xBB + (i % 17));
         }
-        for (var i = Janela; i < ArquivoGrande - Janela; i++)
+        for (var i = WindowSize; i < LargeFileSize - WindowSize; i++)
         {
-            bytes[i] = miolo;
+            bytes[i] = core;
         }
         return bytes;
     }
 
     private sealed class FakeFileEnumerator : IFileEnumerator
     {
-        private readonly IReadOnlyList<FileEntry> _ordem;
-        public FakeFileEnumerator(IReadOnlyList<FileEntry> ordem) => _ordem = ordem;
+        private readonly IReadOnlyList<FileEntry> _order;
+        public FakeFileEnumerator(IReadOnlyList<FileEntry> order) => _order = order;
         public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default) =>
-            new(_ordem, Array.Empty<ScanError>(), new ScanTelemetry());
+            new(_order, Array.Empty<ScanError>(), new ScanTelemetry());
     }
 
     /// <summary>
-    /// Hasher espião que delega para um hasher real mas registra todas as chamadas.
+    /// Spy hasher that delegates to a real hasher but records all calls.
     /// </summary>
     private sealed class CountingHasher : IHasher
     {

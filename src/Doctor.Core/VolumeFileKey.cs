@@ -4,14 +4,14 @@ using System.Buffers.Binary;
 using System.Text;
 
 /// <summary>
-/// Chave de cache tipada forte (threat-model T-08, regra R8; SPEC §12).
+/// Strongly-typed cache key (threat-model T-08, rule R8; SPEC §12).
 ///
-/// Representa a identidade composta de uma entrada de cache:
+/// Represents the composite identity of a cache entry:
 ///   (volume_serial, file_id, size, mtime_ticks, algorithm, hash_version)
 ///
-/// Nunca permite chavar por file_id sozinho — a igualdade só combina se
-/// TODOS os campos baterem. O ToString() gera hex legível (para logs) sem
-/// expor o caminho absoluto.
+/// Never allows lookup by file_id alone — equality only matches when
+/// ALL fields match. ToString() produces readable hex (for logs) without
+/// exposing the absolute path.
 /// </summary>
 public sealed record VolumeFileKey(
     string VolumeSerial,
@@ -22,7 +22,7 @@ public sealed record VolumeFileKey(
     int HashVersion)
 {
     /// <summary>
-    /// Deriva um identificador hex canônico (64 chars) da chave.
+    /// Derives a canonical hex identifier (64 chars) from the key.
     /// Format: BLAKE3("ccd-vfk-v1" || volume_serial || file_id || size_BE || mtime_BE || algorithm || hash_version_BE).
     /// </summary>
     public string ToHex()
@@ -44,7 +44,7 @@ public sealed record VolumeFileKey(
         return Convert.ToHexString(hasher.Finalize().AsSpan()).ToLowerInvariant();
     }
 
-    /// <summary>String legível para logs (não expõe caminho).</summary>
+    /// <summary>Readable string for logs (does not expose path).</summary>
     public override string ToString() =>
         $"{VolumeSerial}:{FileId}|s{Size}|m{MtimeTicks}|{Algorithm}@{HashVersion}";
 }

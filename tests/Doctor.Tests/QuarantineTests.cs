@@ -5,22 +5,22 @@ using Doctor.Core;
 using Xunit;
 
 /// <summary>
-/// T15 (t_5554ef78) — EPIC 08: quarentena + restore (SPEC §18, §22; ADR-0002;
-/// ADR-0010; docs/contratos.md). Regras provadas aqui:
-/// 1. Move ⇒ original sai, payload datado existe, manifesto existe e carrega TODOS
-///    os campos do ADR-0010 §2, hash BLAKE3 conferido contra o payload;
-/// 2. Restore ⇒ original de volta byte-idêntico, hash preservado (§22);
-/// 3. Restore sobre destino ocupado ⇒ JAMAIS sobrescreve: falha com exceção e
-///    nada é tocado (ocupante, payload e manifesto permanecem byte-idênticos);
-/// 4. Homônimos em pastas distintas ⇒ payload sem colisão, manifesto ordenado
-///    por caminho em bytes UTF-8 (ADR-0003 regra 1);
-/// 5. Mesmo estado + mesmo timestamp ⇒ mesmo operation_id e manifesto
-///    byte-idêntico (determinismo ADR-0010 §1);
-/// 6. Metadado stale entre L0 e move ⇒ item pulado, arquivo fica onde está,
-///    registro honesto (ADR-0010 §3 — revalidação TOCTOU);
-/// 7. Falha no meio do move ⇒ manifesto parcial honesto + exceção; nada movido
-///    fica sem registro (ADR-0002 item 4, ADR-0010 §3);
-/// 8. Guarda estática: ZERO APIs de deleção em Doctor.Core (§22; ADR-0002 item 5).
+/// T15 (t_5554ef78) — EPIC 08: quarantine + restore (SPEC §18, §22; ADR-0002;
+/// ADR-0010; docs/contracts.md). Rules proven here:
+/// 1. Move ⇒ original leaves, dated payload exists, manifest exists and carries ALL
+///    fields from ADR-0010 §2, BLAKE3 hash verified against payload;
+/// 2. Restore ⇒ original back byte-identical, hash preserved (§22);
+/// 3. Restore to occupied destination ⇒ NEVER overwrites: fails with exception and
+///    nothing is touched (occupant, payload and manifest remain byte-identical);
+/// 4. Same names in different folders ⇒ collision-free payload, manifest sorted
+///    by path in UTF-8 bytes (ADR-0003 rule 1);
+/// 5. Same state + same timestamp ⇒ same operation_id and byte-identical
+///    manifest (determinism ADR-0010 §1);
+/// 6. Stale metadata between L0 and move ⇒ item skipped, file stays where it is,
+///    honest record (ADR-0010 §3 — TOCTOU revalidation);
+/// 7. Failure mid-move ⇒ honest partial manifest + exception; nothing moved
+///    goes unrecorded (ADR-0002 item 4, ADR-0010 §3);
+/// 8. Static guard: ZERO deletion APIs in Doctor.Core (§22; ADR-0002 item 5).
 /// </summary>
 public sealed class QuarantineTests : IDisposable
 {
@@ -40,310 +40,310 @@ public sealed class QuarantineTests : IDisposable
         }
         catch (IOException)
         {
-            // limpeza best-effort: tmp do SO recolhe depois
+            // best-effort cleanup: OS temp reclaims later
         }
     }
 
     // ------------------------------------------------------------------
-    // NDES-01 — move completo: quarentena + manifesto + hash confere
+    // NDES-01 — complete move: quarantine + manifest + hash verified
     // ------------------------------------------------------------------
     [Fact]
-    public void Move_OriginalSai_PayloadEManifestoExistem_HashConferido()
+    public void Move_OriginalLeaves_PayloadAndManifestExist_HashVerified()
     {
-        var caminho = CriarArquivo("docs/relatorio.txt", Conteudo(0x51));
-        var svc = NovoServico();
+        var path = CreateFile("docs/report.txt", Content(0x51));
+        var svc = NewService();
 
-        var resultado = svc.Move(
-            [new QuarantineItem(Entrada(caminho), "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
-            PlanoPadrao());
+        var result = svc.Move(
+            [new QuarantineItem(Entry(path), "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
+            DefaultPlan());
 
-        // original saiu; estrutura §18/ADR-0010 existe
-        Assert.False(File.Exists(caminho));
-        Assert.True(Directory.Exists(resultado.QuarantineDirectory));
-        Assert.True(File.Exists(resultado.ManifestPath));
+        // original left; §18/ADR-0010 structure exists
+        Assert.False(File.Exists(path));
+        Assert.True(Directory.Exists(result.QuarantineDirectory));
+        Assert.True(File.Exists(result.ManifestPath));
         Assert.StartsWith(
             Path.Combine(_root, "ConflictDoctor", "quarantine") + Path.DirectorySeparatorChar,
-            resultado.QuarantineDirectory);
-        Assert.Equal("completed", resultado.Status);
-        Assert.Single(resultado.MovedPaths);
+            result.QuarantineDirectory);
+        Assert.Equal("completed", result.Status);
+        Assert.Single(result.MovedPaths);
 
-        // manifesto: campos EXATOS do ADR-0010 §2
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(resultado.ManifestPath));
-        var raiz = json.RootElement;
+        // manifest: EXACT fields from ADR-0010 §2
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(result.ManifestPath));
+        var root = json.RootElement;
         Assert.Equal(
             new[] { "manifest_version", "operation_id", "created_utc", "items", "status" },
-            raiz.EnumerateObject().Select(p => p.Name).ToArray());
-        Assert.Equal(1, raiz.GetProperty("manifest_version").GetInt32());
-        Assert.Equal("completed", raiz.GetProperty("status").GetString());
+            root.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(1, root.GetProperty("manifest_version").GetInt32());
+        Assert.Equal("completed", root.GetProperty("status").GetString());
 
-        var item = raiz.GetProperty("items")[0];
+        var item = root.GetProperty("items")[0];
         Assert.Equal(
             new[] { "original_path", "quarantine_path", "size", "mtime_utc", "hash",
                     "algorithm", "hash_version", "reason", "rule" },
             item.EnumerateObject().Select(p => p.Name).ToArray());
-        Assert.Equal(caminho, item.GetProperty("original_path").GetString());
-        Assert.Equal(Conteudo(0x51).LongLength, item.GetProperty("size").GetInt64());
+        Assert.Equal(path, item.GetProperty("original_path").GetString());
+        Assert.Equal(Content(0x51).LongLength, item.GetProperty("size").GetInt64());
         Assert.Equal("BLAKE3", item.GetProperty("algorithm").GetString());
         Assert.Equal(1, item.GetProperty("hash_version").GetInt32());
         Assert.Equal("IDENTICAL_DUPLICATE", item.GetProperty("reason").GetString());
         Assert.Equal("KEEP_NEWEST", item.GetProperty("rule").GetString());
 
-        // hash do manifesto == BLAKE3 recalculado INDEPENDENTEMENTE do payload
-        var payloadAbsoluto = Path.Combine(
-            resultado.QuarantineDirectory,
+        // manifest hash == BLAKE3 recalculated INDEPENDENTLY of payload
+        var absolutePayload = Path.Combine(
+            result.QuarantineDirectory,
             item.GetProperty("quarantine_path").GetString()!.Replace('/', Path.DirectorySeparatorChar));
-        Assert.True(File.Exists(payloadAbsoluto));
-        var hashIndependente = Convert.ToHexString(
-            Blake3.Hasher.Hash(File.ReadAllBytes(payloadAbsoluto)).AsSpan()).ToLowerInvariant();
-        Assert.Equal(hashIndependente, item.GetProperty("hash").GetString());
+        Assert.True(File.Exists(absolutePayload));
+        var independentHash = Convert.ToHexString(
+            Blake3.Hasher.Hash(File.ReadAllBytes(absolutePayload)).AsSpan()).ToLowerInvariant();
+        Assert.Equal(independentHash, item.GetProperty("hash").GetString());
 
-        // operation_id no formato ADR-0010 §1: yyyyMMddTHHmmssZ-8hex
-        Assert.Matches(@"^\d{8}T\d{6}Z-[0-9a-f]{8}$", raiz.GetProperty("operation_id").GetString());
+        // operation_id in ADR-0010 §1 format: yyyyMMddTHHmmssZ-8hex
+        Assert.Matches(@"^\d{8}T\d{6}Z-[0-9a-f]{8}$", root.GetProperty("operation_id").GetString());
     }
 
     // ------------------------------------------------------------------
-    // NDES-02 — restore: original de volta byte-idêntico, hash preservado
+    // NDES-02 — restore: original back byte-identical, hash preserved
     // ------------------------------------------------------------------
     [Fact]
-    public void Restore_AposMover_OriginalDeVoltaByteIdentico_HashPreservado()
+    public void Restore_AfterMove_OriginalBackByteIdentical_HashPreserved()
     {
-        var caminho = CriarArquivo("docs/relatorio.txt", Conteudo(0x77));
-        var conteudoOriginal = File.ReadAllBytes(caminho);
-        var svc = NovoServico();
+        var path = CreateFile("docs/report.txt", Content(0x77));
+        var originalContent = File.ReadAllBytes(path);
+        var svc = NewService();
 
-        var movimento = svc.Move(
-            [new QuarantineItem(Entrada(caminho), "REAL_CONFLICT", "KEEP_LARGEST")],
-            PlanoPadrao());
+        var move = svc.Move(
+            [new QuarantineItem(Entry(path), "REAL_CONFLICT", "KEEP_LARGEST")],
+            DefaultPlan());
 
-        var restauracao = svc.Restore(movimento.OperationId, _root);
+        var restore = svc.Restore(move.OperationId, _root);
 
-        Assert.True(File.Exists(caminho));
-        Assert.Equal(conteudoOriginal, File.ReadAllBytes(caminho));
+        Assert.True(File.Exists(path));
+        Assert.Equal(originalContent, File.ReadAllBytes(path));
 
-        // hash preservado: mesmo conteúdo ⇒ mesmo BLAKE3 registrado no manifesto
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(movimento.ManifestPath));
-        var hashNoManifesto = json.RootElement.GetProperty("items")[0].GetProperty("hash").GetString();
-        var hashRestaurado = Convert.ToHexString(
-            Blake3.Hasher.Hash(File.ReadAllBytes(caminho)).AsSpan()).ToLowerInvariant();
-        Assert.Equal(hashRestaurado, hashNoManifesto);
+        // hash preserved: same content ⇒ same BLAKE3 recorded in manifest
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(move.ManifestPath));
+        var hashInManifest = json.RootElement.GetProperty("items")[0].GetProperty("hash").GetString();
+        var restoredHash = Convert.ToHexString(
+            Blake3.Hasher.Hash(File.ReadAllBytes(path)).AsSpan()).ToLowerInvariant();
+        Assert.Equal(restoredHash, hashInManifest);
 
-        // histórico nunca apagado: manifesto marca restauração
+        // history never deleted: manifest marks restoration
         Assert.Equal("restored", json.RootElement.GetProperty("items")[0].GetProperty("status").GetString());
-        Assert.Equal(restauracao.OperationId, movimento.OperationId);
-        Assert.Equal(caminho, restauracao.RestoredPaths.Single());
+        Assert.Equal(restore.OperationId, move.OperationId);
+        Assert.Equal(path, restore.RestoredPaths.Single());
     }
 
     // ------------------------------------------------------------------
-    // NDES-03 — restore com destino ocupado: exceção, NADA é tocado
+    // NDES-03 — restore to occupied destination: exception, NOTHING touched
     // ------------------------------------------------------------------
     [Fact]
-    public void Restore_DestinoOcupado_FalhaComExcecao_SemTocarNada()
+    public void Restore_OccupiedDestination_FailsWithException_NothingTouched()
     {
-        var caminho = CriarArquivo("docs/a.txt", Conteudo(0x11));
-        var svc = NovoServico();
+        var path = CreateFile("docs/a.txt", Content(0x11));
+        var svc = NewService();
 
-        var movimento = svc.Move(
-            [new QuarantineItem(Entrada(caminho), "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
-            PlanoPadrao());
+        var move = svc.Move(
+            [new QuarantineItem(Entry(path), "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
+            DefaultPlan());
 
-        // ocupante diferente ocupa o caminho original
-        var ocupante = Conteudo(0xDE);
-        File.WriteAllBytes(caminho, ocupante);
+        // different occupier takes the original path
+        var occupier = Content(0xDE);
+        File.WriteAllBytes(path, occupier);
 
-        var bytesOcupante = File.ReadAllBytes(caminho);
-        var payloadAntes = File.ReadAllBytes(PayloadUnico(movimento));
-        var manifestAntes = File.ReadAllBytes(movimento.ManifestPath);
+        var occupierBytes = File.ReadAllBytes(path);
+        var payloadBefore = File.ReadAllBytes(SinglePayload(move));
+        var manifestBefore = File.ReadAllBytes(move.ManifestPath);
 
-        var excecao = Assert.Throws<RestoreConflictException>(
-            () => svc.Restore(movimento.OperationId, _root));
+        var exception = Assert.Throws<RestoreConflictException>(
+            () => svc.Restore(move.OperationId, _root));
 
-        Assert.Contains(caminho, excecao.Message);
+        Assert.Contains(path, exception.Message);
 
-        // nada foi tocado: ocupante intacto, payload intacto, manifesto intacto
-        Assert.Equal(bytesOcupante, File.ReadAllBytes(caminho));
-        Assert.NotEqual(Conteudo(0x11), bytesOcupante);
-        Assert.Equal(payloadAntes, File.ReadAllBytes(PayloadUnico(movimento)));
-        Assert.Equal(manifestAntes, File.ReadAllBytes(movimento.ManifestPath));
+        // nothing was touched: occupier intact, payload intact, manifest intact
+        Assert.Equal(occupierBytes, File.ReadAllBytes(path));
+        Assert.NotEqual(Content(0x11), occupierBytes);
+        Assert.Equal(payloadBefore, File.ReadAllBytes(SinglePayload(move)));
+        Assert.Equal(manifestBefore, File.ReadAllBytes(move.ManifestPath));
     }
 
     // ------------------------------------------------------------------
-    // homônimos: payload sem colisão + manifesto ordenado por caminho
+    // same names: collision-free payload + manifest sorted by path
     // ------------------------------------------------------------------
     [Fact]
-    public void Move_HomonimosEmPastasDistintas_PayloadDistinto_ManifestoOrdenado()
+    public void Move_SameNamesInDifferentFolders_DistinctPayload_ManifestSorted()
     {
-        var b = CriarArquivo("b/nota.txt", Conteudo(0x02));
-        var a = CriarArquivo("a/nota.txt", Conteudo(0x01));
-        var svc = NovoServico();
+        var b = CreateFile("b/note.txt", Content(0x02));
+        var a = CreateFile("a/note.txt", Content(0x01));
+        var svc = NewService();
 
-        var resultado = svc.Move(
+        var result = svc.Move(
             [
-                new QuarantineItem(Entrada(b), "IDENTICAL_DUPLICATE", "KEEP_NEWEST"),
-                new QuarantineItem(Entrada(a), "IDENTICAL_DUPLICATE", "KEEP_NEWEST"),
+                new QuarantineItem(Entry(b), "IDENTICAL_DUPLICATE", "KEEP_NEWEST"),
+                new QuarantineItem(Entry(a), "IDENTICAL_DUPLICATE", "KEEP_NEWEST"),
             ],
-            PlanoPadrao());
+            DefaultPlan());
 
-        Assert.Equal(2, resultado.MovedPaths.Count);
+        Assert.Equal(2, result.MovedPaths.Count);
         Assert.False(File.Exists(a));
         Assert.False(File.Exists(b));
 
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(resultado.ManifestPath));
-        var itens = json.RootElement.GetProperty("items");
-        Assert.Equal(2, itens.GetArrayLength());
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(result.ManifestPath));
+        var items = json.RootElement.GetProperty("items");
+        Assert.Equal(2, items.GetArrayLength());
 
-        // ordem canônica por caminho em bytes UTF-8, nunca ordem de chamada
-        var caminhos = itens.EnumerateArray().Select(i => i.GetProperty("original_path").GetString()).ToArray();
-        Assert.Equal(new[] { a, b }, caminhos);
-        Assert.Equal(caminhos, caminhos.OrderBy(p => p, StringComparer.Ordinal).ToArray());
+        // canonical order by path in UTF-8 bytes, never call order
+        var paths = items.EnumerateArray().Select(i => i.GetProperty("original_path").GetString()).ToArray();
+        Assert.Equal(new[] { a, b }, paths);
+        Assert.Equal(paths, paths.OrderBy(p => p, StringComparer.Ordinal).ToArray());
 
-        // nomes opacos distintos no payload (ADR-0010 §1)
-        var payloads = itens.EnumerateArray().Select(i => i.GetProperty("quarantine_path").GetString()).ToArray();
+        // distinct opaque names in payload (ADR-0010 §1)
+        var payloads = items.EnumerateArray().Select(i => i.GetProperty("quarantine_path").GetString()).ToArray();
         Assert.NotEqual(payloads[0], payloads[1]);
         Assert.All(payloads, p => Assert.Matches(@"^payload/\d{4}\.dat$", p!));
     }
 
     // ------------------------------------------------------------------
-    // determinismo: mesmo estado ⇒ mesmo operation_id e manifesto igual
+    // determinism: same state ⇒ same operation_id and identical manifest
     // ------------------------------------------------------------------
     [Fact]
-    public void Move_MesmoEstadoDuasVezes_MesmoOperationId_ManifestoByteIdentico()
+    public void Move_SameStateTwice_SameOperationId_ManifestByteIdentical()
     {
-        var caminho = CriarArquivo("docs/x.bin", Conteudo(0xC3));
-        var svc = NovoServico();
-        var plano = PlanoPadrao(); // timestamp congelado no plano
+        var path = CreateFile("docs/x.bin", Content(0xC3));
+        var svc = NewService();
+        var plan = DefaultPlan(); // frozen timestamp in plan
 
-        var primeira = svc.Move([new QuarantineItem(Entrada(caminho), "R", "RULE")], plano);
-        var manifestPrimeiro = File.ReadAllBytes(primeira.ManifestPath);
+        var first = svc.Move([new QuarantineItem(Entry(path), "R", "RULE")], plan);
+        var firstManifest = File.ReadAllBytes(first.ManifestPath);
 
-        // devolve o arquivo ao estado pré-operação e limpa a quarentena:
-        // segunda execução parte do MESMO estado absoluto (mesmo caminho)
-        svc.Restore(primeira.OperationId, _root);
+        // return file to pre-operation state and clean quarantine:
+        // second run starts from the SAME absolute state (same path)
+        svc.Restore(first.OperationId, _root);
         Directory.Delete(Path.Combine(_root, "ConflictDoctor"), recursive: true);
-        File.SetLastWriteTimeUtc(caminho, EntradaFixaMtime);
+        File.SetLastWriteTimeUtc(path, FixedEntryMtime);
 
-        var segunda = svc.Move([new QuarantineItem(Entrada(caminho), "R", "RULE")], plano);
+        var second = svc.Move([new QuarantineItem(Entry(path), "R", "RULE")], plan);
 
-        Assert.Equal(primeira.OperationId, segunda.OperationId);
-        Assert.Equal(manifestPrimeiro, File.ReadAllBytes(segunda.ManifestPath));
+        Assert.Equal(first.OperationId, second.OperationId);
+        Assert.Equal(firstManifest, File.ReadAllBytes(second.ManifestPath));
     }
 
     // ------------------------------------------------------------------
-    // TOCTOU (ADR-0010 §3): metadado stale ⇒ pula, não move, registra
+    // TOCTOU (ADR-0010 §3): stale metadata ⇒ skip, don't move, record
     // ------------------------------------------------------------------
     [Fact]
-    public void Move_MetadadoStale_ItemPulado_ArquivoPermaneceOndeEsta()
+    public void Move_StaleMetadata_ItemSkipped_FileStaysWhereItIs()
     {
-        var caminho = CriarArquivo("docs/stale.txt", Conteudo(0x33));
-        var entrada = Entrada(caminho);
+        var path = CreateFile("docs/stale.txt", Content(0x33));
+        var entry = Entry(path);
 
-        // árvore muda DEPOIS do snapshot L0: tamanho diverge
-        File.WriteAllBytes(caminho, Conteudo(0x44));
+        // tree changes AFTER L0 snapshot: size diverges
+        File.WriteAllBytes(path, Content(0x44));
 
-        var svc = NovoServico();
-        var resultado = svc.Move([new QuarantineItem(entrada, "R", "RULE")], PlanoPadrao());
+        var svc = NewService();
+        var result = svc.Move([new QuarantineItem(entry, "R", "RULE")], DefaultPlan());
 
-        Assert.Empty(resultado.MovedPaths);
-        Assert.Equal([caminho], resultado.SkippedStaleMetadata.ToArray());
-        Assert.True(File.Exists(caminho)); // nunca sumiu silenciosamente
+        Assert.Empty(result.MovedPaths);
+        Assert.Equal([path], result.SkippedStaleMetadata.ToArray());
+        Assert.True(File.Exists(path)); // never silently disappeared
 
-        // registro honesto: manifesto existe, sem item fingindo movimento
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(resultado.ManifestPath));
+        // honest record: manifest exists, no item faking movement
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(result.ManifestPath));
         Assert.Equal(0, json.RootElement.GetProperty("items").GetArrayLength());
         Assert.Equal(
-            [caminho],
+            [path],
             json.RootElement.GetProperty("skipped_stale_metadata")
                 .EnumerateArray().Select(p => p.GetString()!).ToArray());
     }
 
     // ------------------------------------------------------------------
-    // ADR-0002 item 4 / ADR-0010 §3: falha no meio ⇒ parcial honesto + exceção
+    // ADR-0002 item 4 / ADR-0010 §3: failure mid-move ⇒ honest partial + exception
     // ------------------------------------------------------------------
     [Fact]
-    public void Move_FalhaNoSegundoItem_ManifestoParcialHonesto_EExcecao()
+    public void Move_FailureOnSecondItem_HonestPartialManifest_AndException()
     {
-        // Ordem canônica por caminho (ADR-0003): "dois.txt" < "um.txt" em bytes
-        // UTF-8, logo dois move PRIMEIRO mesmo sendo passado depois.
-        var um = CriarArquivo("um.txt", Conteudo(0x01));
-        var dois = CriarArquivo("dois.txt", Conteudo(0x02));
-        var svc = NovoServico(comMoverQueFalhaNo: 2); // 1ª move ok, 2ª explode
+        // Canonical order by path (ADR-0003): "a.txt" < "b.txt" in UTF-8 bytes,
+        // so "a.txt" moves FIRST even though passed second in the list.
+        var a = CreateFile("a.txt", Content(0x01));
+        var b = CreateFile("b.txt", Content(0x02));
+        var svc = NewService(failMoveOn: 2); // 1st move ok, 2nd explodes
 
-        var excecao = Assert.ThrowsAny<Exception>(() => svc.Move(
+        var exception = Assert.ThrowsAny<Exception>(() => svc.Move(
             [
-                new QuarantineItem(Entrada(um), "R", "RULE"),
-                new QuarantineItem(Entrada(dois), "R", "RULE"),
+                new QuarantineItem(Entry(b), "R", "RULE"),
+                new QuarantineItem(Entry(a), "R", "RULE"),
             ],
-            PlanoPadrao()));
+            DefaultPlan()));
 
-        // primeiro item na ordem canônica: movido E registrado
-        Assert.False(File.Exists(dois));
-        Assert.IsType<QuarantinePartialException>(excecao);
-        var parcial = (QuarantinePartialException)excecao;
-        Assert.True(File.Exists(parcial.PartialManifestPath));
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(parcial.PartialManifestPath));
+        // first item in canonical order: moved AND recorded
+        Assert.False(File.Exists(a));
+        Assert.IsType<QuarantinePartialException>(exception);
+        var partial = (QuarantinePartialException)exception;
+        Assert.True(File.Exists(partial.PartialManifestPath));
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(partial.PartialManifestPath));
         Assert.Equal("partial", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(1, json.RootElement.GetProperty("items").GetArrayLength());
-        Assert.Equal(dois, json.RootElement.GetProperty("items")[0].GetProperty("original_path").GetString());
+        Assert.Equal(a, json.RootElement.GetProperty("items")[0].GetProperty("original_path").GetString());
 
-        // segundo item na ordem: intocado — nada movido ficou sem registro
-        Assert.True(File.Exists(um));
+        // second item in order: untouched — nothing moved goes unrecorded
+        Assert.True(File.Exists(b));
     }
 
     // ------------------------------------------------------------------
-    // guarda estática (§22; ADR-0002 item 5; NDES-05): zero delete no módulo
+    // static guard (§22; ADR-0002 item 5; NDES-05): zero deletes in module
     // ------------------------------------------------------------------
     [Fact]
-    public void ModuloQuarentena_ZeroChamadasDelecao_EmDoctorCore()
+    public void QuarantineModule_ZeroDeletionCalls_InDoctorCore()
     {
-        var raizCore = RaizFonte("Doctor.Core");
-        var violacoes = new List<string>();
+        var coreRoot = SourceRoot("Doctor.Core");
+        var violations = new List<string>();
 
-        foreach (var cs in Directory.EnumerateFiles(raizCore, "*.cs", SearchOption.AllDirectories))
+        foreach (var cs in Directory.EnumerateFiles(coreRoot, "*.cs", SearchOption.AllDirectories))
         {
             if (cs.EndsWith("obj") || cs.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             {
                 continue;
             }
 
-            var numeroLinha = 0;
-            foreach (var linha in File.ReadLines(cs))
+            var lineNumber = 0;
+            foreach (var line in File.ReadLines(cs))
             {
-                numeroLinha++;
-                foreach (var padrao in PadroesProibidos)
+                lineNumber++;
+                foreach (var pattern in ForbiddenPatterns)
                 {
-                    if (Regex.IsMatch(linha, padrao, RegexOptions.IgnoreCase))
+                    if (Regex.IsMatch(line, pattern, RegexOptions.IgnoreCase))
                     {
-                        violacoes.Add(
-                            $"{Path.GetRelativePath(raizCore, cs)}:{numeroLinha} [{padrao}] {linha.Trim()}");
+                        violations.Add(
+                            $"{Path.GetRelativePath(coreRoot, cs)}:{lineNumber} [{pattern}] {line.Trim()}");
                     }
                 }
             }
         }
 
-        Assert.True(violacoes.Count == 0,
-            "Guarda anti-delete violada em Doctor.Core — único toque permitido no " +
-            $"conteúdo do usuário é File.Move para a quarentena (ADR-0002):\n{string.Join("\n", violacoes)}");
+        Assert.True(violations.Count == 0,
+            "Anti-delete guard violated in Doctor.Core — only permitted touch on user " +
+            $"content is File.Move to quarantine (ADR-0002):\n{string.Join("\n", violations)}");
     }
 
-    /// <summary>Validação por mutação: o detector reconhece cada API proibida.</summary>
+    /// <summary>Mutation validation: detector recognizes each forbidden API.</summary>
     [Theory]
-    [InlineData("File.Delete(caminho);")]
-    [InlineData("Directory.Delete(pasta, recursive: true);")]
+    [InlineData("File.Delete(path);")]
+    [InlineData("Directory.Delete(folder, recursive: true);")]
     [InlineData("[DllImport(\"kernel32.dll\")] static extern bool DeleteFileW(string p);")]
     [InlineData("SetFileInformationByHandle(h, FileDispositionInfo, &info, 4);")]
     [InlineData("var info = new FILE_DISPOSITION_INFO();")]
-    public void DetectorAntiDelete_ReconheceApiProibida_EmTrechoContaminado(string trecho)
+    public void AntiDeleteDetector_RecoignizesForbiddenApi_InContaminatedSnippet(string snippet)
     {
-        Assert.True(PadroesProibidos.Any(p => Regex.IsMatch(trecho, p, RegexOptions.IgnoreCase)),
-            $"Detector não reconheceu o trecho: {trecho}");
+        Assert.True(ForbiddenPatterns.Any(p => Regex.IsMatch(snippet, p, RegexOptions.IgnoreCase)),
+            $"Detector did not recognize snippet: {snippet}");
     }
 
     // ==================================================================
-    // infraestrutura do teste
+    // test infrastructure
     // ==================================================================
 
-    /// <summary>Padrões de deleção permanente proibidos em TODO Doctor.Core.
-    /// File.Move é a ÚNICA API destrutiva-permissiva sancionada (ADR-0010 §3).</summary>
-    private static readonly string[] PadroesProibidos =
+    /// <summary>Permanent deletion patterns forbidden in ALL of Doctor.Core.
+    /// File.Move is the ONLY sanctioned destructive-permissive API (ADR-0010 §3).</summary>
+    private static readonly string[] ForbiddenPatterns =
     [
         @"\bFile\.Delete\s*\(",
         @"\bDirectory\.Delete\s*\(",
@@ -356,41 +356,41 @@ public sealed class QuarantineTests : IDisposable
         @"\bFileDispositionInfo\b",
     ];
 
-    private static readonly DateTimeOffset TimestampCongelado =
+    private static readonly DateTimeOffset FrozenTimestamp =
         new(2026, 8, 22, 19, 45, 0, TimeSpan.Zero);
 
-    private static readonly DateTime EntradaFixaMtime =
+    private static readonly DateTime FixedEntryMtime =
         new(2026, 8, 20, 10, 30, 0, DateTimeKind.Utc);
 
-    private QuarantineService NovoServico(int? comMoverQueFalhaNo = null)
+    private QuarantineService NewService(int? failMoveOn = null)
     {
-        var contador = 0;
+        var counter = 0;
         return new QuarantineService(
-            moveOverride: comMoverQueFalhaNo is null
+            moveOverride: failMoveOn is null
                 ? null
-                : (origem, destino) =>
+                : (source, destination) =>
                 {
-                    contador++;
-                    if (contador >= comMoverQueFalhaNo.Value)
+                    counter++;
+                    if (counter >= failMoveOn.Value)
                     {
-                        throw new IOException($"falha simulada no move #{contador}");
+                        throw new IOException($"simulated failure on move #{counter}");
                     }
 
-                    File.Move(origem, destino);
+                    File.Move(source, destination);
                 });
     }
 
-    private QuarantinePlan PlanoPadrao() => new(_root, TimestampCongelado);
+    private QuarantinePlan DefaultPlan() => new(_root, FrozenTimestamp);
 
-    private string PayloadUnico(QuarantineOperationResult movimento)
+    private string SinglePayload(QuarantineOperationResult move)
     {
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(movimento.ManifestPath));
-        var relativo = json.RootElement.GetProperty("items")[0]
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(move.ManifestPath));
+        var relative = json.RootElement.GetProperty("items")[0]
             .GetProperty("quarantine_path").GetString()!;
-        return Path.Combine(movimento.QuarantineDirectory, relativo.Replace('/', Path.DirectorySeparatorChar));
+        return Path.Combine(move.QuarantineDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
     }
 
-    private string RaizFonte(string projeto)
+    private string SourceRoot(string project)
     {
         var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory!);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "CloudSyncConflictDoctor.sln")))
@@ -398,32 +398,32 @@ public sealed class QuarantineTests : IDisposable
             dir = dir.Parent;
         }
 
-        return Path.Combine(dir!.FullName, "src", projeto);
+        return Path.Combine(dir!.FullName, "src", project);
     }
 
-    private static byte[] Conteudo(byte semente) =>
-        Enumerable.Range(0, 4096).Select(i => (byte)(semente + (i % 97))).ToArray();
+    private static byte[] Content(byte seed) =>
+        Enumerable.Range(0, 4096).Select(i => (byte)(seed + (i % 97))).ToArray();
 
-    private string CriarArquivo(string caminhoRelativo, byte[] conteudo)
+    private string CreateFile(string relativePath, byte[] content)
     {
-        var absoluto = Path.Combine(_root, caminhoRelativo);
-        Directory.CreateDirectory(Path.GetDirectoryName(absoluto)!);
-        File.WriteAllBytes(absoluto, conteudo);
-        File.SetLastWriteTimeUtc(absoluto, EntradaFixaMtime);
-        return absoluto;
+        var absolute = Path.Combine(_root, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+        File.WriteAllBytes(absolute, content);
+        File.SetLastWriteTimeUtc(absolute, FixedEntryMtime);
+        return absolute;
     }
 
-    private FileEntry Entrada(string caminho)
+    private FileEntry Entry(string path)
     {
-        var info = new FileInfo(caminho);
+        var info = new FileInfo(path);
         return new FileEntry
         {
-            Path = caminho,
+            Path = path,
             Size = info.Length,
             MtimeUtc = new DateTimeOffset(info.LastWriteTimeUtc),
             Attributes = FileAttributes.Normal,
             VolumeId = "t15-volume",
-            FileId = caminho,
+            FileId = path,
         };
     }
 }

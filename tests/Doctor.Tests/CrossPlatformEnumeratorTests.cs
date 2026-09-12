@@ -4,9 +4,9 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T07 — CrossPlatformEnumerator sobre árvore REAL (System.IO.Enumeration.FileSystemEnumerable,
-/// metadados sem stat extra): coleta recursiva de arquivos, FileId = inode via lstat P/Invoke,
-/// symlinks marcados como ReparsePoint (análogo POSIX) e nunca atravessados.
+/// T07 — CrossPlatformEnumerator on REAL tree (System.IO.Enumeration.FileSystemEnumerable,
+/// metadata without extra stat): recursive file collection, FileId = inode via lstat P/Invoke,
+/// symlinks marked as ReparsePoint (POSIX analogue) and never traversed.
 /// </summary>
 public class CrossPlatformEnumeratorTests : IDisposable
 {
@@ -24,9 +24,9 @@ public class CrossPlatformEnumeratorTests : IDisposable
     }
 
     [Fact]
-    public void Enumerate_ArvoreReal_OrdenadaCompletaComInode()
+    public void Enumerate_RealTree_OrderedCompleteWithInode()
     {
-        // Nomes escolhidos para que a ordem física de criação difira da ordem Ordinal.
+        // Names chosen so that physical creation order differs from Ordinal order.
         File.WriteAllBytes(Path.Combine(_root, "a.txt"), [1]);
         File.WriteAllBytes(Path.Combine(_root, "B.txt"), [2]);
         File.WriteAllBytes(Path.Combine(_root, "_.txt"), [3]);
@@ -41,7 +41,7 @@ public class CrossPlatformEnumeratorTests : IDisposable
         Assert.Equal(5, result.Files.Count);
 
         var paths = result.Files.Select(e => e.Path).ToArray();
-        // Ordem canônica byte-a-byte, recursiva, independente da ordem física do diretório.
+        // Byte-by-byte canonical order, recursive, independent of physical directory order.
         Assert.Equal(
             new[] { "B.txt", "_.txt", "a.txt", "sub/z.txt", "á.txt" }.Select(p => Path.Combine(_root, p)),
             paths);
@@ -49,17 +49,17 @@ public class CrossPlatformEnumeratorTests : IDisposable
         Assert.All(result.Files, e =>
         {
             Assert.True(long.TryParse(e.FileId, out var inode));
-            Assert.True(inode > 0); // inode real obtido por lstat
+            Assert.True(inode > 0); // real inode obtained via lstat
             Assert.Equal(new FileInfo(e.Path).Length, e.Size);
         });
         Assert.Equal(5, result.Telemetry.FilesEnumerated);
     }
 
     [Fact]
-    public void Enumerate_Symlink_NuncaAtravessado_E_MarcadoPlaceholder()
+    public void Enumerate_Symlink_NeverTraversed_And_MarkedPlaceholder()
     {
-        // Alvo FORA da árvore escaneada: se o enumerator atravessasse o link,
-        // o arquivo alvo apareceria no resultado — a asserção abaixo pegaria.
+        // Target OUTSIDE scanned tree: if enumerator traversed link,
+        // target file would appear in result — assertion below catches this.
         var outside = Path.Combine(Path.GetTempPath(), "t07-outside-" + Guid.NewGuid().ToString("N") + ".txt");
         File.WriteAllBytes(outside, [9, 9, 9]);
 
@@ -67,7 +67,7 @@ public class CrossPlatformEnumeratorTests : IDisposable
         {
             File.WriteAllBytes(Path.Combine(_root, "real.txt"), [1]);
             var linkPath = Path.Combine(_root, "link.txt");
-            Assert.True(symlink(outside, linkPath) == 0, "symlink(2) falhou no ambiente de teste");
+            Assert.True(symlink(outside, linkPath) == 0, "symlink(2) failed in test environment");
 
             var result = new CrossPlatformEnumerator().Enumerate(_root, CancellationToken.None);
 

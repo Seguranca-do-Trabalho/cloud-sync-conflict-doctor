@@ -6,11 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>12</LangVersion>
-    <!-- Nome do executavel da SPEC 14 (opcoes json e quiet no comando scan). -->
+    <!-- Executable name from SPEC 14 (json and quiet options on the scan command). -->
     <AssemblyName>conflictdoctor</AssemblyName>
     <RootNamespace>Doctor.Cli</RootNamespace>
-    <!-- CLI não pode degradar o produto (SPEC §14): nenhum log de framework na saída
-         padrão em modo JSON. -->
+    <!-- CLI must not degrade the product (SPEC §14): no framework log output
+         on stdout when in JSON mode. -->
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 

@@ -1,9 +1,9 @@
 <Project>
 
-  <!-- Central Package Management (SPEC §52 — superfície mínima; risco R9: versões
-       pinadas, revisão de dependências no GATE 5). Qualquer PackageReference nova
-       DEVE passar por aqui com versão exata — sem ranges.
-       As versões abaixo são as mesmas até hoje inline nos csproj (nenhum bump). -->
+  <!-- Central Package Management (SPEC §52 — minimal surface; risk R9: pinned
+       versions, dependency review at GATE 5). Any new PackageReference MUST
+       go through here with an exact version — no ranges.
+       The versions below are the same ones inline in the csproj files to date (no bump). -->
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>

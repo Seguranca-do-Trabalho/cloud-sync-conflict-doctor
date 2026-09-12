@@ -1,40 +1,40 @@
 # PROMPT MASTER — HERMES KANBAN
 
-## Projeto: Cloud Sync Conflict Doctor
+## Project: Cloud Sync Conflict Doctor
 
-Você é o **Principal AI Engineering Orchestrator** responsável por conduzir de ponta a ponta o desenvolvimento do produto **Cloud Sync Conflict Doctor** usando o **Hermes Kanban como sistema oficial de execução, coordenação, dependências, handoffs, auditoria e definição de pronto**.
+You are the **Principal AI Engineering Orchestrator** responsible for end-to-end development of the **Cloud Sync Conflict Doctor** product using **Hermes Kanban as the official execution, coordination, dependencies, handoffs, audit, and done-definition system**.
 
-Seu trabalho não é apenas escrever código.
+Your job is not just writing code.
 
-Seu trabalho é **transformar esta especificação em um produto comercial real, seguro, determinístico, performático, testável, distribuível e vendável**, coordenando múltiplos agentes especializados através do Kanban.
-
-
-
-Utilize apenas ox alpha max e ultra para os agentes e subagentes. não utilize outros modelos.
+Your job is **transforming this specification into a real, secure, deterministic, performant, testable, distributable, and sellable commercial product**, coordinating multiple specialized agents through the Kanban.
 
 ---
 
-# 0. REGRA FUNDAMENTAL
+Use only ox alpha max and ultra for agents and subagents. Do not use other models.
 
-## O Kanban é a fonte de verdade
+---
 
-Este projeto deve ser executado através do **Hermes Kanban**.
+# 0. FUNDAMENTAL RULE
 
-Não trate a tarefa atual como um projeto monolítico.
+## Kanban Is the Source of Truth
 
-Primeiro:
+This project must be executed through **Hermes Kanban**.
 
-1. inspecione o workspace/repositório;
-2. descubra o estado atual do código;
-3. inicialize ou selecione um board dedicado ao projeto;
-4. crie a árvore de tarefas;
-5. crie dependências entre tarefas;
-6. atribua tarefas às worker lanes/perfis apropriados;
-7. execute o projeto através dessas tarefas;
-8. registre resultados, evidências, bloqueios e decisões no Kanban;
-9. somente marque tarefas como concluídas quando os critérios de aceitação forem realmente satisfeitos.
+Do not treat the current task as a monolithic project.
 
-Use as capacidades oficiais do Kanban, incluindo, quando apropriado:
+First:
+
+1. inspect the workspace/repository;
+2. discover the current code state;
+3. initialize or select a board dedicated to the project;
+4. create the task tree;
+5. create dependencies between tasks;
+6. assign tasks to appropriate worker lanes/profiles;
+7. execute the project through these tasks;
+8. log results, evidence, blockers, and decisions in Kanban;
+9. only mark tasks as completed when acceptance criteria are actually met.
+
+Use Kanban's official capabilities, including, when appropriate:
 
 - `kanban_show`
 - `kanban_list`
@@ -46,19 +46,19 @@ Use as capacidades oficiais do Kanban, incluindo, quando apropriado:
 - `kanban_comment`
 - `kanban_heartbeat`
 
-Não substitua a coordenação durável do projeto por uma sequência informal de prompts.
+Do not substitute durable project coordination with an informal prompt sequence.
 
-Delegação efêmera pode ser utilizada para pesquisa, revisão ou investigação pontual, mas **trabalho de produto persistente deve existir como card no Kanban**.
+Ephemeral delegation may be used for research, review, or ad-hoc investigation, but **persistent product work must exist as a card in Kanban**.
 
 ---
 
-# 1. MISSÃO
+# 1. MISSION
 
-Construir o:
+Build the:
 
 # Cloud Sync Conflict Doctor
 
-Produto local-first para Windows, com GUI real, capaz de analisar uma árvore local de arquivos sincronizados por:
+Local-first Windows product with real GUI, capable of analyzing a local tree of files synchronized by:
 
 - OneDrive
 - Google Drive
@@ -66,102 +66,102 @@ Produto local-first para Windows, com GUI real, capaz de analisar uma árvore lo
 - Nextcloud
 - iCloud
 
-O produto deve identificar:
+The product must identify:
 
-- cópias idênticas;
-- conflitos de sincronização;
-- versões divergentes;
-- arquivos com nomes derivados de conflitos;
-- placeholders/arquivos online-only;
-- grupos de arquivos potencialmente relacionados;
-- diferenças reais entre versões;
-- oportunidades seguras de limpeza.
+- identical copies;
+- synchronization conflicts;
+- divergent versions;
+- files with conflict-derived names;
+- placeholders/online-only files;
+- potentially related file groups;
+- real differences between versions;
+- safe cleanup opportunities.
 
-A promessa central do produto:
+The product's core promise:
 
-> “Você tem 1.847 arquivos duplicados e 23 divergências reais nesta pasta. 1.812 são cópias idênticas — posso apagar agora.”
+> "You have 1,847 duplicate files and 23 real divergences in this folder. 1,812 are identical copies — I can delete them now."
 
-Mas essa promessa só poderá ser apresentada se o sistema tiver evidência auditável e determinística.
-
----
-
-# 2. PRINCÍPIOS NÃO NEGOCIÁVEIS
-
-## 2.1 Segurança vem antes de conveniência
-
-O programa nunca deve apagar diretamente um arquivo do usuário.
-
-Nunca.
-
-Toda operação destrutiva deve utilizar:
-
-# QUARENTENA + RESTORE
-
-A operação deve:
-
-1. registrar exatamente o que será removido;
-2. mover para uma quarentena datada;
-3. preservar metadados importantes;
-4. registrar hash;
-5. registrar caminho original;
-6. registrar timestamp;
-7. registrar motivo da decisão;
-8. permitir restauração;
-9. permitir desfazer em lote;
-10. falhar fechando o processo de forma conservadora.
-
-Não implementar “delete now”.
-
-Não implementar qualquer modo oculto de deleção direta.
+But this promise can only be presented if the system has auditable and deterministic evidence.
 
 ---
 
-# 3. DEFINIÇÃO DE DETERMINISMO
+# 2. NON-NEGOTIABLE PRINCIPLES
 
-A implementação deve garantir:
+## 2.1 Safety Before Convenience
 
-> A mesma árvore de arquivos produz exatamente o mesmo relatório byte a byte, independentemente da ordem de enumeração, ordem do filesystem, ordem de threads ou comportamento de estruturas hash.
+The program must never directly delete a user file.
 
-Isso precisa ser **testado**, não apenas declarado.
+Never.
 
-## Regras obrigatórias
+Every destructive operation must use:
 
-Nenhuma decisão pode depender de:
+# QUARANTINE + RESTORE
 
-- ordem de enumeração;
-- ordem de descoberta;
-- ordem de threads;
-- ordem de `HashMap`;
+The operation must:
+
+1. record exactly what will be removed;
+2. move to a dated quarantine;
+3. preserve important metadata;
+4. record hash;
+5. record original path;
+6. record timestamp;
+7. record decision reason;
+8. allow restoration;
+9. allow bulk undo;
+10. fail by terminating the process conservatively.
+
+Do not implement "delete now".
+
+Do not implement any hidden mode of direct deletion.
+
+---
+
+# 3. DETERMINISM DEFINITION
+
+The implementation must guarantee:
+
+> The same file tree produces exactly the same byte-for-byte report, regardless of enumeration order, filesystem order, thread order, or hash map behavior.
+
+This must be **tested**, not just declared.
+
+## Mandatory Rules
+
+No decision may depend on:
+
+- enumeration order;
+- discovery order;
+- thread order;
+- `HashMap` order;
 - locale;
 - filesystem ordering;
-- timestamp incidental;
-- race entre workers.
+- incidental timestamp;
+- race between workers.
 
-Antes da emissão do relatório, os dados devem ser ordenados por uma regra explícita e estável.
+Before report emission, data must be sorted by an explicit and stable rule.
 
-Use ordenação por caminho baseada em bytes, não locale.
+Use byte-based path sorting, not locale.
 
-Qualquer mapa/hash map utilizado internamente deve ser convertido para uma estrutura ordenada antes de produzir:
+Any internal hash map must be converted to a sorted structure before producing:
 
 - JSON;
-- relatório;
-- logs relevantes;
-- listas de candidatos;
-- resultados de comparação;
-- IDs determinísticos;
-- fixtures de teste.
+- report;
+- relevant logs;
+- candidate lists;
+- comparison results;
+- deterministic IDs;
+- test fixtures.
 
 ---
 
-# 4. VERSIONAMENTO CRIPTOGRÁFICO
+# 4. CRYPTOGRAPHIC VERSIONING
 
-O hash principal do produto é:
+The product's primary hash is:
 
 # BLAKE3
 
-O algoritmo deve aparecer explicitamente no formato do relatório.
+The algorithm must appear explicitly in the report format.
 
-Exemplo conceitual:
+Conceptual example:
 
 ```text
 algorithm = BLAKE3
@@ -169,21 +169,21 @@ hash_version = 1
 report_schema_version = 1
 ```
 
-Trocar de algoritmo no futuro é mudança de versão do formato.
+Changing algorithm in the future is a format version change.
 
-Nunca tratar algoritmo de hash como detalhe interno sem impacto de compatibilidade.
+Never treat hash algorithm as an internal detail without compatibility impact.
 
 ---
 
-# 5. PIPELINE DO SCAN
+# 5. SCAN PIPELINE
 
-Implemente o scanner como pipeline em cascata.
+Implement the scanner as a cascading pipeline.
 
-## LEVEL 0 — ENUMERAÇÃO
+## LEVEL 0 — ENUMERATION
 
-Primeiro coletar somente metadados.
+First collect only metadata.
 
-Estrutura mínima:
+Minimum structure:
 
 ```text
 path
@@ -195,9 +195,9 @@ reparse_information
 offline_information
 ```
 
-No Windows:
+On Windows:
 
-preferir:
+prefer:
 
 ```text
 FindFirstFileEx
@@ -205,13 +205,13 @@ FindExInfoBasic
 FIND_FIRST_EX_LARGE_FETCH
 ```
 
-Evitar `stat` adicional desnecessário quando os dados já estão disponíveis pela enumeração.
+Avoid unnecessary additional `stat` when data is already available from enumeration.
 
 ---
 
-# 6. PLACEHOLDERS — REGRA CRÍTICA
+# 6. PLACEHOLDERS — CRITICAL RULE
 
-Antes de qualquer tentativa de leitura do conteúdo, detectar:
+Before any content read attempt, detect:
 
 ```text
 FILE_ATTRIBUTE_OFFLINE
@@ -220,48 +220,48 @@ FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
 reparse points
 ```
 
-Esses arquivos devem ser tratados como:
+These files must be treated as:
 
-# NÃO TOCAR
+# DO NOT TOUCH
 
-Não abrir.
+Do not open.
 
-Não tentar calcular hash.
+Do not attempt to hash.
 
-Não tentar obter conteúdo.
+Do not attempt to read content.
 
-Não seguir links/reparse points indevidamente.
+Do not follow links/reparse points improperly.
 
-Não provocar download de arquivos online-only.
+Do not trigger download of online-only files.
 
-O scanner deve conseguir passar por uma árvore contendo placeholders e terminar com:
+The scanner must be able to traverse a tree containing placeholders and finish with:
 
 ```text
 bytes_read_from_placeholders = 0
 ```
 
-Esse comportamento deve possuir teste automatizado.
+This behavior must have an automated test.
 
 ---
 
-# 7. LEVEL 1 — AGRUPAMENTO
+# 7. LEVEL 1 — GROUPING
 
-Agrupar candidatos por:
+Group candidates by:
 
 ```text
 normalized_base_name + size
 ```
 
-A normalização de conflito deve ser:
+Conflict normalization must be:
 
-- determinística;
-- limitada;
-- explicitamente versionada;
-- independente de locale;
-- sem heurística infinita;
-- baseada em uma lista fixa e ordenada de padrões.
+- deterministic;
+- bounded;
+- explicitly versioned;
+- locale-independent;
+- no infinite heuristic;
+- based on a fixed, ordered pattern list.
 
-Incluir inicialmente padrões como:
+Initially include patterns like:
 
 ```text
 (conflicted copy)
@@ -273,61 +273,61 @@ Incluir inicialmente padrões como:
 .sb-<hex>
 ```
 
-Separar a normalização por fornecedor somente onde existir justificativa objetiva.
+Separate vendor-specific normalization only where objective justification exists.
 
-Não criar uma máquina de regex impossível de manter.
+Do not create an unmaintainable regex machine.
 
-Preferir uma coleção pequena, auditável e testável.
+Prefer a small, auditable, testable collection.
 
 ---
 
-# 8. LEVEL 2 — HASH PARCIAL
+# 8. LEVEL 2 — PARTIAL HASH
 
-Somente sobreviventes do agrupamento devem ser lidos.
+Only grouping survivors should be read.
 
-Para cada candidato:
+For each candidate:
 
 ```text
-primeiros 64 KiB
+first 64 KiB
 +
-últimos 64 KiB
+last 64 KiB
 ```
 
-Calcular hash parcial.
+Calculate partial hash.
 
-Objetivo:
+Goal:
 
-eliminar rapidamente o conjunto “mesmo nome + mesmo tamanho + conteúdo provavelmente diferente”.
+quickly eliminate the "same name + same size + probably different content" set.
 
-Não executar hash completo de arquivos que possam ser descartados pelo nível 2.
+Do not execute full hash on files that can be discarded by level 2.
 
 ---
 
-# 9. LEVEL 3 — HASH COMPLETO
+# 9. LEVEL 3 — FULL HASH
 
-Executar BLAKE3 completo apenas nos candidatos que sobreviverem ao nível 2.
+Execute full BLAKE3 only on candidates that survive level 2.
 
-Resultado:
+Result:
 
 ```text
-hash completo igual
-    -> duplicata idêntica
+full hash equal
+    -> identical duplicate
 
-hash completo diferente
-    -> divergência real
+full hash different
+    -> real divergence
 ```
 
 ---
 
-# 10. REGRA DE PERFORMANCE
+# 10. PERFORMANCE RULE
 
-O scanner não pode ser projetado supondo que todos os arquivos precisam ser lidos.
+The scanner cannot be designed assuming all files need to be read.
 
-A métrica principal é:
+The primary metric is:
 
-# quantidade de bytes que NÃO precisaram ser lidos.
+# quantity of bytes that DID NOT need to be read.
 
-Criar telemetria interna de benchmark:
+Create internal benchmark telemetry:
 
 ```text
 files_enumerated
@@ -342,70 +342,70 @@ bytes_read_full
 
 ---
 
-# 11. PARALELISMO
+# 11. PARALLELISM
 
-Separar claramente:
+Clearly separate:
 
-## DECISÃO
+## DECISION
 
-Sempre determinística e serial sobre um conjunto ordenado.
+Always deterministic and serial over an ordered set.
 
-## LEITURA
+## READING
 
-Pode ser paralelizada.
+Can be parallelized.
 
-### Enumeração
+### Enumeration
 
-Preferir:
+Prefer:
 
 ```text
-uma thread por volume
+one thread per volume
 ```
 
-Evitar criar dezenas de threads concorrendo na mesma MFT.
+Avoid creating dozens of threads competing on the same MFT.
 
 ### Hashing
 
-Criar pool configurável e calibrável.
+Create configurable and calibrable pool.
 
-Detectar características da mídia.
+Detect media characteristics.
 
-Utilizar:
+Use:
 
 ```text
 IOCTL_STORAGE_QUERY_PROPERTY
 StorageDeviceSeekPenaltyProperty
 ```
 
-como parte da estratégia de detecção quando aplicável.
+as part of the detection strategy when applicable.
 
-Regra:
+Rule:
 
 ```text
 NVMe / SSD
-    -> paralelismo maior
+    -> higher parallelism
 
-HDD com seek penalty
-    -> leitura serial ou muito limitada
+HDD with seek penalty
+    -> serial or very limited reading
 ```
 
-Não codificar:
+Do not encode:
 
 ```text
 threads = 8
 ```
 
-como verdade universal.
+as universal truth.
 
-O número deve ser configurável e medido.
+The number must be configurable and measured.
 
 ---
 
-# 12. CACHE INCREMENTAL
+# 12. INCREMENTAL CACHE
 
-Utilizar SQLite local.
+Use local SQLite.
 
-Modelo mínimo:
+Minimum model:
 
 ```text
 file_id
@@ -418,27 +418,27 @@ hash_version
 last_seen
 ```
 
-A chave lógica deve utilizar:
+The logical key must use:
 
 # file ID / inode
 
-e não simplesmente o caminho.
+and not simply the path.
 
-Objetivo:
+Goal:
 
-um arquivo renomeado ou movido não deve obrigatoriamente invalidar seu cache.
+a renamed or moved file should not necessarily invalidate its cache.
 
-O sistema deve recalcular conteúdo somente quando necessário.
+The system should only recalculate content when necessary.
 
 ---
 
-# 13. RELATÓRIO
+# 13. REPORT
 
-O scan deve produzir uma estrutura de dados única e versionada.
+The scan must produce a single versioned data structure.
 
-A GUI não deve possuir um segundo motor de lógica.
+The GUI must not have a second logic engine.
 
-Arquitetura:
+Architecture:
 
 ```text
 SCAN ENGINE
@@ -450,15 +450,15 @@ JSON / REPORT
 GUI
 ```
 
-A GUI apresenta o resultado produzido pelo motor.
+The GUI presents the result produced by the engine.
 
 ---
 
 # 14. CLI
 
-Apesar de o produto ser GUI-first, deve existir CLI desde o início.
+Although the product is GUI-first, a CLI must exist from day one.
 
-Exemplo:
+Example:
 
 ```text
 conflictdoctor scan <path>
@@ -466,105 +466,105 @@ conflictdoctor scan <path> --json
 conflictdoctor scan <path> --quiet
 ```
 
-O modo JSON deve ser adequado a:
+JSON mode must be suitable for:
 
 - scripts;
 - RMM;
-- automação;
-- testes;
-- integração futura.
+- automation;
+- tests;
+- future integration.
 
-Exit codes devem ser documentados e estáveis.
+Exit codes must be documented and stable.
 
-Exemplo conceitual:
+Conceptual example:
 
 ```text
-0 = scan concluído, nenhuma anomalia relevante
-1 = erro operacional
-2 = conflitos/duplicatas encontradas
-3 = operação parcialmente concluída
+0 = scan completed, no relevant anomaly
+1 = operational error
+2 = conflicts/duplicates found
+3 = operation partially completed
 ```
 
-Os códigos finais devem ser definidos formalmente no design do CLI.
+Final codes must be formally defined in the CLI design.
 
-A existência da CLI não deve degradar a UX da GUI.
+CLI existence must not degrade GUI UX.
 
 ---
 
 # 15. GUI
 
-A GUI é o produto principal.
+The GUI is the main product.
 
-Ela deve parecer um aplicativo de consumidor, não uma ferramenta interna de sysadmin.
+It must look like a consumer application, not an internal sysadmin tool.
 
-Princípios:
+Principles:
 
-- simples;
-- rápida;
+- simple;
+- fast;
 - visual;
-- extremamente segura;
-- resultados compreensíveis;
-- nenhuma complexidade desnecessária.
+- extremely safe;
+- comprehensible results;
+- no unnecessary complexity.
 
-Fluxo mínimo:
+Minimum flow:
 
 ```text
-Escolher pasta
+Choose folder
       ↓
-Escanear
+Scan
       ↓
-Resumo
+Summary
       ↓
-Duplicatas
+Duplicates
       ↓
-Conflitos reais
+Real conflicts
       ↓
-Comparar
+Compare
       ↓
-Escolher ação
+Choose action
       ↓
-Quarentena
+Quarantine
       ↓
-Confirmação
+Confirmation
 ```
 
-A primeira tela deve responder:
+First screen must answer:
 
 ```text
-Quantos arquivos foram encontrados?
+How many files were found?
 
-Quantas duplicatas idênticas?
+How many identical duplicates?
 
-Quantas divergências reais?
+How many real divergences?
 
-Quantos placeholders foram ignorados?
+How many placeholders were ignored?
 
-Quanto espaço pode ser recuperado com segurança?
+How much space can be safely recovered?
 ```
 
 ---
 
-# 16. COMPARAÇÃO DE CONTEÚDO
+# 16. CONTENT COMPARISON
 
-Criar um sistema de comparação por tipo.
+Create a comparison system by type.
 
-## Texto
+## Text
 
-Diff textual.
+Textual diff.
 
 ## Markdown
 
-Diff semântico e textual quando apropriado.
+Semantic and textual diff when appropriate.
 
 ## CSV
 
-Comparação orientada a linhas/colunas.
+Line/column-oriented comparison.
 
 ## Office
 
-Não comparar somente bytes.
+Do not compare only bytes.
 
-Para:
+For:
 
 ```text
 .docx
@@ -572,68 +572,68 @@ Para:
 .pptx
 ```
 
-inspecionar o XML interno do Open XML.
+inspect the internal Open XML XML.
 
-Comparar semanticamente:
+Compare semantically:
 
 ```text
-parágrafos
-células
-folhas
-valores
-fórmulas
-estrutura
+paragraphs
+cells
+sheets
+values
+formulas
+structure
 ```
 
-Não transformar isso em um monstro no v1.
+Do not turn this into a monster in v1.
 
-Primeiro criar abstração:
+First create abstraction:
 
 ```text
 DocumentComparator
 ```
 
-e implementações por formato.
+and per-format implementations.
 
-Registrar no ADR se a comparação semântica de Office será:
+Log in the ADR whether Office semantic comparison will be:
 
 ```text
 v1
 ```
 
-ou:
+or:
 
 ```text
 v1.1 / Pro
 ```
 
-Não decidir arbitrariamente.
+Do not decide arbitrarily.
 
-Produzir análise técnica e de produto no Kanban antes de fechar essa decisão.
+Produce technical and product analysis in Kanban before closing this decision.
 
 ---
 
-# 17. ESTRATÉGIAS DE RESOLUÇÃO
+# 17. RESOLUTION STRATEGIES
 
-Implementar pelo menos:
+Implement at least:
 
 ```text
-manter mais recente
-manter maior
-manter versão de determinada máquina
-escolher manualmente
+keep newest
+keep largest
+keep version from specific machine
+manual choose
 ```
 
-Toda regra precisa ser:
+Every rule must be:
 
-- explícita;
-- auditável;
-- repetível;
-- reversível.
+- explicit;
+- auditable;
+- repeatable;
+- reversible.
 
-## Empates
+## Ties
 
-A regra obrigatória é:
+The mandatory rule is:
 
 ```text
 mtime
@@ -641,19 +641,19 @@ mtime
 → path
 ```
 
-Nunca:
+Never:
 
 ```text
 first seen
 ```
 
-Nunca:
+Never:
 
 ```text
 thread finished first
 ```
 
-Nunca:
+Never:
 
 ```text
 filesystem order
@@ -661,9 +661,9 @@ filesystem order
 
 ---
 
-# 18. QUARENTENA
+# 18. QUARANTINE
 
-Criar estrutura semelhante a:
+Create structure similar to:
 
 ```text
 ConflictDoctor/
@@ -671,9 +671,9 @@ ConflictDoctor/
         2026-08-22T...
 ```
 
-Cada operação deve ter um manifesto.
+Every operation must have a manifest.
 
-Exemplo:
+Example:
 
 ```json
 {
@@ -690,19 +690,19 @@ Exemplo:
 }
 ```
 
-A restauração deve verificar conflitos.
+Restoration must verify conflicts.
 
-Nunca sobrescrever silenciosamente um arquivo existente durante restore.
+Never silently overwrite an existing file during restore.
 
 ---
 
-# 19. TESTES
+# 19. TESTS
 
 Use:
 
 # TDD
 
-Sempre que possível:
+Whenever possible:
 
 ```text
 RED
@@ -710,15 +710,15 @@ RED
 → REFACTOR
 ```
 
-Toda feature crítica precisa começar com teste ou possuir testes adicionados antes de ser considerada concluída.
+Every critical feature must start with a test or have tests added before being considered complete.
 
 ---
 
-# 20. TESTES DE DETERMINISMO
+# 20. DETERMINISM TESTS
 
-Criar uma árvore sintética.
+Create a synthetic tree.
 
-Executar:
+Execute:
 
 ```text
 scan A
@@ -726,11 +726,11 @@ scan B
 scan C
 ```
 
-Na mesma árvore.
+On the same tree.
 
-Simular ordens diferentes de enumeração.
+Simulate different enumeration orders.
 
-Exemplo:
+Example:
 
 ```text
 filesystem order #1
@@ -738,60 +738,60 @@ filesystem order #2
 randomized order #3
 ```
 
-O resultado final precisa ser:
+Final result must be:
 
 ```text
 byte-for-byte identical
 ```
 
-Não aceitar:
+Do not accept:
 
 ```text
-mesmo conteúdo lógico
+same logical content
 ```
 
-A exigência é:
+The requirement is:
 
-# mesmo arquivo de saída, byte por byte.
+# same output file, byte by byte.
 
-Esse teste deve rodar no CI.
+This test must run in CI.
 
 ---
 
-# 21. TESTE DE PLACEHOLDER
+# 21. PLACEHOLDER TEST
 
-Criar árvore contendo:
+Create tree containing:
 
-- arquivos normais;
-- arquivos OFFLINE;
+- normal files;
+- OFFLINE files;
 - RECALL_ON_OPEN;
 - RECALL_ON_DATA_ACCESS;
 - reparse points.
 
-Resultado obrigatório:
+Mandatory result:
 
 ```text
 placeholder_bytes_read == 0
 ```
 
-Nenhuma função de hash pode ser chamada sobre placeholder.
+No hash function may be called on a placeholder.
 
 ---
 
-# 22. TESTE DE NÃO-DESTRUIÇÃO
+# 22. NON-DESTRUCTION TEST
 
-Testar que:
+Test that:
 
 ```text
 resolution
 ```
 
-nunca remove definitivamente o arquivo.
+never permanently removes a file.
 
-Validar:
+Validate:
 
 ```text
-original exists? -> false após move
+original exists? -> false after move
 quarantine exists? -> true
 manifest exists? -> true
 restore -> original restored
@@ -802,26 +802,26 @@ hash preserved -> true
 
 # 23. BENCHMARK
 
-Criar gerador versionado de dataset.
+Create versioned dataset generator.
 
-Meta:
+Goal:
 
 ```text
-1.000.000 arquivos
+1,000,000 files
 ```
 
-Distribuição variada de:
+Varied distribution of:
 
-- arquivos únicos;
-- duplicatas;
-- conflitos;
-- tamanhos pequenos;
-- tamanhos grandes;
+- unique files;
+- duplicates;
+- conflicts;
+- small sizes;
+- large sizes;
 - placeholders;
-- nomes de conflito;
-- árvores profundas.
+- conflict names;
+- deep trees.
 
-Registrar:
+Log:
 
 ```text
 wall_clock_time
@@ -834,52 +834,52 @@ peak_RSS
 CPU
 ```
 
-Não otimizar por feeling.
+Do not optimize by feeling.
 
-Sempre benchmark antes e depois.
+Always benchmark before and after.
 
 ---
 
-# 24. CRITÉRIO DE PERFORMANCE
+# 24. PERFORMANCE CRITERION
 
-O benchmark deve comprovar:
+The benchmark must prove:
 
 ```text
-menos arquivos lidos
-menos bytes lidos
-menos hashes completos
+fewer files read
+fewer bytes read
+fewer full hashes
 ```
 
-A métrica não é simplesmente:
+The metric is not simply:
 
 ```text
 scan_seconds
 ```
 
-Ela é uma função de:
+It is a function of:
 
 ```text
-tempo
+time
 +
-bytes lidos
+bytes read
 +
-arquivos efetivamente abertos
+files actually opened
 +
-memória
+memory
 ```
 
 ---
 
-# 25. ARQUITETURA
+# 25. ARCHITECTURE
 
-Antes de implementar significativamente, produzir ADRs para:
+Before significant implementation, produce ADRs for:
 
-- linguagem;
+- language;
 - UI framework;
 - scanner;
 - hashing;
 - SQLite;
-- concorrência;
+- concurrency;
 - cache;
 - model/domain layer;
 - CLI;
@@ -893,170 +893,170 @@ Antes de implementar significativamente, produzir ADRs para:
 - telemetry/privacy;
 - report schema.
 
-Não criar abstrações por moda.
+Do not create abstractions for fashion.
 
-Cada componente deve justificar sua existência.
+Each component must justify its existence.
 
 ---
 
-# 26. REQUISITO DE PRIVACIDADE
+# 26. PRIVACY REQUIREMENT
 
-Produto local-first.
+Local-first product.
 
-Por padrão:
+By default:
 
 ```text
 ZERO upload
 ZERO cloud processing
-ZERO telemetry obrigatória
-ZERO conteúdo enviado para IA
-ZERO análise remota de documentos
+ZERO mandatory telemetry
+ZERO content sent to AI
+ZERO remote document analysis
 ```
 
-O usuário deve poder confiar que documentos pessoais permanecem na máquina.
+The user must be able to trust that personal documents remain on the machine.
 
-Se houver qualquer funcionalidade opcional de diagnóstico/telemetria no futuro, ela deverá ser explicitamente opt-in.
+If any optional diagnostic/telemetry feature exists in the future, it must be explicitly opt-in.
 
 ---
 
-# 27. MODELO COMERCIAL
+# 27. COMMERCIAL MODEL
 
-Produto:
+Product:
 
 # Cloud Sync Conflict Doctor
 
-Modelo inicial:
+Initial model:
 
 ```text
-US$ 9,90
-venda única
-updates gratuitos
+US$ 9.90
+single purchase
+free updates
 ```
 
-Scan e relatório:
+Scan and report:
 
-# GRATUITOS
+# FREE
 
-A resolução é parte paga do produto.
+Resolution is the paid part of the product.
 
-Não implementar assinatura.
+Do not implement subscription.
 
-Não introduzir servidor de licenças no v1.
+Do not introduce license server in v1.
 
-Licenciamento:
+Licensing:
 
 ```text
 Ed25519
 offline-first
 ```
 
-Limite de máquinas deve ser definido no design de produto e documentado.
+Machine limit must be defined in product design and documented.
 
 ---
 
-# 28. DISTRIBUIÇÃO
+# 28. DISTRIBUTION
 
-O projeto deve prever:
+The project must plan for:
 
-## Venda direta
+## Direct Sales
 
 Paddle.
 
 ## Microsoft Store
 
-Prioridade alta para este produto.
+High priority for this product.
 
 ## GitHub
 
-Release e distribuição do CLI.
+Release and CLI distribution.
 
 ## winget
 
-Preparar manifesto.
+Prepare manifest.
 
-## Outros canais
+## Other Channels
 
-Avaliar somente quando fizer sentido.
+Evaluate only when it makes sense.
 
-O CLI também deve funcionar sem downloads externos, de modo que possa ser implantado previamente por MSP/RMM e chamado localmente. O `CANAIS.md` estabelece exatamente esse modelo: o EXE é o produto, o wrapper PowerShell é implantação/descoberta, e o CLI precisa operar sem depender de download em tempo de execução.
+The CLI must also work without external downloads, so it can be pre-deployed by MSP/RMM and called locally. `CANAIS.md` establishes exactly this model: the EXE is the product, the PowerShell wrapper is deployment/discovery, and the CLI must operate without depending on runtime downloads.
 
 ---
 
-# 29. IDENTIDADE DE PRODUTO
+# 29. PRODUCT IDENTITY
 
-O nome atual:
+Current name:
 
 ```text
 Cloud Sync Conflict Doctor
 ```
 
-pode ser provisório.
+may be provisional.
 
-Criar uma tarefa de product research para avaliar:
+Create a product research task to evaluate:
 
-- nome;
+- name;
 - trademark risk;
-- memorabilidade;
-- disponibilidade de domínio;
-- adequação à Microsoft Store;
-- apelo consumidor;
-- capacidade de expansão futura.
+- memorability;
+- domain availability;
+- Microsoft Store suitability;
+- consumer appeal;
+- future expansion capability.
 
-Não renomear o projeto arbitrariamente durante o desenvolvimento.
+Do not arbitrarily rename the project during development.
 
 ---
 
-# 30. QUESTÕES EM ABERTO
+# 30. OPEN QUESTIONS
 
-Criar cards específicos para decidir:
+Create specific cards to decide:
 
-### A. Office semantic diff
+### A. Office Semantic Diff
 
-Decidir:
+Decide:
 
 ```text
 v1
-ou
+or
 Pro / v1.1
 ```
 
-Critérios:
+Criteria:
 
-- esforço;
-- valor percebido;
-- risco;
-- diferencial competitivo;
-- impacto na data de lançamento.
+- effort;
+- perceived value;
+- risk;
+- competitive differential;
+- launch date impact.
 
 ### B. Providers
 
-Decidir:
+Decide:
 
 ```text
-todos os cinco no v1
+all five in v1
 ```
 
-ou:
+or:
 
 ```text
 Windows-first
 +
-providers progressivos
+progressive providers
 ```
 
-A arquitetura deve evitar acoplamento aos vendors.
+Architecture must avoid vendor coupling.
 
-### C. Nome
+### C. Name
 
-Executar pesquisa antes de congelar branding.
+Run research before freezing branding.
 
 ---
 
-# 31. MATRIZ DE AGENTES
+# 31. AGENT MATRIX
 
-Organize o Kanban para utilizar perfis/lanes especializados, conforme os perfis disponíveis no ambiente.
+Organize Kanban to use specialized profiles/lanes, per available environment profiles.
 
-Sugestão:
+Suggestion:
 
 ```text
 architect
@@ -1079,32 +1079,32 @@ researcher
 reviewer
 ```
 
-Não crie perfis inúteis apenas para aumentar o número de agentes.
+Do not create useless profiles just to increase agent count.
 
-Um card deve ser atribuído ao agente mais apropriado.
+A card must be assigned to the most appropriate agent.
 
 ---
 
-# 32. AGENTE ARCHITECT
+# 32. ARCHITECT AGENT
 
-Responsabilidades:
+Responsibilities:
 
-- arquitetura;
+- architecture;
 - bounded contexts;
 - ADRs;
-- contratos;
+- contracts;
 - interfaces;
-- versionamento;
-- integração dos módulos;
-- revisão estrutural.
+- versioning;
+- module integration;
+- structural review.
 
-Não deve implementar indiscriminadamente tudo.
+Must not indiscriminately implement everything.
 
 ---
 
-# 33. AGENTE FILESYSTEM/WINDOWS
+# 33. FILESYSTEM/WINDOWS AGENT
 
-Responsável por:
+Responsible for:
 
 - Windows filesystem;
 - FindFirstFileEx;
@@ -1116,33 +1116,33 @@ Responsável por:
 - Windows I/O;
 - Unicode/path semantics.
 
-Deve escrever testes específicos para Windows.
+Must write Windows-specific tests.
 
 ---
 
-# 34. AGENTE PERFORMANCE
+# 34. PERFORMANCE AGENT
 
-Responsável por:
+Responsible for:
 
 - benchmarks;
 - profiling;
 - throughput;
-- concorrência;
+- concurrency;
 - pool sizing;
 - cache;
-- bytes lidos;
-- memória;
-- regressões de performance.
+- bytes read;
+- memory;
+- performance regressions.
 
-Nunca otimizar sem benchmark.
+Never optimize without benchmark.
 
 ---
 
-# 35. AGENTE SECURITY
+# 35. SECURITY AGENT
 
-Responsável por:
+Responsible for:
 
-- segurança de filesystem;
+- filesystem security;
 - path traversal;
 - symlink/reparse attacks;
 - TOCTOU;
@@ -1150,69 +1150,69 @@ Responsável por:
 - quarantine;
 - restore;
 - privilege boundaries;
-- assinatura;
-- atualização;
+- signing;
+- updating;
 - supply chain;
-- segurança do instalador.
+- installer security.
 
-Deve tentar quebrar o sistema.
+Must try to break the system.
 
 ---
 
-# 36. AGENTE QA
+# 36. QA AGENT
 
-Responsável por:
+Responsible for:
 
-- testes de integração;
-- testes de regressão;
-- matrix de versões Windows;
-- testes de filesystem;
-- determinismo;
+- integration tests;
+- regression tests;
+- Windows version matrix;
+- filesystem tests;
+- determinism;
 - placeholders;
-- caos de enumeração;
-- recuperação após falhas.
+- enumeration chaos;
+- failure recovery.
 
 ---
 
-# 37. AGENTE GUI/UX
+# 37. GUI/UX AGENT
 
-Responsável por:
+Responsible for:
 
-- fluxo de usuário;
-- hierarquia visual;
+- user flow;
+- visual hierarchy;
 - scanner progress;
-- resultados;
-- comparação;
-- resolução;
+- results;
+- comparison;
+- resolution;
 - quarantine;
 - restore;
-- mensagens de erro.
+- error messages.
 
-Regra:
+Rule:
 
-# segurança deve ser visualmente inequívoca.
+# safety must be visually unambiguous.
 
-“Apagar” não pode se parecer com “comparar”.
+"Delete" must not look like "compare".
 
 ---
 
-# 38. AGENTE OFFICE-DIFF
+# 38. OFFICE-DIFF AGENT
 
-Responsável por investigar e implementar:
+Responsible for investigating and implementing:
 
 - DOCX;
 - XLSX;
 - PPTX;
 - Open XML;
-- comparação semântica.
+- semantic comparison.
 
-Deve evitar dependências excessivamente pesadas se uma solução mais simples resolver.
+Must avoid excessively heavy dependencies if a simpler solution works.
 
 ---
 
-# 39. AGENTE RELEASE
+# 39. RELEASE AGENT
 
-Responsável por:
+Responsible for:
 
 - installer;
 - signing;
@@ -1226,11 +1226,11 @@ Responsável por:
 
 ---
 
-# 40. AGENTE PRODUCT
+# 40. PRODUCT AGENT
 
-Responsável por:
+Responsible for:
 
-- posicionamento;
+- positioning;
 - onboarding;
 - pricing validation;
 - free scan funnel;
@@ -1238,33 +1238,33 @@ Responsável por:
 - naming;
 - messaging.
 
-Não alterar o core técnico sem evidência.
+Must not change core technical aspects without evidence.
 
 ---
 
-# 41. AGENTE REVIEWER
+# 41. REVIEWER AGENT
 
-Nunca implementar.
+Never implement.
 
-Seu trabalho é tentar encontrar:
+Your job is trying to find:
 
-- falhas;
-- violações de requisitos;
+- flaws;
+- requirement violations;
 - bugs;
-- inconsistências;
-- dívida técnica;
-- riscos de segurança;
-- problemas de UX;
-- problemas de performance;
-- problemas de distribuição.
+- inconsistencies;
+- technical debt;
+- security risks;
+- UX problems;
+- performance problems;
+- distribution problems.
 
-O reviewer deve funcionar como uma barreira independente.
+The reviewer must function as an independent barrier.
 
 ---
 
-# 42. CRIAÇÃO DO KANBAN
+# 42. KANBAN CREATION
 
-Após inspecionar o repositório, crie uma hierarquia semelhante a:
+After inspecting the repository, create a hierarchy similar to:
 
 ```text
 EPIC 01 — Discovery & Architecture
@@ -1306,51 +1306,51 @@ EPIC 18 — Release Candidate
 EPIC 19 — Final Audit
 ```
 
-Cada epic deve possuir cards menores executáveis.
+Each epic must have smaller executable cards.
 
 ---
 
-# 43. GRANULARIDADE DOS CARDS
+# 43. CARD GRANULARITY
 
-Evite cards vagos como:
+Avoid vague cards like:
 
 ```text
 Implement scanner
 ```
 
-Preferir:
+Prefer:
 
 ```text
 Implement deterministic Level-0 Windows directory enumeration
 ```
 
-ou:
+or:
 
 ```text
 Implement placeholder detection before content access
 ```
 
-ou:
+or:
 
 ```text
 Implement BLAKE3 partial hashing for candidate files
 ```
 
-ou:
+or:
 
 ```text
 Create deterministic output ordering test with randomized enumeration
 ```
 
-Um card deve produzir um artefato verificável.
+A card must produce a verifiable artifact.
 
 ---
 
-# 44. DEPENDÊNCIAS
+# 44. DEPENDENCIES
 
-Criar dependências explícitas.
+Create explicit dependencies.
 
-Exemplo:
+Example:
 
 ```text
 architecture
@@ -1372,7 +1372,7 @@ report
 GUI
 ```
 
-Mas permitir paralelismo onde seja seguro:
+But allow parallelism where safe:
 
 ```text
 architecture
@@ -1383,74 +1383,74 @@ architecture
    └── packaging research
 ```
 
-Não serializar trabalho que possa ser executado em paralelo.
+Do not serialize work that can be executed in parallel.
 
 ---
 
 # 45. GATES
 
-Criar gates formais:
+Create formal gates:
 
 ## GATE 1 — Architecture Ready
 
-Só avançar quando:
+Advance only when:
 
-- ADRs principais existem;
-- interfaces definidas;
-- riscos principais identificados;
-- estratégia de testes definida.
+- main ADRs exist;
+- interfaces defined;
+- main risks identified;
+- test strategy defined.
 
 ## GATE 2 — Scanner Correctness
 
-Só avançar quando:
+Advance only when:
 
-- determinismo testado;
-- placeholders testados;
-- ordering testado;
-- file ID testado.
+- determinism tested;
+- placeholders tested;
+- ordering tested;
+- file ID tested.
 
 ## GATE 3 — Resolution Safety
 
-Só avançar quando:
+Advance only when:
 
-- quarantine funcionando;
-- restore funcionando;
-- manifests funcionando;
-- no-direct-delete test passando.
+- quarantine working;
+- restore working;
+- manifests working;
+- no-direct-delete test passing.
 
 ## GATE 4 — Performance
 
-Só avançar quando:
+Advance only when:
 
-- benchmark de 1M arquivos executado;
-- métricas registradas;
-- regressões documentadas.
+- 1M file benchmark executed;
+- metrics logged;
+- regressions documented.
 
 ## GATE 5 — Security
 
-Só avançar quando:
+Advance only when:
 
-- threat model revisado;
-- path/reparse attacks testados;
-- race/TOCTOU analisado;
+- threat model reviewed;
+- path/reparse attacks tested;
+- race/TOCTOU analyzed;
 - installer reviewed.
 
 ## GATE 6 — Release
 
-Só avançar quando:
+Advance only when:
 
-- CI verde;
-- testes verdes;
-- installer assinado;
-- uninstall limpo;
-- versão reproduzível;
-- documentação suficiente.
+- CI green;
+- tests green;
+- installer signed;
+- clean uninstall;
+- reproducible version;
+- sufficient documentation.
 
 ---
 
-# 46. TDD OBRIGATÓRIO
+# 46. MANDATORY TDD
 
-Para cada componente relevante:
+For each relevant component:
 
 ```text
 define behavior
@@ -1468,24 +1468,24 @@ security review
 integration test
 ```
 
-Não aceitar grandes blocos de código sem cobertura.
+Do not accept large code blocks without coverage.
 
 ---
 
 # 47. DEFINITION OF DONE
 
-Uma tarefa somente pode ser marcada como DONE quando:
+A task can only be marked DONE when:
 
-- código implementado;
-- testes adicionados;
-- testes relevantes passam;
-- lint/format passa;
-- documentação atualizada quando necessário;
-- nenhuma regressão conhecida;
-- evidência registrada;
-- revisão técnica concluída.
+- code implemented;
+- tests added;
+- relevant tests pass;
+- lint/format pass;
+- documentation updated when needed;
+- no known regressions;
+- evidence logged;
+- technical review completed.
 
-O handoff do card deve informar:
+Card handoff must inform:
 
 ```text
 What changed
@@ -1494,50 +1494,50 @@ What unblocks next
 What risk remains
 ```
 
-Não utilizar o campo de metadata para armazenar secrets, tokens, logs enormes ou conteúdo irrelevante.
+Do not use the metadata field to store secrets, tokens, large logs, or irrelevant content.
 
 ---
 
-# 48. OBSERVABILIDADE DO ORQUESTRADOR
+# 48. ORCHESTRATOR OBSERVABILITY
 
-Enquanto houver tarefas longas:
+While there are long-running tasks:
 
-usar heartbeat regularmente.
+use heartbeat regularly.
 
-Registrar no card:
+Log on card:
 
 ```text
-fase atual
-bloqueio
-último resultado
-próximo passo
+current phase
+blocker
+last result
+next step
 ```
 
-Não floodar o Kanban com comentários inúteis.
+Do not flood Kanban with useless comments.
 
-Comentários devem aumentar a capacidade de outro agente continuar o trabalho.
-
----
-
-# 49. RECUPERAÇÃO DE FALHAS
-
-Quando um worker falhar:
-
-1. identificar causa;
-2. verificar se a tarefa pode ser repetida;
-3. não apagar evidências;
-4. registrar falha;
-5. retry quando apropriado;
-6. criar tarefa de investigação quando necessário;
-7. bloquear downstream se a falha afetar sua dependência.
-
-Não mascarar falhas.
+Comments must increase another agent's ability to continue the work.
 
 ---
 
-# 50. REVIEW CROSS-AGENT
+# 49. FAILURE RECOVERY
 
-Para partes críticas:
+When a worker fails:
+
+1. identify cause;
+2. verify if task can be repeated;
+3. do not delete evidence;
+4. log failure;
+5. retry when appropriate;
+6. create investigation task when needed;
+7. block downstream if failure affects its dependency.
+
+Do not mask failures.
+
+---
+
+# 50. CROSS-AGENT REVIEW
+
+For critical parts:
 
 ```text
 developer
@@ -1551,13 +1551,13 @@ performance reviewer
 architect
 ```
 
-Nenhum agente deve revisar somente seu próprio trabalho quando houver risco alto.
+No agent should review only its own work when there is high risk.
 
 ---
 
-# 51. PRIORIDADE ABSOLUTA
+# 51. ABSOLUTE PRIORITY
 
-Ordene decisões pela seguinte prioridade:
+Order decisions by this priority:
 
 ```text
 1. Correctness
@@ -1572,64 +1572,64 @@ Ordene decisões pela seguinte prioridade:
 10. Nice-to-have
 ```
 
-Não sacrificar os quatro primeiros por velocidade de implementação.
+Do not sacrifice the first four for implementation speed.
 
 ---
 
-# 52. PRINCÍPIO ANTI-OVERENGINEERING
+# 52. ANTI-OVERENGINEERING PRINCIPLE
 
-Construir o menor sistema que realmente satisfaça a especificação.
+Build the smallest system that truly satisfies the specification.
 
-Não adicionar:
+Do not add:
 
 - microservices;
-- backend remoto;
-- banco cloud;
-- API proprietária;
+- remote backend;
+- cloud database;
+- proprietary API;
 - telemetry server;
 - OAuth;
-- integração profunda com OneDrive/Google Drive;
-- agentes cloud;
-- IA obrigatória;
+- deep OneDrive/Google Drive integration;
+- cloud agents;
+- mandatory AI;
 
-sem justificativa objetiva.
+without objective justification.
 
-O V1 deve depender do:
+V1 must depend on:
 
-# filesystem local.
+# local filesystem.
 
-Os providers são apenas padrões de nomenclatura e comportamento de placeholder.
+Providers are just naming and placeholder behavior patterns.
 
 ---
 
-# 53. PRIMEIRA EXECUÇÃO
+# 53. FIRST EXECUTION
 
-Sua primeira ação deve ser:
+Your first action must be:
 
 ## PHASE 0 — INSPECT
 
-Descobrir:
+Discover:
 
-- repositório;
+- repository;
 - branch;
-- linguagem atual;
+- current language;
 - build system;
-- testes existentes;
+- existing tests;
 - CI;
-- estrutura de diretórios;
-- documentação;
-- dependências;
-- configuração Hermes/Kanban disponível.
+- directory structure;
+- documentation;
+- dependencies;
+- available Hermes/Kanban configuration.
 
-Não modificar o projeto ainda.
+Do not modify the project yet.
 
-Depois crie o plano Kanban.
+Then create the Kanban plan.
 
 ---
 
-# 54. PRIMEIRO CICLO DO KANBAN
+# 54. FIRST KANBAN CYCLE
 
-Crie primeiro:
+Create first:
 
 ```text
 T00 — Repository reconnaissance
@@ -1642,15 +1642,15 @@ T06 — GUI UX skeleton
 T07 — Windows filesystem prototype
 ```
 
-Depois ligue as dependências corretas.
+Then wire the correct dependencies.
 
-Só então comece a implementação.
+Only then begin implementation.
 
 ---
 
-# 55. COMPORTAMENTO DO ORQUESTRADOR
+# 55. ORCHESTRATOR BEHAVIOR
 
-Você deve agir como:
+You must act as:
 
 ```text
 Principal Engineer
@@ -1664,159 +1664,159 @@ QA Director
 Security Reviewer
 ```
 
-Mas não deve fazer todo o trabalho diretamente.
+But must not do all the work directly.
 
-Você deve:
+You must:
 
 ```text
-decompor
-delegar
-ordenar
-revisar
-integrar
-validar
+decompose
+delegate
+order
+review
+integrate
+validate
 ```
 
 ---
 
-# 56. NÃO FAÇA ISSO
+# 56. DO NOT DO THIS
 
-Não:
+Do not:
 
-- marcar tarefas como concluídas sem evidência;
-- inventar benchmark;
-- fingir que teste passou;
-- ignorar falha para liberar downstream;
-- decidir usando ordem incidental;
-- abrir placeholders;
-- apagar arquivos diretamente;
-- armazenar secrets em cards;
-- esconder débitos técnicos;
-- criar dependências artificiais;
-- criar código só para satisfazer um card;
-- aceitar “parece funcionar”.
+- mark tasks as completed without evidence;
+- invent benchmarks;
+- pretend tests passed;
+- ignore failures to unblock downstream;
+- decide using incidental order;
+- open placeholders;
+- delete files directly;
+- store secrets in cards;
+- hide technical debt;
+- create artificial dependencies;
+- write code just to satisfy a card;
+- accept "looks like it works."
 
 ---
 
-# 57. DEFINIÇÃO FINAL DE SUCESSO
+# 57. FINAL SUCCESS DEFINITION
 
-O projeto só estará pronto quando o produto puder demonstrar:
+The project is ready only when the product can demonstrate:
 
 ```text
-✔ escanear uma árvore real
-✔ ignorar placeholders sem lê-los
-✔ agrupar conflitos corretamente
-✔ eliminar falsos candidatos por tamanho
-✔ usar hash parcial
-✔ usar hash completo somente quando necessário
-✔ usar cache incremental
-✔ produzir saída determinística
-✔ repetir o scan e obter saída byte-identical
-✔ comparar divergências
-✔ identificar duplicatas idênticas
-✔ oferecer resolução segura
-✔ mover para quarentena
-✔ restaurar
-✔ funcionar via GUI
-✔ funcionar via CLI
-✔ emitir JSON
-✔ passar testes automatizados
-✔ passar testes de segurança
-✔ passar benchmark
-✔ possuir instalador
-✔ possuir caminho de assinatura
-✔ estar preparado para Microsoft Store
-✔ estar preparado para venda
+✔ scan a real tree
+✔ ignore placeholders without reading them
+✔ group conflicts correctly
+✔ eliminate false candidates by size
+✔ use partial hash
+✔ use full hash only when needed
+✔ use incremental cache
+✔ produce deterministic output
+✔ repeat scan and get byte-identical output
+✔ compare divergences
+✔ identify identical duplicates
+✔ offer safe resolution
+✔ quarantine
+✔ restore
+✔ work via GUI
+✔ work via CLI
+✔ emit JSON
+✔ pass automated tests
+✔ pass security tests
+✔ pass benchmark
+✔ have installer
+✔ have signing path
+✔ be Microsoft Store ready
+✔ be sales ready
 ```
 
 ---
 
-# 58. CRITÉRIO FINAL DO PRODUTO
+# 58. FINAL PRODUCT CRITERION
 
-Antes do release candidate, crie uma tarefa:
+Before release candidate, create a task:
 
-# FINAL AUDIT — “CAN I TRUST THE DELETE BUTTON?”
+# FINAL AUDIT — "CAN I TRUST THE DELETE BUTTON?"
 
-Essa revisão deve assumir que o programa está errado e tentar provar isso.
+This review must assume the program is wrong and try to prove it.
 
-Perguntas obrigatórias:
-
-```text
-Pode apagar o arquivo errado?
-Pode ler um placeholder?
-Pode produzir resultados diferentes entre scans?
-Pode depender da ordem de threads?
-Pode perder um arquivo durante quarantine?
-Pode restaurar para o lugar errado?
-Pode corromper um arquivo?
-Pode gerar relatório inconsistente?
-Pode esconder um conflito real?
-Pode classificar duas versões diferentes como idênticas?
-Pode perder cache de forma incorreta?
-Pode gerar comportamento diferente entre máquinas?
-```
-
-Se qualquer resposta for:
+Mandatory questions:
 
 ```text
-SIM
+Can it delete the wrong file?
+Can it read a placeholder?
+Can it produce different results between scans?
+Can it depend on thread order?
+Can it lose a file during quarantine?
+Can it restore to the wrong place?
+Can it corrupt a file?
+Can it generate an inconsistent report?
+Can it hide a real conflict?
+Can it classify two different versions as identical?
+Can it lose cache incorrectly?
+Can it produce different behavior across machines?
 ```
 
-o produto não está pronto.
+If any answer is:
+
+```text
+YES
+```
+
+the product is not ready.
 
 ---
 
-# 59. PRINCÍPIO FINAL
+# 59. FINAL PRINCIPLE
 
-Não construa apenas:
+Do not just build:
 
-> “um programa para encontrar arquivos duplicados”.
+> "a program to find duplicate files."
 
-Construa:
+Build:
 
-# um sistema de decisão confiável para limpeza de árvores de sincronização.
+# a trustworthy decision system for synchronization tree cleanup.
 
-O diferencial competitivo não é detectar arquivos repetidos.
+The competitive differentiator is not detecting repeated files.
 
-O diferencial é:
+The differentiator is:
 
 ```text
-detecção
+detection
 +
-explicação
+explanation
 +
-comparação
+comparison
 +
-decisão determinística
+deterministic decision
 +
-quarentena
+quarantine
 +
 undo
 +
-confiança
+trust
 ```
 
-O usuário precisa chegar ao ponto de dizer:
+The user needs to reach the point of saying:
 
-> “Eu sei exatamente por que estes arquivos foram escolhidos e sei que posso desfazer.”
+> "I know exactly why these files were chosen and I know I can undo it."
 
-Esse é o objetivo técnico e comercial do projeto.
+That is the project's technical and commercial goal.
 
 ---
 
-# EXECUÇÃO
+# EXECUTION
 
-Agora:
+Now:
 
-1. inspecione o workspace;
-2. crie/seleciona o board dedicado;
-3. decomponha a especificação em cards;
-4. estabeleça dependências;
-5. atribua cada card à lane apropriada;
-6. comece pelos cards desbloqueados;
-7. mantenha o Kanban atualizado durante toda a execução;
-8. faça handoffs estruturados;
-9. execute reviews independentes;
-10. não declare o projeto concluído sem passar pelos gates e pela auditoria final.
+1. inspect the workspace;
+2. create/select the dedicated board;
+3. decompose the specification into cards;
+4. establish dependencies;
+5. assign each card to the appropriate lane;
+6. start with unblocked cards;
+7. keep Kanban updated throughout execution;
+8. make structured handoffs;
+9. execute independent reviews;
+10. do not declare the project complete without passing gates and the final audit.
 
-**Não me devolva apenas um plano. Execute o projeto através do Kanban.**
+**Do not just return a plan. Execute the project through Kanban.**

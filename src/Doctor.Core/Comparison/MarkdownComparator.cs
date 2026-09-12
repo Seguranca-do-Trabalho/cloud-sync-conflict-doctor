@@ -1,25 +1,25 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Comparador de Markdown (SPEC §16 Markdown; ADR-0011 item 2; contratos.md
-/// IDocumentComparator; decisões do orquestrador no card T24/t_f37457ba). Base:
-/// diff textual linha a linha sobre <see cref="LcsDiff"/>. Camada estrutural LEVE
-/// por cima — os ÚNICOS recursos reconhecidos são: linhas de cabeçalho ATX
-/// (#{1..6} seguidos de espaço/fim de linha, na coluna 0) FORA de cercas ``` e o
-/// equilíbrio de cercas. Sem AST, sem parser de markdown, sem dependência externa.
+/// Markdown comparator (SPEC §16 Markdown; ADR-0011 item 2; contracts.md
+/// IDocumentComparator; orchestrator decisions in card T24/t_f37457ba). Base:
+/// line-by-line text diff over <see cref="LcsDiff"/>. LIGHT structural layer
+/// on top — the ONLY recognized features are: ATX heading lines
+/// (#{1..6} followed by space/end of line, in column 0) OUTSIDE ``` fences and
+/// fence balance. No AST, no markdown parser, no external dependency.
 ///
-/// Regra de refinamento: região não-<see cref="RegionKind.Equal"/> cujo span
-/// (left ou right) contém cabeçalho e cujo CONJUNTO de cabeçalhos difere entre
-/// left/right ⇒ <see cref="RegionKind.Changed"/> preservando os spans originais
-/// (mesmo que o LCS bruto tenha dito Added/Removed). Diferença somente de texto
-/// comum permanece Added/Removed. Cabeçalhos dentro de cerca não contam; cerca
-/// aberta sem fechamento engole o restante do documento (nenhum cabeçalho depois
-/// dela conta). Determinismo byte-a-byte herdado do motor; sem campo de tempo.
+/// Refinement rule: non-<see cref="RegionKind.Equal"/> region whose span
+/// (left or right) contains a heading and whose heading SET differs between
+/// left/right ⇒ <see cref="RegionKind.Changed"/> preserving the original spans
+/// (even if raw LCS said Added/Removed). Common-text-only difference
+/// remains Added/Removed. Headings inside a fence do not count; an open
+/// fence without closing swallows the rest of the document (no heading after
+/// it counts). Byte-by-byte determinism inherited from the engine; no time field.
 ///
-/// Gate herdado (ADR-0011 item 4): placeholder ⇒ <see cref="PlaceholderReadException"/>
-/// ANTES de qualquer abertura — zero bytes lidos de placeholder. O leitor de
-/// linhas normalizadas é autocontido nesta classe (mesma semântica do
-/// TextComparator, cujos membros privados não são tocados por este card).
+/// Inherited gate (ADR-0011 item 4): placeholder ⇒ <see cref="PlaceholderReadException"/>
+/// BEFORE any opening — zero placeholder bytes read. The normalized line
+/// reader is self-contained in this class (same semantics as
+/// TextComparator, whose private members are not touched by this card).
 /// </summary>
 public sealed class MarkdownComparator : IDocumentComparator
 {
@@ -29,15 +29,15 @@ public sealed class MarkdownComparator : IDocumentComparator
         GatePlaceholder(left);
         GatePlaceholder(right);
 
-        var linhasLeft = LerLinhasNormalizadas(left.Path);
-        var linhasRight = LerLinhasNormalizadas(right.Path);
+        var leftLines = ReadNormalizedLines(left.Path);
+        var rightLines = ReadNormalizedLines(right.Path);
 
-        var regioes = LcsDiff.Diff(linhasLeft, linhasRight);
-        var refinadas = RefinarPorCabecalhos(regioes, linhasLeft, linhasRight);
+        var regions = LcsDiff.Diff(leftLines, rightLines);
+        var refined = RefineByHeadings(regions, leftLines, rightLines);
 
-        bool iguais = refinadas.Count == 0
-            || refinadas.All(r => r.Kind == RegionKind.Equal);
-        return new ComparisonResult("markdown", iguais, refinadas);
+        bool equal = refined.Count == 0
+            || refined.All(r => r.Kind == RegionKind.Equal);
+        return new ComparisonResult("markdown", equal, refined);
     }
 
     private static void GatePlaceholder(FileEntry entry)
@@ -49,68 +49,68 @@ public sealed class MarkdownComparator : IDocumentComparator
     }
 
     /// <summary>
-    /// Aplica a regra de refinamento: substitui por <see cref="RegionKind.Changed"/>
-    /// cada região não-Equal cujo span contém cabeçalho em algum lado e cujos
-    /// conjuntos de cabeçalhos divergem entre os lados. Demais regiões passam intactas.
-    /// Os candidatos a cabeçalho são pré-computados por varredura GLOBAL do
-    /// documento (o estado de cercas atravessa os limites de região — um span que
-    /// começa no meio de uma cerca aberta herda esse estado).
+    /// Applies the refinement rule: replaces with <see cref="RegionKind.Changed"/>
+    /// each non-Equal region whose span contains a heading on either side and whose
+    /// heading sets diverge between sides. Remaining regions pass through untouched.
+    /// Heading candidates are precomputed by a GLOBAL document scan (fence state
+    /// crosses region boundaries — a span starting in the middle of an open fence
+    /// inherits that state).
     /// </summary>
-    private static List<DiffRegion> RefinarPorCabecalhos(
-        List<DiffRegion> regioes,
-        List<string> linhasLeft,
-        List<string> linhasRight)
+    private static List<DiffRegion> RefineByHeadings(
+        List<DiffRegion> regions,
+        List<string> leftLines,
+        List<string> rightLines)
     {
-        var candidatosLeft = IndicesDeCabecalho(linhasLeft);
-        var candidatosRight = IndicesDeCabecalho(linhasRight);
+        var leftIndices = HeadingIndices(leftLines);
+        var rightIndices = HeadingIndices(rightLines);
 
-        var saida = new List<DiffRegion>(regioes.Count);
-        foreach (var regiao in regioes)
+        var output = new List<DiffRegion>(regions.Count);
+        foreach (var region in regions)
         {
-            if (regiao.Kind == RegionKind.Equal)
+            if (region.Kind == RegionKind.Equal)
             {
-                saida.Add(regiao);
+                output.Add(region);
                 continue;
             }
 
-            var cabLeft = CabecalhosNoSpan(linhasLeft, candidatosLeft, regiao.LeftStart, regiao.LeftCount);
-            var cabRight = CabecalhosNoSpan(linhasRight, candidatosRight, regiao.RightStart, regiao.RightCount);
+            var headLeft = HeadingsInSpan(leftLines, leftIndices, region.LeftStart, region.LeftCount);
+            var headRight = HeadingsInSpan(rightLines, rightIndices, region.RightStart, region.RightCount);
 
-            bool spanTemCabecalho = cabLeft.Count > 0 || cabRight.Count > 0;
-            if (spanTemCabecalho && !cabLeft.SetEquals(cabRight))
+            bool spanHasHeading = headLeft.Count > 0 || headRight.Count > 0;
+            if (spanHasHeading && !headLeft.SetEquals(headRight))
             {
-                saida.Add(new DiffRegion(
+                output.Add(new DiffRegion(
                     RegionKind.Changed,
-                    regiao.LeftStart, regiao.LeftCount,
-                    regiao.RightStart, regiao.RightCount));
+                    region.LeftStart, region.LeftCount,
+                    region.RightStart, region.RightCount));
                 continue;
             }
 
-            saida.Add(regiao);
+            output.Add(region);
         }
 
-        return saida;
+        return output;
     }
 
     /// <summary>
-    /// Índices (globais) das linhas de cabeçalho do documento: varredura única onde
-    /// cercas ``` alternam estado — cerca ABERTA e nunca fechada desliga o
-    /// reconhecimento até o fim do documento.
+    /// (Global) indices of document heading lines: single scan where
+    /// ``` fences toggle state — an OPEN fence never closed disables
+    /// recognition until end of document.
     /// </summary>
-    private static HashSet<int> IndicesDeCabecalho(List<string> linhas)
+    private static HashSet<int> HeadingIndices(List<string> lines)
     {
         var indices = new HashSet<int>();
-        bool emCerca = false;
-        for (int i = 0; i < linhas.Count; i++)
+        bool inFence = false;
+        for (int i = 0; i < lines.Count; i++)
         {
-            string linha = linhas[i];
-            if (EhLinhaDeCerca(linha))
+            string line = lines[i];
+            if (IsFenceLine(line))
             {
-                emCerca = !emCerca;
+                inFence = !inFence;
                 continue;
             }
 
-            if (!emCerca && EhCabecalhoAtx(linha))
+            if (!inFence && IsAtxHeading(line))
             {
                 indices.Add(i);
             }
@@ -120,75 +120,75 @@ public sealed class MarkdownComparator : IDocumentComparator
     }
 
     /// <summary>
-    /// Conjunto (Ordinal) das linhas de cabeçalho no intervalo [inicio, inicio+contagem),
-    /// restrito aos índices pré-computados como cabeçalho fora de cerca.
+    /// (Ordinal) set of heading lines in the range [start, start+count),
+    /// restricted to indices precomputed as headings outside fences.
     /// </summary>
-    private static HashSet<string> CabecalhosNoSpan(
-        List<string> linhas, HashSet<int> indicesDeCabecalho, int inicio, int contagem)
+    private static HashSet<string> HeadingsInSpan(
+        List<string> lines, HashSet<int> headingIndices, int start, int count)
     {
-        var conjunto = new HashSet<string>(StringComparer.Ordinal);
-        int fim = Math.Min(inicio + contagem, linhas.Count);
-        for (int i = inicio; i < fim; i++)
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        int end = Math.Min(start + count, lines.Count);
+        for (int i = start; i < end; i++)
         {
-            if (indicesDeCabecalho.Contains(i))
+            if (headingIndices.Contains(i))
             {
-                conjunto.Add(linhas[i]);
+                set.Add(lines[i]);
             }
         }
 
-        return conjunto;
+        return set;
     }
 
-    /// <summary>Linha de cerca: começa (após espaços) com três crases.</summary>
-    private static bool EhLinhaDeCerca(string linha) =>
-        linha.TrimStart().StartsWith("```", StringComparison.Ordinal);
+    /// <summary>Fence line: starts (after whitespace) with three backticks.</summary>
+    private static bool IsFenceLine(string line) =>
+        line.TrimStart().StartsWith("```", StringComparison.Ordinal);
 
-    /// <summary>Cabeçalho ATX estrito: 1 a 6 cerilhas na coluna 0, depois espaço, tab ou fim de linha.</summary>
-    private static bool EhCabecalhoAtx(string linha)
+    /// <summary>Strict ATX heading: 1 to 6 hash marks in column 0, then space, tab or end of line.</summary>
+    private static bool IsAtxHeading(string line)
     {
         int i = 0;
-        while (i < linha.Length && linha[i] == '#')
+        while (i < line.Length && line[i] == '#')
         {
             i++;
         }
 
         return i is >= 1 and <= 6
-            && (i == linha.Length || linha[i] == ' ' || linha[i] == '\t');
+            && (i == line.Length || line[i] == ' ' || line[i] == '\t');
     }
 
-    /// <summary>Lê o arquivo como UTF-8, remove BOM se presente e divide em linhas com fim LF (sem trim).</summary>
-    private static List<string> LerLinhasNormalizadas(string path)
+    /// <summary>Reads the file as UTF-8, removes BOM if present and splits into LF-ended lines (no trim).</summary>
+    private static List<string> ReadNormalizedLines(string path)
     {
         using var reader = new StreamReader(path);
-        var texto = reader.ReadToEnd();
-        if (texto.Length > 0 && texto[0] == '\uFEFF')
+        var text = reader.ReadToEnd();
+        if (text.Length > 0 && text[0] == '\uFEFF')
         {
-            texto = texto[1..];
+            text = text[1..];
         }
 
-        texto = texto.Replace("\r\n", "\n", StringComparison.Ordinal);
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        if (texto.Length == 0)
+        if (text.Length == 0)
         {
             return [];
         }
 
-        var linhas = new List<string>();
-        int inicio = 0;
-        for (int i = 0; i < texto.Length; i++)
+        var lines = new List<string>();
+        int start = 0;
+        for (int i = 0; i < text.Length; i++)
         {
-            if (texto[i] == '\n')
+            if (text[i] == '\n')
             {
-                linhas.Add(texto[inicio..i]);
-                inicio = i + 1;
+                lines.Add(text[start..i]);
+                start = i + 1;
             }
         }
 
-        if (inicio < texto.Length)
+        if (start < text.Length)
         {
-            linhas.Add(texto[inicio..]);
+            lines.Add(text[start..]);
         }
 
-        return linhas;
+        return lines;
     }
 }

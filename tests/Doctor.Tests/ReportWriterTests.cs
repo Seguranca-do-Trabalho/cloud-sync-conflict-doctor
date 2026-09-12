@@ -13,44 +13,44 @@ public sealed class ReportWriterTests : IDisposable
     {
         var fixturePath = Path.GetFullPath(Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory ?? ".",
-            "..", "..", "fixtures", "report-v1-exemplo.json"));
+            "..", "..", "fixtures", "report-v1-example.json"));
         _fixtureJson = File.Exists(fixturePath) ? File.ReadAllText(fixturePath, Encoding.UTF8) : null;
     }
 
     public void Dispose() { }
 
     [Fact]
-    public void Write_MesmoInput_DoisWrites_IdenticosByteAByte()
+    public void Write_SameInput_TwoWrites_ByteIdentical()
     {
-        var (result, telemetry, placeholders, rootPath, started, finished) = DadosTesteRapido();
-        var bytes1 = Escrever(result, telemetry, placeholders, rootPath, started, finished);
-        var bytes2 = Escrever(result, telemetry, placeholders, rootPath, started, finished);
+        var (result, telemetry, placeholders, rootPath, started, finished) = QuickTestData();
+        var bytes1 = Write(result, telemetry, placeholders, rootPath, started, finished);
+        var bytes2 = Write(result, telemetry, placeholders, rootPath, started, finished);
         Assert.Equal(bytes1, bytes2);
     }
 
     [Fact]
-    public void Write_ContraFixture_BytesIdenticos()
+    public void Write_VsFixture_ByteIdentical()
     {
         if (_fixtureJson is null) return;
-        var (result, telemetry, placeholders, rootPath, started, finished) = DadosFixture();
-        var bytes = Escrever(result, telemetry, placeholders, rootPath, started, finished);
-        var atual = Encoding.UTF8.GetString(bytes);
-        Assert.Equal(MascararTimestamps(_fixtureJson), MascararTimestamps(atual));
+        var (result, telemetry, placeholders, rootPath, started, finished) = FixtureData();
+        var bytes = Write(result, telemetry, placeholders, rootPath, started, finished);
+        var current = Encoding.UTF8.GetString(bytes);
+        Assert.Equal(MaskTimestamps(_fixtureJson), MaskTimestamps(current));
     }
 
     [Fact]
-    public void Write_OrdemDasChaves_CoincideComSchemaV1()
+    public void Write_KeyOrder_MatchesSchemaV1()
     {
-        var (result, telemetry, placeholders, rootPath, started, finished) = DadosTesteRapido();
+        var (result, telemetry, placeholders, rootPath, started, finished) = QuickTestData();
         var json = Json(result, telemetry, placeholders, rootPath, started, finished);
-        AssertOrdemRaiz(json);
+        AssertRootOrder(json);
     }
 
     [Fact]
-    public void Write_FormatoExato_UTF8SemBOM_LF_Final_NewlineTerminal()
+    public void Write_ExactFormat_UTF8NoBOM_LF_Final_NewlineTerminated()
     {
-        var (result, telemetry, placeholders, rootPath, started, finished) = DadosTesteRapido();
-        var bytes = Escrever(result, telemetry, placeholders, rootPath, started, finished);
+        var (result, telemetry, placeholders, rootPath, started, finished) = QuickTestData();
+        var bytes = Write(result, telemetry, placeholders, rootPath, started, finished);
         Assert.NotEqual((byte)0xEF, bytes[0]);
         Assert.NotEqual((byte)0xBB, bytes[1]);
         Assert.NotEqual((byte)0xBF, bytes[2]);
@@ -60,7 +60,7 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
-    public void Write_Telemetria_Incluida_ComValoresCorretos()
+    public void Write_Telemetry_Included_WithCorrectValues()
     {
         var t = new ScanTelemetry
         {
@@ -68,7 +68,7 @@ public sealed class ReportWriterTests : IDisposable
             FilesPartialHashed = 29, FilesFullHashed = 20,
             BytesReadPartial = 100_000, BytesReadFull = 200_000, PlaceholderBytesRead = 0,
         };
-        var (result, _, placeholders, rootPath, started, finished) = DadosTesteRapido(t);
+        var (result, _, placeholders, rootPath, started, finished) = QuickTestData(t);
         var json = Json(result, t, placeholders, rootPath, started, finished);
         Assert.Contains("\"files_enumerated\": 42", json);
         Assert.Contains("\"files_placeholder\": 3", json);
@@ -82,19 +82,19 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
-    public void Write_Placeholders_OrdenadosPorBytesDeCaminho()
+    public void Write_Placeholders_SortedByPathBytes()
     {
-        // O writer delega a ordem ao chamador; testes verificam que a entrada
-        // ja vem ordenada e que a saida preserva essa ordem.
-        var ordemCorreta = new List<PlaceholderRecord>
+        // The writer delegates ordering to the caller; tests verify that input
+        // already comes sorted and that output preserves that order.
+        var correctOrder = new List<PlaceholderRecord>
         {
             new() { Path = "aaa/first.bin", Kinds = ["recall_on_open"], SizeBytes = 2 },
             new() { Path = "mmm/middle.bin", Kinds = ["reparse_point"], SizeBytes = 3 },
             new() { Path = "zzz/last.bin", Kinds = ["offline"], SizeBytes = 1 },
         };
-        var (_, telemetry, _, rootPath, started, finished) = DadosTesteRapido();
+        var (_, telemetry, _, rootPath, started, finished) = QuickTestData();
         var result = new ScanResult([], [], []);
-        var json = Json(result, telemetry, ordemCorreta, rootPath, started, finished);
+        var json = Json(result, telemetry, correctOrder, rootPath, started, finished);
         var idxAaa = json.IndexOf("\"aaa/first.bin\"");
         var idxMmm = json.IndexOf("\"mmm/middle.bin\"");
         var idxZzz = json.IndexOf("\"zzz/last.bin\"");
@@ -102,15 +102,15 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
-    public void Write_Grupos_OrdenadosPorNormBaseESize()
+    public void Write_Groups_SortedByNormalizedBaseAndSize()
     {
-        // O Grouping.Group ja ordena no pipeline; writer preserva ordem.
+        // Grouping.Group already sorts in the pipeline; writer preserves order.
         var groupAlpha100 = new ConflictGroup("alpha.txt", 100L, Array.Empty<FileEntry>());
         var groupAlpha200 = new ConflictGroup("alpha.txt", 200L, Array.Empty<FileEntry>());
         var groupBeta = new ConflictGroup("beta.txt", 100L, Array.Empty<FileEntry>());
-        // Ordem canonica ja aplicada.
+        // Canonical order already applied.
         var result = new ScanResult([groupAlpha100, groupAlpha200, groupBeta], [], []);
-        var (_, telemetry, placeholders, rootPath, started, finished) = DadosTesteRapido();
+        var (_, telemetry, placeholders, rootPath, started, finished) = QuickTestData();
         var json = Json(result, telemetry, placeholders, rootPath, started, finished);
         var idxAlpha100 = json.IndexOf("\"normalized_base_name\": \"alpha.txt\"");
         Assert.True(idxAlpha100 >= 0);
@@ -123,9 +123,9 @@ public sealed class ReportWriterTests : IDisposable
     }
 
     [Fact]
-    public void Write_MembrosDoGrupo_OrdenadosPorBytesDeCaminho()
+    public void Write_GroupMembers_SortedByPathBytes()
     {
-        // Grupo com membros ja ordenados por path (preserva ordem).
+        // Group with members already sorted by path (preserves order).
         var entries = new[]
         {
             new FileEntry { Path = "/tmp/t13-test-root/a.txt", Size = 1, MtimeUtc = DateTimeOffset.UnixEpoch, Attributes = FileAttributes.Normal, VolumeId = "v", FileId = "1" },
@@ -134,7 +134,7 @@ public sealed class ReportWriterTests : IDisposable
         };
         var group = new ConflictGroup("test.txt", 1L, entries);
         var result = new ScanResult([group], [], []);
-        var (_, telemetry, placeholders, rootPath, started, finished) = DadosTesteRapido();
+        var (_, telemetry, placeholders, rootPath, started, finished) = QuickTestData();
         var json = Json(result, telemetry, placeholders, rootPath, started, finished);
         var idxA = json.IndexOf("\"a.txt\"");
         var idxM = json.IndexOf("\"m.txt\"");
@@ -142,7 +142,7 @@ public sealed class ReportWriterTests : IDisposable
         Assert.True(idxA >= 0 && idxM > idxA && idxZ > idxM);
     }
 
-    // ---- Auxiliares ----------------------------------------------------------
+    // ---- Helpers ----------------------------------------------------------
 
     private static string Json(ScanResult r, ScanTelemetry t, IReadOnlyList<PlaceholderRecord> ph, string rp, DateTimeOffset s, DateTimeOffset f)
     {
@@ -151,14 +151,14 @@ public sealed class ReportWriterTests : IDisposable
         return Encoding.UTF8.GetString(ms.ToArray());
     }
 
-    private static byte[] Escrever(ScanResult r, ScanTelemetry t, IReadOnlyList<PlaceholderRecord> ph, string rp, DateTimeOffset s, DateTimeOffset f)
+    private static byte[] Write(ScanResult r, ScanTelemetry t, IReadOnlyList<PlaceholderRecord> ph, string rp, DateTimeOffset s, DateTimeOffset f)
     {
         using var ms = new MemoryStream();
         new ReportWriterJson().Write(r, t, ph, rp, s, f, ms);
         return ms.ToArray();
     }
 
-    private static (ScanResult, ScanTelemetry, List<PlaceholderRecord>, string, DateTimeOffset, DateTimeOffset) DadosTesteRapido(ScanTelemetry? telemetry = null)
+    private static (ScanResult, ScanTelemetry, List<PlaceholderRecord>, string, DateTimeOffset, DateTimeOffset) QuickTestData(ScanTelemetry? telemetry = null)
     {
         var rootPath = "/tmp/t13-test-root";
         var started = new DateTimeOffset(2026, 8, 23, 10, 0, 0, TimeSpan.Zero);
@@ -186,7 +186,7 @@ public sealed class ReportWriterTests : IDisposable
         return (new ScanResult(groups, identical, conflicts), te, placeholders, rootPath, started, finished);
     }
 
-    private static (ScanResult, ScanTelemetry, List<PlaceholderRecord>, string, DateTimeOffset, DateTimeOffset) DadosFixture()
+    private static (ScanResult, ScanTelemetry, List<PlaceholderRecord>, string, DateTimeOffset, DateTimeOffset) FixtureData()
     {
         var rootPath = FixtureTree;
         var started = new DateTimeOffset(2026, 8, 22, 19, 40, 0, 0, TimeSpan.Zero);
@@ -199,9 +199,9 @@ public sealed class ReportWriterTests : IDisposable
         };
         var groups = new[]
         {
-            new ConflictGroup("foto-reuniao.jpg", 96L, Array.Empty<FileEntry>()),
-            new ConflictGroup("orcamento.xlsx", 262144L, Array.Empty<FileEntry>()),
-            new ConflictGroup("reuniao.txt", 44L, Array.Empty<FileEntry>()),
+            new ConflictGroup("meeting-photo.jpg", 96L, Array.Empty<FileEntry>()),
+            new ConflictGroup("budget.xlsx", 262144L, Array.Empty<FileEntry>()),
+            new ConflictGroup("meeting.txt", 44L, Array.Empty<FileEntry>()),
         };
         var hashC1 = "821a7efb8d49dad09c77ff47e829a28db9a9642ed33b83fd55b640e364137a89";
         var hashX1 = "a231b86dbb971a220623d3b5bddf06548f74ac3efed175489f3b22c9a735ec20";
@@ -210,28 +210,28 @@ public sealed class ReportWriterTests : IDisposable
         {
             new IdenticalDuplicate(hashC1, 96L, new[]
             {
-                new FileEntry { Path = Path.Combine(rootPath, "docs/backup/foto-reuniao.jpg"), Size = 96, MtimeUtc = started, Attributes = FileAttributes.Normal, VolumeId = "v", FileId = "f1" },
-                new FileEntry { Path = Path.Combine(rootPath, "docs/foto-reuniao.jpg"), Size = 96, MtimeUtc = started, Attributes = FileAttributes.Normal, VolumeId = "v", FileId = "f2" },
-                new FileEntry { Path = Path.Combine(rootPath, "fotos/foto-reuniao.jpg"), Size = 96, MtimeUtc = started, Attributes = FileAttributes.Normal, VolumeId = "v", FileId = "f3" },
+                new FileEntry { Path = Path.Combine(rootPath, "docs/backup/meeting-photo.jpg"), Size = 96, MtimeUtc = started, Attributes = FileAttributes.Normal, VolumeId = "v", FileId = "f1" },
+                new FileEntry { Path = Path.Combine(rootPath, "docs/meeting-photo.jpg"), Size = 96, MtimeUtc = started, Attributes = FileAttributes.Normal, VolumeId = "v", FileId = "f2" },
+                new FileEntry { Path = Path.Combine(rootPath, "photos/meeting-photo.jpg"), Size = 96, MtimeUtc = started, Attributes = FileAttributes.Normal, VolumeId = "v", FileId = "f3" },
             }),
         };
         var conflicts = new[]
         {
-            new RealConflict("orcamento.xlsx", 262144L, new[]
+            new RealConflict("budget.xlsx", 262144L, new[]
             {
-                new ConflictMember(Path.Combine(rootPath, "projetos/orcamento-DESKTOP-ABC123 (conflicted copy).xlsx"), hashX2),
-                new ConflictMember(Path.Combine(rootPath, "projetos/orcamento.xlsx"), hashX1),
+                new ConflictMember(Path.Combine(rootPath, "projects/budget-DESKTOP-ABC123 (conflicted copy).xlsx"), hashX2),
+                new ConflictMember(Path.Combine(rootPath, "projects/budget.xlsx"), hashX1),
             }),
         };
         var placeholders = new List<PlaceholderRecord>
         {
-            new() { Path = "arquivo morto/relatorio antigo.docx", Kinds = ["offline"], SizeBytes = 10485760 },
-            new() { Path = "arquivos grandes/video-aula.mp4", Kinds = ["recall_on_data_access"], SizeBytes = 524288000 },
+            new() { Path = "dead file/old report.docx", Kinds = ["offline"], SizeBytes = 10485760 },
+            new() { Path = "large files/video-lesson.mp4", Kinds = ["recall_on_data_access"], SizeBytes = 524288000 },
         };
         return (new ScanResult(groups, identical, conflicts), telemetry, placeholders, rootPath, started, finished);
     }
 
-    private static void AssertOrdemRaiz(string json)
+    private static void AssertRootOrder(string json)
     {
         var idx = json.IndexOf("\"report_schema_version\"");
         Assert.True(idx >= 0);
@@ -246,7 +246,7 @@ public sealed class ReportWriterTests : IDisposable
         Assert.True(idxRp > idxRf && idxSsu > idxRp && idxSfu > idxSsu);
         var idxTel = json.IndexOf("\"telemetry\"");
         Assert.True(idxTel > idxRf);
-        AssertOrdemTelemetria(json, idxTel);
+        AssertTelemetryOrder(json, idxTel);
         var idxGrps = json.IndexOf("\"groups\"");
         var idxIddups = json.IndexOf("\"identical_duplicates\"");
         var idxRc = json.IndexOf("\"real_conflicts\"");
@@ -254,7 +254,7 @@ public sealed class ReportWriterTests : IDisposable
         Assert.True(idxGrps >= 0 && idxIddups > idxGrps && idxRc > idxIddups && idxPl > idxRc);
     }
 
-    private static void AssertOrdemTelemetria(string json, int startIndex)
+    private static void AssertTelemetryOrder(string json, int startIndex)
     {
         var expected = new[] { "files_enumerated", "files_placeholder", "files_skipped", "files_partial_hashed", "files_full_hashed", "bytes_read", "bytes_read_partial", "bytes_read_full", "placeholder_bytes_read" };
         var within = json.Substring(startIndex);
@@ -264,12 +264,12 @@ public sealed class ReportWriterTests : IDisposable
         foreach (var key in expected)
         {
             var i = within.IndexOf($"\"{key}\"");
-            Assert.True(i > last, $"telemetry: chave '{key}' fora de ordem");
+            Assert.True(i > last, $"telemetry: key '{key}' out of order");
             last = i;
         }
     }
 
-    private static string MascararTimestamps(string json) =>
+    private static string MaskTimestamps(string json) =>
         json.Replace("2026-08-22T19:40:00.000Z", "MASKED")
             .Replace("2026-08-22T19:40:00.041Z", "MASKED");
 }

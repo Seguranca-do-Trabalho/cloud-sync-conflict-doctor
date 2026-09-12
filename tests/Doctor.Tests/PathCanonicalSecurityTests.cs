@@ -3,220 +3,220 @@ namespace Doctor.Tests;
 using Doctor.Core;
 
 /// <summary>
-/// S11-1 (t_17f56008) — Path traversal e nomes hostis (T-01): canonização e contenção.
-/// Fonte: docs/threat-model.md T-01/R2/R12; SPEC §7–§9 (níveis do scanner); ADR-0002
-/// falha fechada; decisões D4/D5/D6 do card.
+/// S11-1 (t_17f56008) — Path traversal and hostile names (T-01): canonicalization and containment.
+/// Source: docs/threat-model.md T-01/R2/R12; SPEC §7–§9 (scanner levels); ADR-0002
+/// fail-closed; decisions D4/D5/D6 of the card.
 ///
-/// Primitivas sob teste:
-/// - <see cref="PathCanonical"/>: canonização única + forma estendida \\?\, combinação
-///   estrutural com re-canonização e contenção byte-a-byte (D4) — fronteira de tudo que
-///   o produto move/escreve;
-/// - <see cref="FileEntry.HasBidiControlChars"/>: marcador estrutural bidi (D5);
-/// - integração: <see cref="QuarantineService.Move"/> e <see cref="QuarantineService.Restore"/>
-///   executam íntegros sob nomes hostis e &gt; 260 chars, sem tocar nada fora da raiz.
+/// Primitives under test:
+/// - <see cref="PathCanonical"/>: single canonicalization + extended form \\?\, structural
+///   combination with re-canonicalization and byte-by-byte containment (D4) — boundary of everything the
+///   product moves/writes;
+/// - <see cref="FileEntry.HasBidiControlChars"/>: structural bidi marker (D5);
+/// - integration: <see cref="QuarantineService.Move"/> and <see cref="QuarantineService.Restore"/>
+///   execute intact under hostile names and &gt; 260 chars, without touching anything outside root.
 ///
-/// SEG-01 (P0): árvore com "evil.txt." (trailing dot), nome RLO e homóglifo cirílico;
-/// quarentena + restore com contenção validada; nenhum caminho fora da raiz tocado.
-/// SEG-02 (P0): caminho &gt; 260 chars; move e restore íntegros via forma estendida.
-/// SEG-03 (P2): nome RLO não engana saída JSON/GUI (marcador estrutural + escape JSON).
+/// SEG-01 (P0): tree with "evil.txt." (trailing dot), RLO name and Cyrillic homoglyph;
+/// quarantine + restore with validated containment; no path outside root touched.
+/// SEG-02 (P0): path &gt; 260 chars; move and restore intact via extended form.
+/// SEG-03 (P2): RLO name does not deceive JSON/GUI output (structural marker + JSON escape).
 /// </summary>
 [Trait("Category", "Security")]
 public sealed class PathCanonicalSecurityTests : IDisposable
 {
-    private static readonly DateTimeOffset Congelado = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Frozen = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
-    private readonly string raiz;
-    private readonly QuarantineService servico = new();
+    private readonly string root;
+    private readonly QuarantineService service = new();
 
     public PathCanonicalSecurityTests() =>
-        raiz = Directory.CreateTempSubdirectory("cd-t01-").FullName;
+        root = Directory.CreateTempSubdirectory("cd-t01-").FullName;
 
     public void Dispose()
     {
-        try { Directory.Delete(raiz, recursive: true); } catch (IOException) { }
+        try { Directory.Delete(root, recursive: true); } catch (IOException) { }
     }
 
     // ------------------------------------------------------------------
-    // SEG-01 — Contenção byte-a-byte sob nomes hostis (T-01, P0)
+    // SEG-01 — Byte-by-byte containment under hostile names (T-01, P0)
     // ------------------------------------------------------------------
 
     [Fact]
     public void Security_PathTraversal_HostileName_ContainedInRoot()
     {
-        // ---- fase A: a primitiva recusa escape por traversal -----------------
-        // (área de teste própria, descartada no fim da fase — a isca da fase B é
-        // criada DEPOIS, para não ser apagada pela limpeza desta fase)
-        var areaFaseA = Directory.CreateTempSubdirectory("cd-fasea-");
-        var raizFora = Directory.CreateTempSubdirectory("cd-fora-");
+        // ---- phase A: the primitive refuses traversal escape -----------------
+        // (own test area, discarded at end of phase — phase B's honeypot is
+        // created AFTER, so it is not deleted by this phase's cleanup)
+        var phaseADir = Directory.CreateTempSubdirectory("cd-phasea-");
+        var outsideRoot = Directory.CreateTempSubdirectory("cd-outside-");
         try
         {
-            // Destino fora da raiz: falha fechada.
+            // Destination outside root: fail-closed.
             Assert.Throws<PathEscapeException>(
                 () => PathCanonical.EnsureContained(
-                    Path.Combine(raizFora.FullName, "x.txt"), raiz));
+                    Path.Combine(outsideRoot.FullName, "x.txt"), root));
 
-            // ".." canônico que sairia da raiz: falha fechada.
+            // Canonical ".." that would exit root: fail-closed.
             Assert.Throws<PathEscapeException>(
                 () => PathCanonical.EnsureContained(
-                    Path.Combine(raiz, "..", "fora.txt"), raiz));
+                    Path.Combine(root, "..", "outside.txt"), root));
 
-            // Combinação estrutural nasce dentro da raiz canônica...
-            var destino = PathCanonical.Combine(raiz, "ConflictDoctor", "quarantine", "op-1", "payload");
-            Assert.StartsWith(PathCanonical.CanonicalizeRoot(raiz), destino, StringComparison.Ordinal);
+            // Structural combination is born inside canonical root...
+            var destination = PathCanonical.Combine(root, "ConflictDoctor", "quarantine", "op-1", "payload");
+            Assert.StartsWith(PathCanonical.CanonicalizeRoot(root), destination, StringComparison.Ordinal);
 
-            // ...e segmento absoluto injetado NÃO é aceito como troca de raiz:
-            // a combinação re-canonicaliza (desvio explícito) e a contenção reprova.
-            var sequestrado = PathCanonical.Combine(raiz, areaFaseA.FullName);
-            Assert.Throws<PathEscapeException>(() => PathCanonical.EnsureContained(sequestrado, raiz));
+            // ...and injected absolute segment is NOT accepted as root swap:
+            // the combination re-canonicalizes (explicit diversion) and containment rejects.
+            var hijacked = PathCanonical.Combine(root, phaseADir.FullName);
+            Assert.Throws<PathEscapeException>(() => PathCanonical.EnsureContained(hijacked, root));
         }
         finally
         {
-            areaFaseA.Delete(recursive: true);
+            phaseADir.Delete(recursive: true);
         }
 
-        // ---- fase B: árvore hostil real; quarentena + restore contidos -------
-        var dirHostil = Directory.CreateDirectory(Path.Combine(raiz, "sub"));
+        // ---- phase B: real hostile tree; quarantine + restore contained -------
+        var hostileDir = Directory.CreateDirectory(Path.Combine(root, "sub"));
 
-        var pDot = CriarArquivoHostil(dirHostil.FullName, "evil.txt.");              // trailing dot
-        var pRlo = CriarArquivoHostil(dirHostil.FullName, "fdp\u202Eexe.pdf");       // U+202E RTL override
-        var pHomoglifo = CriarArquivoHostil(dirHostil.FullName, "\u0430rquivo.txt"); // 'а' cirílico
+        var pDot = CreateHostileFile(hostileDir.FullName, "evil.txt.");              // trailing dot
+        var pRlo = CreateHostileFile(hostileDir.FullName, "fdp\u202Eexe.pdf");       // U+202E RTL override
+        var pHomoglyph = CreateHostileFile(hostileDir.FullName, "\u0430rquivo.txt"); // Cyrillic 'а'
 
-        // Isca fora da raiz: deve permanecer intocada durante TODA a operação.
-        var isca = Path.Combine(raizFora.FullName, "isca.txt");
-        File.WriteAllBytes(isca, [0xCA, 0xFE]);
-        var iscaBytes = File.ReadAllBytes(isca);
-        var iscaMtime = File.GetLastWriteTimeUtc(isca);
+        // Honeypot outside root: must remain untouched during the ENTIRE operation.
+        var honeypot = Path.Combine(outsideRoot.FullName, "honeypot.txt");
+        File.WriteAllBytes(honeypot, [0xCA, 0xFE]);
+        var honeypotBytes = File.ReadAllBytes(honeypot);
+        var honeypotMtime = File.GetLastWriteTimeUtc(honeypot);
 
-        var itens = new List<QuarantineItem>();
-        foreach (var caminho in new[] { pDot, pRlo, pHomoglifo })
+        var items = new List<QuarantineItem>();
+        foreach (var path in new[] { pDot, pRlo, pHomoglyph })
         {
-            itens.Add(new QuarantineItem(
-                Entrada(caminho),
-                Reason: "nome hostil (T-01)",
+            items.Add(new QuarantineItem(
+                Entry(path),
+                Reason: "hostile name (T-01)",
                 Rule: "R2"));
         }
 
-        var resultado = servico.Move(itens, new QuarantinePlan(raiz, Congelado), CancellationToken.None);
+        var result = service.Move(items, new QuarantinePlan(root, Frozen), CancellationToken.None);
 
-        Assert.Equal("completed", resultado.Status);
-        Assert.Equal(itens.Count, resultado.MovedPaths.Count);
+        Assert.Equal("completed", result.Status);
+        Assert.Equal(items.Count, result.MovedPaths.Count);
 
-        // Todo caminho produzido pela operação fica DENTRO da raiz, byte-a-byte.
-        foreach (var movido in resultado.MovedPaths)
+        // Every path produced by the operation stays INSIDE root, byte-by-byte.
+        foreach (var moved in result.MovedPaths)
         {
-            PathCanonical.EnsureContained(movido, raiz); // lança se escapar
+            PathCanonical.EnsureContained(moved, root); // throws if escaping
         }
 
-        // Restore devolve os originais byte-exatos (nomes idênticos em UTF-16)...
-        var restaurado = servico.Restore(resultado.OperationId, raiz, CancellationToken.None);
-        Assert.Equal(itens.Count, restaurado.RestoredPaths.Count);
+        // Restore returns originals byte-exact (identical names in UTF-16)...
+        var restored = service.Restore(result.OperationId, root, CancellationToken.None);
+        Assert.Equal(items.Count, restored.RestoredPaths.Count);
 
-        foreach (var original in new[] { pDot, pRlo, pHomoglifo })
+        foreach (var original in new[] { pDot, pRlo, pHomoglyph })
         {
-            var esperado = Path.GetFullPath(original);
-            Assert.True(File.Exists(esperado), $"esperado de volta em disco: {esperado}");
-            Assert.Contains(esperado, restaurado.RestoredPaths, StringComparer.Ordinal);
+            var expected = Path.GetFullPath(original);
+            Assert.True(File.Exists(expected), $"expected back on disk: {expected}");
+            Assert.Contains(expected, restored.RestoredPaths, StringComparer.Ordinal);
         }
 
-        // ...a segunda passada de contenção permanece fechada... 
-        foreach (var caminhoRestaurado in restaurado.RestoredPaths)
+        // ...the second containment pass remains closed...
+        foreach (var restoredPath in restored.RestoredPaths)
         {
-            PathCanonical.EnsureContained(caminhoRestaurado, raiz);
+            PathCanonical.EnsureContained(restoredPath, root);
         }
 
-        // ...e nenhum caminho fora da raiz foi tocado: isca única, bytes e mtime intactos.
-        Assert.Equal(new[] { isca }, Directory.GetFiles(raizFora.FullName, "*", SearchOption.AllDirectories));
-        Assert.Equal(iscaBytes, File.ReadAllBytes(isca));
-        Assert.Equal(iscaMtime, File.GetLastWriteTimeUtc(isca));
+        // ...and no path outside root was touched: honeypot intact, bytes and mtime unchanged.
+        Assert.Equal(new[] { honeypot }, Directory.GetFiles(outsideRoot.FullName, "*", SearchOption.AllDirectories));
+        Assert.Equal(honeypotBytes, File.ReadAllBytes(honeypot));
+        Assert.Equal(honeypotMtime, File.GetLastWriteTimeUtc(honeypot));
 
-        // Nomes hostis preservados EXATAMENTE como o filesystem os deu (T-01 mitigação (c)):
-        // nada foi "consertado" em silêncio — trailing dot, RLO e homóglifo voltam iguais.
-        Assert.Equal(3, Directory.GetFiles(dirHostil.FullName).Length);
+        // Hostile names preserved EXACTLY as the filesystem gave them (T-01 mitigation (c)):
+        // nothing was silently "fixed" — trailing dot, RLO and homoglyph come back identical.
+        Assert.Equal(3, Directory.GetFiles(hostileDir.FullName).Length);
 
-        // Manifesto: nomes byte-exatos, encoder estrito não alterou conteúdo decodificado.
-        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(resultado.ManifestPath));
-        var caminhosNoManifesto = json.RootElement.GetProperty("items")
+        // Manifest: byte-exact names, strict encoder did not alter decoded content.
+        using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(result.ManifestPath));
+        var pathsInManifest = json.RootElement.GetProperty("items")
             .EnumerateArray()
             .Select(i => i.GetProperty("original_path").GetString())
             .ToArray();
         Assert.Equal(
-            itens.Select(i => i.Entry.Path).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
-            caminhosNoManifesto);
+            items.Select(i => i.Entry.Path).OrderBy(p => p, StringComparer.Ordinal).ToArray(),
+            pathsInManifest);
     }
 
     // ------------------------------------------------------------------
-    // SEG-02 — > 260 chars com prefixo estendido, sem truncamento (P0)
+    // SEG-02 — > 260 chars with extended prefix, no truncation (P0)
     // ------------------------------------------------------------------
 
     [Fact]
     public void Security_LongPath_Over260Chars_ExtendedPrefixNoTruncation()
     {
-        // Componentes de ~52 chars até o caminho final passar de 260 caracteres.
-        const string componente = "componente-comprido-para-teste-de-caminho-longo-0123456789";
-        var profundidade = Math.Max(1, (280 - raiz.Length) / (componente.Length + 1));
-        var dirAtual = raiz;
-        for (var i = 0; i < profundidade; i++)
+        // Components of ~52 chars until final path exceeds 260 characters.
+        const string component = "long-component-for-long-path-test-0123456789";
+        var depth = Math.Max(1, (280 - root.Length) / (component.Length + 1));
+        var currentDir = root;
+        for (var i = 0; i < depth; i++)
         {
-            dirAtual = Path.Combine(dirAtual, componente);
+            currentDir = Path.Combine(currentDir, component);
         }
-        Directory.CreateDirectory(dirAtual);
+        Directory.CreateDirectory(currentDir);
 
-        var nomeFinal = "relatorio-final-do-caso-com-nome-muito-comprido.dat";
-        var caminhoLongo = Path.Combine(dirAtual, nomeFinal);
+        var finalName = "final-report-of-the-case-with-very-long-name.dat";
+        var longPath = Path.Combine(currentDir, finalName);
 
-        var conteudo = "conteudo integral do arquivo longo"u8.ToArray();
-        File.WriteAllBytes(PathCanonical.ToExtendedLength(caminhoLongo), conteudo);
+        var content = "full content of the long file"u8.ToArray();
+        File.WriteAllBytes(PathCanonical.ToExtendedLength(longPath), content);
 
         Assert.True(
-            caminhoLongo.Length > 260,
-            $"o teste exige caminho > 260 chars; obtido {caminhoLongo.Length}");
+            longPath.Length > 260,
+            $"test requires path > 260 chars; got {longPath.Length}");
 
-        var itens = new List<QuarantineItem> { new(Entrada(caminhoLongo), "caminho longo", "R2") };
+        var items = new List<QuarantineItem> { new(Entry(longPath), "long path", "R2") };
 
-        var resultado = servico.Move(itens, new QuarantinePlan(raiz, Congelado), CancellationToken.None);
-        Assert.Equal("completed", resultado.Status);
-        Assert.Single(resultado.MovedPaths);
+        var result = service.Move(items, new QuarantinePlan(root, Frozen), CancellationToken.None);
+        Assert.Equal("completed", result.Status);
+        Assert.Single(result.MovedPaths);
 
-        // Restore recria a árvore profunda sem truncar um único caractere.
-        var restaurado = servico.Restore(resultado.OperationId, raiz, CancellationToken.None);
-        Assert.Single(restaurado.RestoredPaths);
+        // Restore recreates the deep tree without truncating a single character.
+        var restored = service.Restore(result.OperationId, root, CancellationToken.None);
+        Assert.Single(restored.RestoredPaths);
 
-        var volta = Path.GetFullPath(caminhoLongo);
-        Assert.True(File.Exists(volta), "payload deve voltar ao caminho > 260 intacto");
-        Assert.Equal(conteudo, File.ReadAllBytes(volta));
-        Assert.Equal(caminhoLongo.Length, restaurado.RestoredPaths[0].Length);
+        var back = Path.GetFullPath(longPath);
+        Assert.True(File.Exists(back), "payload must return to path > 260 intact");
+        Assert.Equal(content, File.ReadAllBytes(back));
+        Assert.Equal(longPath.Length, restored.RestoredPaths[0].Length);
     }
 
     // ------------------------------------------------------------------
-    // SEG-03 — Nome RLO não engana a saída JSON/GUI (T-01/R12, P2)
+    // SEG-03 — RLO name does not deceive JSON/GUI output (T-01/R12, P2)
     // ------------------------------------------------------------------
 
     [Fact]
     public void Report_BidiControlChars_EscapedInJsonAndGui()
     {
-        // Marcador estrutural (D5): o NOME nunca é mutado; a flag expõe o risco.
-        var nomeRlo = "fdp\u202Eexe.pdf";
+        // Structural marker (D5): the NAME is never mutated; the flag exposes the risk.
+        var rloName = "fdp\u202Eexe.pdf";
 
-        Assert.False(PathCanonical.HasBidiControlChars("relatorio.pdf"));
-        Assert.False(PathCanonical.HasBidiControlChars("foto v2.jpg"));
+        Assert.False(PathCanonical.HasBidiControlChars("report.pdf"));
+        Assert.False(PathCanonical.HasBidiControlChars("photo v2.jpg"));
         Assert.False(PathCanonical.HasBidiControlChars(null));
-        Assert.True(PathCanonical.HasBidiControlChars(nomeRlo));
-        // Isolates/marcas também são controle bidi (lista fixa auditável).
+        Assert.True(PathCanonical.HasBidiControlChars(rloName));
+        // Isolates/marks are also bidi control (fixed auditable list).
         Assert.True(PathCanonical.HasBidiControlChars("a\u2066b\u2069.pdf"));
-        Assert.True(PathCanonical.HasBidiControlChars("nota\u200Ffinal.docx"));
+        Assert.True(PathCanonical.HasBidiControlChars("note\u200Ffinal.docx"));
 
-        var dir = Directory.CreateDirectory(Path.Combine(raiz, "rlo"));
-        var caminho = CriarArquivoHostil(dir.FullName, nomeRlo);
-        var entrada = Entrada(caminho);
+        var dir = Directory.CreateDirectory(Path.Combine(root, "rlo"));
+        var path = CreateHostileFile(dir.FullName, rloName);
+        var entry = Entry(path);
 
-        Assert.True(entrada.HasBidiControlChars);
+        Assert.True(entry.HasBidiControlChars);
 
-        // JSON com o MESMO encoder estrito do relatório/manifesto (JavaScriptEncoder.Default):
-        // U+202E sai escapado (\u202e) — o consumidor jamais vê bytes que reordenem
-        // a renderização; após decodificar, o nome permanece byte-exato e a flag
-        // estrutural acompanha (renderização cabe ao EPIC 10).
+        // JSON with the SAME strict encoder as report/manifest (JavaScriptEncoder.Default):
+        // U+202E comes out escaped (\u202e) — the consumer never sees bytes that reorder
+        // rendering; after decoding, the name remains byte-exact and the structural
+        // flag accompanies it (rendering belongs to EPIC 10).
         var json = System.Text.Json.JsonSerializer.Serialize(
-            new { name = entrada.Path, has_bidi_control_chars = entrada.HasBidiControlChars },
+            new { name = entry.Path, has_bidi_control_chars = entry.HasBidiControlChars },
             new System.Text.Json.JsonSerializerOptions
             {
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Default,
@@ -225,25 +225,25 @@ public sealed class PathCanonicalSecurityTests : IDisposable
         Assert.DoesNotContain('\u202E', json);
         Assert.Contains("\\u202e", json, StringComparison.OrdinalIgnoreCase);
 
-        var decodificado =
+        var decoded =
             System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json)!;
-        Assert.Equal(entrada.Path, decodificado["name"].GetString());
-        Assert.True(decodificado["has_bidi_control_chars"].GetBoolean());
+        Assert.Equal(entry.Path, decoded["name"].GetString());
+        Assert.True(decoded["has_bidi_control_chars"].GetBoolean());
     }
 
     // ------------------------------------------------------------------
-    // infraestrutura
+    // infrastructure
     // ------------------------------------------------------------------
 
-    /// <summary>Snapshot L0 coerente com o contrato (FileEntry imutável).</summary>
-    private FileEntry Entrada(string caminho)
+    /// <summary>L0 snapshot consistent with the contract (immutable FileEntry).</summary>
+    private FileEntry Entry(string path)
     {
-        var cheio = Path.GetFullPath(caminho);
-        var info = new FileInfo(PathCanonical.ToExtendedLength(cheio));
+        var full = Path.GetFullPath(path);
+        var info = new FileInfo(PathCanonical.ToExtendedLength(full));
 
         return new FileEntry
         {
-            Path = cheio,
+            Path = full,
             Size = info.Length,
             MtimeUtc = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
             Attributes = info.Attributes,
@@ -252,11 +252,11 @@ public sealed class PathCanonicalSecurityTests : IDisposable
         };
     }
 
-    /// <summary>Cria arquivo cujo nome o Win32 cru recusaria (trailing dot/RLO/homóglifo), via forma estendida.</summary>
-    private static string CriarArquivoHostil(string dir, string nome)
+    /// <summary>Creates a file whose name raw Win32 would refuse (trailing dot/RLO/homoglyph), via extended form.</summary>
+    private static string CreateHostileFile(string dir, string name)
     {
-        var destino = Path.Combine(dir, nome);
-        File.WriteAllBytes(PathCanonical.ToExtendedLength(destino), [0x63, 0x64, 0x2D]);
-        return destino;
+        var destination = Path.Combine(dir, name);
+        File.WriteAllBytes(PathCanonical.ToExtendedLength(destination), [0x63, 0x64, 0x2D]);
+        return destination;
     }
 }

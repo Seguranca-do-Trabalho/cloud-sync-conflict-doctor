@@ -1,10 +1,10 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Snapshot imutável de metadados capturado ANTES da leitura de conteúdo.
-/// Usado para detecção de TOCTOU (threat-model T-05, regra R4):
-/// após a leitura, os três campos são relidos e conferidos;
-/// qualquer divergência marca o arquivo como UNSTABLE.
+/// Immutable metadata snapshot captured BEFORE content reading.
+/// Used for TOCTOU detection (threat-model T-05, rule R4):
+/// after reading, the three fields are re-read and verified;
+/// any divergence marks the file as UNSTABLE.
 /// </summary>
 public sealed record MetadataSnapshot(
     long Size,
@@ -12,7 +12,7 @@ public sealed record MetadataSnapshot(
     string FileId);
 
 /// <summary>
-/// Resultados da verificação de estabilidade pós-leitura (T-05).
+/// Post-read stability check results (T-05).
 /// </summary>
 public sealed record StabilityCheckResult(
     FileStatus Status,

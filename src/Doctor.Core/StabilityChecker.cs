@@ -1,68 +1,68 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Verificador de estabilidade de arquivos (threat-model T-05, regra R4).
+/// File stability checker (threat-model T-05, rule R4).
 ///
-/// Protocolo:
-/// 1. Capturar snapshot de metadados ANTES da leitura (size, mtime ticks, file_id)
-/// 2. Ler conteúdo via IStreamSource
-/// 3. Reler metadados DEPOIS da leitura
-/// 4. Confrontar: divergência => UNSTABLE, stable => Stable
+/// Protocol:
+/// 1. Capture metadata snapshot BEFORE reading (size, mtime ticks, file_id)
+/// 2. Read content via IStreamSource
+/// 3. Re-read metadata AFTER reading
+/// 4. Compare: divergence => UNSTABLE, stable => Stable
 ///
-/// Fail-closed: qualquer divergência => dúvida sobre integridade => tratar como
-/// potencialmente instável. Hash de arquivo instável JAMAIS é gravado no cache.
+/// Fail-closed: any divergence => doubt about integrity => treat as
+/// potentially unstable. Unstable file hash is NEVER written to the cache.
 /// </summary>
 public static class StabilityChecker
 {
     /// <summary>
-    /// Verifica se os metadados do arquivo permaneceram estáveis entre o snapshot
-    /// pré-leitura e o estado pós-leitura.
+    /// Verifies that file metadata remained stable between the pre-read
+    /// snapshot and the post-read state.
     /// </summary>
-    /// <param name="entry">Entry com metadados atuais (pós-leitura).</param>
-    /// <param name="preSnapshot">Snapshot capturado antes da leitura.</param>
-    /// <param name="postSnapshot">Snapshot capturado após a leitura.</param>
-    /// <returns>Resultado da verificação de estabilidade.</returns>
-    public static StabilityCheckResult Verificar(
+    /// <param name="entry">Entry with current metadata (post-read).</param>
+    /// <param name="preSnapshot">Snapshot captured before reading.</param>
+    /// <param name="postSnapshot">Snapshot captured after reading.</param>
+    /// <returns>Stability check result.</returns>
+    public static StabilityCheckResult Check(
         FileEntry entry,
         MetadataSnapshot preSnapshot,
         MetadataSnapshot postSnapshot)
     {
-        // Verificação size
+        // Size check
         if (postSnapshot.Size != preSnapshot.Size)
         {
             return new StabilityCheckResult(
                 FileStatus.Unstable,
-                $"size divergiu: pre={preSnapshot.Size}, post={postSnapshot.Size}");
+                $"size diverged: pre={preSnapshot.Size}, post={postSnapshot.Size}");
         }
 
-        // Verificação mtime (ticks)
+        // Mtime check (ticks)
         if (postSnapshot.MtimeTicks != preSnapshot.MtimeTicks)
         {
             return new StabilityCheckResult(
                 FileStatus.Unstable,
-                $"mtime divergiu: pre={preSnapshot.MtimeTicks}, post={postSnapshot.MtimeTicks}");
+                $"mtime diverged: pre={preSnapshot.MtimeTicks}, post={postSnapshot.MtimeTicks}");
         }
 
-        // Verificação file_id
+        // File_id check
         if (postSnapshot.FileId != preSnapshot.FileId)
         {
             return new StabilityCheckResult(
                 FileStatus.Unstable,
-                $"file_id divergiu: pre={preSnapshot.FileId}, post={postSnapshot.FileId}");
+                $"file_id diverged: pre={preSnapshot.FileId}, post={postSnapshot.FileId}");
         }
 
         return new StabilityCheckResult(FileStatus.Stable);
     }
 
     /// <summary>
-    /// Cria snapshot de metadados a partir de FileInfo (produção).
+    /// Creates a metadata snapshot from FileInfo (production).
     /// </summary>
-    public static MetadataSnapshot CapturarDesdeFileInfo(FileInfo info) =>
+    public static MetadataSnapshot CaptureFromFileInfo(FileInfo info) =>
         new(info.Length, new DateTimeOffset(info.LastWriteTimeUtc).Ticks, info.FullName);
 
     /// <summary>
-    /// Cria snapshot a partir de FileEntry (já possui size/mtime/file_id).
+    /// Creates a snapshot from FileEntry (already has size/mtime/file_id).
     /// </summary>
-    public static MetadataSnapshot CapturarDesdeEntry(FileEntry entry) =>
+    public static MetadataSnapshot CaptureFromEntry(FileEntry entry) =>
         new(entry.Size, entry.MtimeUtc.Ticks, entry.FileId);
 }

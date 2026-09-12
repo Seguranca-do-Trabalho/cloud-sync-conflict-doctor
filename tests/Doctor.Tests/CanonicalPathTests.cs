@@ -3,59 +3,58 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T17 (t_70329e55) — Canon de caminho e nomes hostis (SPEC §35 agente Security /
-/// GATE 5 "path/reparse attacks testados"; ADR-0002 falha fechada; threat-model,
-/// seção path traversal).
+/// T17 (t_70329e55) — Path canon and hostile names (SPEC §35 Security agent /
+/// GATE 5 "path/reparse attacks tested"; ADR-0002 fail-closed; threat-model,
+/// path traversal section).
 ///
-/// Matriz obrigatória do cartão: 12 casos hostis rejeitados por
-/// <see cref="CanonicalPath.IsValidName"/> e 5 casos válidos aceitos, seguidos de
-/// varredura integral dos nomes reservados NTFS (CON, PRN, AUX, NUL, COM1-9,
-/// LPT1-9) nas três formas que o Windows reconhece (puro, minúsculo com extensão,
-/// capitalizado) e do contrato de <see cref="CanonicalPath.Normalize"/>
-/// (canonização de separadores, trunca­ção de extensão &gt; 255 chars e comparação
-/// por <see cref="StringComparer.OrdinalIgnoreCase"/>).
+/// Required card matrix: 12 hostile cases rejected by
+/// <see cref="CanonicalPath.IsValidName"/> and 5 valid cases accepted, followed by
+/// comprehensive sweep of NTFS reserved names (CON, PRN, AUX, NUL, COM1-9,
+/// LPT1-9) in the three forms Windows recognizes (bare, lowercase with extension,
+/// capitalized) and the contract of <see cref="CanonicalPath.Normalize"/>
+/// (separator canonicalization, extension truncation > 255 chars, and comparison
+/// by <see cref="StringComparer.OrdinalIgnoreCase"/>).
 /// </summary>
 public class CanonicalPathTests
 {
-    // ---- Matriz do cartão: exatamente 12 nomes hostis, todos rejeitados ------
+    // ---- Card matrix: exactly 12 hostile names, all rejected ------
 
     [Theory]
-    [InlineData(null)]                       // nulo
-    [InlineData("")]                         // vazio
-    [InlineData("relat\u0001orio.txt")]      // caractere de controle embutido
-    [InlineData("fotos//viagem.jpg")]        // sequência // no meio
-    [InlineData("a/../b.txt")]               // .. no meio
-    [InlineData("../escape.txt")]            // .. no início
-    [InlineData("backup\\..\\alvo.txt")]     // .. com separador Windows
-    [InlineData("CON")]                      // reservado NTFS puro
-    [InlineData("prn.txt")]                  // reservado + extensão, minúsculo
-    [InlineData("aux.mp3")]                  // reservado + extensão
-    [InlineData("NUL")]                      // reservado NTFS puro
-    [InlineData("lpt7.xlsx")]                // faixa LPT + extensão
-    public void IsValidName_NomeHostil_Rejeita(string? path)
+    [InlineData(null)]                       // null
+    [InlineData("")]                         // empty
+    [InlineData("report\u0001.txt")]         // embedded control character
+    [InlineData("photos//vacation.jpg")]     // // sequence in middle
+    [InlineData("a/../b.txt")]               // .. in middle
+    [InlineData("../escape.txt")]            // .. at start
+    [InlineData("backup\\..\\target.txt")]   // .. with Windows separator
+    [InlineData("CON")]                      // bare NTFS reserved
+    [InlineData("prn.txt")]                  // reserved + extension, lowercase
+    [InlineData("aux.mp3")]                  // reserved + extension
+    [InlineData("NUL")]                      // bare NTFS reserved
+    [InlineData("lpt7.xlsx")]                // LPT range + extension
+    public void IsValidName_HostileName_Rejects(string? path)
     {
         Assert.False(CanonicalPath.IsValidName(path));
     }
 
-    // ---- Matriz do cartão: exatamente 5 nomes válidos, todos aceitos ---------
+    // ---- Card matrix: exactly 5 valid names, all accepted ---------
 
     [Theory]
-    [InlineData("relatorio.xlsx")]
-    [InlineData("pasta/arquivo.txt")]                            // relativo aninhado
-    [InlineData("Foto de praia.JPG")]                            // espaços + caixa
-    [InlineData("conferencia.backup.sb-a3f19c.docx")]            // stem "con…" não é reservado
-    [InlineData("dados.2026/v2/notas.md")]                       // múltiplos segmentos pontuados
-    public void IsValidName_NomeValido_Aceita(string path)
+    [InlineData("report.xlsx")]
+    [InlineData("folder/file.txt")]                          // nested relative
+    [InlineData("Beach photo.JPG")]                          // spaces + case
+    [InlineData("conference.backup.sb-a3f19c.docx")]         // stem "con…" is not reserved
+    [InlineData("data.2026/v2/notes.md")]                    // multiple dotted segments
+    public void IsValidName_ValidName_Accepts(string path)
     {
         Assert.True(CanonicalPath.IsValidName(path));
     }
 
-    // ---- Varredura integral da tabela reservada NTFS --------------------------
-    // O cartão lista as famílias com "como": a tabela completa tem 22 nomes.
-    // Cada um entra nas três formas que o Windows trata como reservadas:
-    // puro, minúsculo com extensão e capitalizado com extensão.
+    // ---- Comprehensive sweep of NTFS reserved table --------------------------
+    // The complete table has 22 names. Each enters in the three forms Windows treats as reserved:
+    // bare, lowercase with extension, and capitalized with extension.
 
-    public static IEnumerable<object[]> NomesReservadosComVariacoes()
+    public static IEnumerable<object[]> ReservedNamesWithVariations()
     {
         string[] bases =
         {
@@ -64,124 +63,124 @@ public class CanonicalPathTests
             "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
         };
 
-        foreach (var nome in bases)
+        foreach (var name in bases)
         {
-            yield return new object[] { nome };                                  // CON
-            yield return new object[] { nome.ToLowerInvariant() + ".txt" };      // con.txt
-            yield return new object[] { nome[..1].ToUpperInvariant() + nome[1..].ToLowerInvariant() + ".dat" }; // Con.dat, Prn.dat...
+            yield return new object[] { name };                                  // CON
+            yield return new object[] { name.ToLowerInvariant() + ".txt" };      // con.txt
+            yield return new object[] { name[..1].ToUpperInvariant() + name[1..].ToLowerInvariant() + ".dat" }; // Con.dat, Prn.dat...
         }
     }
 
     [Theory]
-    [MemberData(nameof(NomesReservadosComVariacoes))]
-    public void IsValidName_TabelaReservadaCompleta_Rejeita(string path)
+    [MemberData(nameof(ReservedNamesWithVariations))]
+    public void IsValidName_CompleteReservedTable_Rejects(string path)
     {
         Assert.False(CanonicalPath.IsValidName(path));
     }
 
-    // ---- Bordas que reforçam a regra do stem antes do primeiro ponto ----------
+    // ---- Boundaries reinforcing the stem before first dot rule ----------
 
     [Theory]
-    [InlineData("CON/planilha.xlsx")]               // segmento diretório reservado também vale
-    [InlineData("pasta/CON.txt")]                   // reservado como último segmento
-    [InlineData("CON.")]                            // ponto final: stem continua reservado
-    public void IsValidName_ReservadoEmQualquerSegmento_Rejeita(string path)
+    [InlineData("CON/spreadsheet.xlsx")]            // reserved directory segment also applies
+    [InlineData("folder/CON.txt")]                   // reserved as last segment
+    [InlineData("CON.")]                            // trailing dot: stem remains reserved
+    public void IsValidName_ReservedInAnySegment_Rejects(string path)
     {
         Assert.False(CanonicalPath.IsValidName(path));
     }
 
-    // Saneamento NTFS: o Win32 descarta ponto/espaço finais na criação
-    // ("arquivo.txt." vira "arquivo.txt") — vetor de confusão de caminho;
-    // o canon falha fechado em vez de aprovar nome que o volume reescreve.
+    // NTFS sanitization: Win32 discards trailing dot/space on creation
+    // ("file.txt." becomes "file.txt") — path confusion vector;
+    // canon fails closed instead of approving names the volume rewrites.
 
     [Theory]
-    [InlineData("arquivo.txt.")]
-    [InlineData("arquivo.txt ")]
-    [InlineData("pasta/notas .")]
-    public void IsValidName_TerminaComPontoOuEspaco_Rejeita(string path)
+    [InlineData("file.txt.")]
+    [InlineData("file.txt ")]
+    [InlineData("folder/notes .")]
+    public void IsValidName_EndsWithDotOrSpace_Rejects(string path)
     {
         Assert.False(CanonicalPath.IsValidName(path));
     }
 
     [Theory]
-    [InlineData("conteudo.txt")]                    // prefixo de reservado não é reservado
+    [InlineData("content.txt")]                     // reserved prefix is not reserved
     [InlineData("nullify.bin")]
-    [InlineData("auxiliar.csv")]
-    [InlineData("com10.txt")]                       // fora da faixa COM1-9
-    [InlineData("lpt0.log")]                        // fora da faixa LPT1-9
-    [InlineData("a/b/conferencia.txt")]
-    [InlineData("documentos CON/planilha.xlsx")]    // reservado é nome EXATO, não substring
-    public void IsValidName_ParecidoMasNaoReservado_Aceita(string path)
+    [InlineData("auxiliary.csv")]
+    [InlineData("com10.txt")]                       // outside COM1-9 range
+    [InlineData("lpt0.log")]                        // outside LPT1-9 range
+    [InlineData("a/b/conference.txt")]
+    [InlineData("documents CON/sheet.xlsx")]        // reserved is EXACT name, not substring
+    public void IsValidName_SimilarButNotReserved_Accepts(string path)
     {
         Assert.True(CanonicalPath.IsValidName(path));
     }
 
-    // ---- Normalize: contrato ---------------------------------------------------
+    // ---- Normalize: contract ---------------------------------------------------
 
     [Fact]
-    public void Normalize_SeparadoresWindows_CanonizaParaBarraUnix()
+    public void Normalize_WindowsSeparators_CanonicalizesToUnixSlash()
     {
-        Assert.Equal("Pasta/Sub/Arquivo.TXT", CanonicalPath.Normalize("Pasta\\Sub\\Arquivo.TXT"));
+        Assert.Equal("Folder/Sub/File.TXT", CanonicalPath.Normalize("Folder\\Sub\\File.TXT"));
     }
 
     [Fact]
-    public void Normalize_ResultadosComparamPorOrdinalIgnoreCase()
+    public void Normalize_ResultsCompareByOrdinalIgnoreCase()
     {
-        // Contrato do cartão: igualdade de chave canônica é case-insensitive
-        // (semântica NTFS), sempre ORDINAL — sem locale (espírito do SPEC §3).
-        // Distinto de PathOrder.Comparer (ordenação de relatório, Ordinal sensível).
-        var a = CanonicalPath.Normalize("Notas/Finais.TXT");
-        var b = CanonicalPath.Normalize("notas/finais.txt");
+        // Contract: canonical key equality is case-insensitive
+        // (NTFS semantics), always ORDINAL — no locale (SPEC §3).
+        // Distinct from PathOrder.Comparer (report sorting, Ordinal sensitive).
+        var a = CanonicalPath.Normalize("Notes/Final.TXT");
+        var b = CanonicalPath.Normalize("notes/final.txt");
 
         Assert.Equal(a, b, StringComparer.OrdinalIgnoreCase);
-        Assert.NotEqual(a, b, StringComparer.Ordinal); // canon preserva a caixa original
+        Assert.NotEqual(a, b, StringComparer.Ordinal); // canon preserves original case
     }
 
     [Fact]
-    public void Normalize_ExtensaoAcimaDe255_TrunciaPara255EGateAprova()
+    public void Normalize_ExtensionAbove255_TruncatesTo255AndGateApproves()
     {
-        var hostil = "arquivo." + new string('a', 300);
+        var hostile = "file." + new string('a', 300);
 
-        // Gate falha fechado: não aprova componente que o NTFS não armazenaria…
-        Assert.False(CanonicalPath.IsValidName(hostil));
+        // Gate fails closed: does not approve component NTFS wouldn't store...
+        Assert.False(CanonicalPath.IsValidName(hostile));
 
-        // …e o Normalizador é a rota de reparo: trunca a extensão a 255.
-        var canon = CanonicalPath.Normalize(hostil);
+        // ...and Normalizer is the repair path: truncates extension to 255.
+        var canon = CanonicalPath.Normalize(hostile);
 
-        Assert.StartsWith("arquivo.", canon);
-        var extensao = canon[(canon.LastIndexOf('.') + 1)..];
-        Assert.Equal(255, extensao.Length);
+        Assert.StartsWith("file.", canon);
+        var extension = canon[(canon.LastIndexOf('.') + 1)..];
+        Assert.Equal(255, extension.Length);
         Assert.True(CanonicalPath.IsValidName(canon));
     }
 
     [Fact]
-    public void Normalize_Hostil_FalhaFechadaComArgumentException()
+    public void Normalize_Hostile_FailsClosedWithArgumentException()
     {
-        // Nunca sanitiza silenciosamente traversal nem reservado: lança.
-        string? nulo = null;
-        Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize(nulo!));
+        // Never silently sanitizes traversal or reserved: throws.
+        string? nullStr = null;
+        Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize(nullStr!));
         Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize(""));
         Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize("a//b"));
         Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize("x/../y"));
         Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize("CON"));
-        Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize("travamento\u0007.txt"));
+        Assert.Throws<ArgumentException>(() => CanonicalPath.Normalize("lockup\u0007.txt"));
     }
 
     [Fact]
-    public void Normalize_SaidaPassaNoGate_ParaOsCincoValidosDoCartao()
+    public void Normalize_OutputPassesGate_ForFiveValidCardCases()
     {
-        string[] validos =
+        string[] validCases =
         {
-            "relatorio.xlsx",
-            "pasta/arquivo.txt",
-            "Foto de praia.JPG",
-            "conferencia.backup.sb-a3f19c.docx",
-            "dados.2026/v2/notas.md",
+            "report.xlsx",
+            "folder/file.txt",
+            "Beach photo.JPG",
+            "conference.backup.sb-a3f19c.docx",
+            "data.2026/v2/notes.md",
         };
 
-        foreach (var nome in validos)
+        foreach (var name in validCases)
         {
-            var canon = CanonicalPath.Normalize(nome);
+            var canon = CanonicalPath.Normalize(name);
             Assert.True(CanonicalPath.IsValidName(canon));
         }
     }

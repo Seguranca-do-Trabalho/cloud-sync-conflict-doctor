@@ -1,8 +1,8 @@
 namespace Doctor.Gui.Flow;
 
 /// <summary>
-/// As 9 telas do fluxo §15 da SPEC, na ordem canônica de navegação.
-/// Tipo puro (sem Avalonia): a máquina de estados é testável isolada da UI.
+/// The 9 screens of the §15 SPEC flow, in canonical navigation order.
+/// Pure type (no Avalonia): the state machine is testable independently of the UI.
 /// </summary>
 public enum FlowScreen
 {
@@ -18,60 +18,60 @@ public enum FlowScreen
 }
 
 /// <summary>
-/// Gatilhos de navegação — um por comando de botão/ação da GUI.
-/// Nomes espelham os comandos da MainWindowViewModel para a correspondência
-/// comando → gatilho ser direta e auditável.
+/// Navigation triggers — one per GUI button/action command.
+/// Names mirror MainWindowViewModel commands so the command → trigger
+/// mapping is direct and auditable.
 /// </summary>
 public enum FlowTrigger
 {
-    /// <summary>"Escanear pasta" na tela Escolher pasta.</summary>
+    /// <summary>"Scan folder" on the Choose Folder screen.</summary>
     StartScan,
 
-    /// <summary>Conclusão do scan: só dispara com relatório completo.</summary>
+    /// <summary>Scan completion: only fires with a complete report.</summary>
     ScanCompleted,
 
-    /// <summary>"Ver duplicatas" no Resumo.</summary>
+    /// <summary>"View duplicates" on Summary.</summary>
     OpenDuplicates,
 
-    /// <summary>"Ver conflitos reais" / "Continuar".</summary>
+    /// <summary>"View real conflicts" / "Continue".</summary>
     OpenConflicts,
 
-    /// <summary>"Comparar versões" na tela Conflitos.</summary>
+    /// <summary>"Compare versions" on the Conflicts screen.</summary>
     CompareConflict,
 
-    /// <summary>"Mover para quarentena as outras versões" em Comparar.</summary>
+    /// <summary>"Move other versions to quarantine" on Compare.</summary>
     QueueOtherVersions,
 
-    /// <summary>"Mover para quarentena agora" em Escolher ação.</summary>
+    /// <summary>"Move to quarantine now" on Choose Action.</summary>
     ConfirmQuarantine,
 
-    /// <summary>"Registrar movimentação..." na Quarentena.</summary>
+    /// <summary>"Record move..." on Quarantine.</summary>
     OpenConfirmation,
 
-    /// <summary>"Examinar outra pasta" (nova análise) na Confirmação.</summary>
+    /// <summary>"Browse another folder" (new scan) on Confirmation.</summary>
     Restart,
 
-    /// <summary>Botões "Voltar"/"Repensar" — permitido apenas onde não expõe estado inconsistente.</summary>
+    /// <summary>"Back"/"Rethink" buttons — allowed only where it won't expose inconsistent state.</summary>
     Back,
 }
 
 /// <summary>
-/// Lançada quando um gatilho é disparado fora da ordem válida do fluxo §15
-/// ou sem a pré-condição da guarda. Fail-fast deliberado (decisão documentada
-/// no card t_8d08c08b): silenciar esconderia erro de ligação de botão;
-/// corretidade precede UX nas prioridades da SPEC.
+/// Thrown when a trigger is fired outside the valid §15 flow order
+/// or without the guard precondition. Deliberate fail-fast (documented decision
+/// in card t_8d08c08b): silencing it would hide a button-binding error;
+/// correctness precedes UX in SPEC priorities.
 /// </summary>
-public class TransicaoInvalidaException : InvalidOperationException
+public class InvalidTransitionException : InvalidOperationException
 {
-    public TransicaoInvalidaException(FlowScreen origem, FlowTrigger gatilho)
-        : base($"Transição inválida: gatilho {gatilho} não é permitido no estado {origem} " +
-               "(fluxo §15; use CanFire para consultar a transição sem lançar).")
+    public InvalidTransitionException(FlowScreen origin, FlowTrigger trigger)
+        : base($"Invalid transition: trigger {trigger} is not allowed in state {origin} " +
+               "(§15 flow; use CanFire to query the transition without throwing).")
     {
-        Origem = origem;
-        Gatilho = gatilho;
+        Origin = origin;
+        Trigger = trigger;
     }
 
-    public FlowScreen Origem { get; }
+    public FlowScreen Origin { get; }
 
-    public FlowTrigger Gatilho { get; }
+    public FlowTrigger Trigger { get; }
 }

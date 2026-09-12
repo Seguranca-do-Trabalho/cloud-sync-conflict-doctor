@@ -3,18 +3,18 @@ namespace Doctor.Cli;
 using Doctor.Core;
 
 /// <summary>
-/// T16 — replay da lista L0 já marcada e ordenada para o pipeline. O ScanPipeline
-/// reordena via OrderedFileEnumerator, cuja projeção consulta PlaceholderPolicy;
-/// com o endurecimento do Classify (marcação da origem é autoridade máxima), a
-/// marca da convenção T04 de sidecar sobrevive a qualquer recomposição — inclusive
-/// a este replay. Não faz I/O; nunca altera Path, Size, MtimeUtc nem marcação.
+/// T16 — replay of the already-marked and ordered L0 list for the pipeline. ScanPipeline
+/// reorders via OrderedFileEnumerator, whose projection queries PlaceholderPolicy;
+/// with the hardened Classify (source marking is the ultimate authority), the
+/// T04 sidecar convention mark survives any recomposition — including
+/// this replay. No I/O; never alters Path, Size, MtimeUtc or marking.
 /// </summary>
-public sealed class ReplayMarkedEnumerator : IFileEnumerator
+internal sealed class ReplayMarkedEnumerator : IFileEnumerator
 {
-    private readonly IReadOnlyList<FileEntry> _arquivos;
+    private readonly IReadOnlyList<FileEntry> _files;
 
-    public ReplayMarkedEnumerator(IReadOnlyList<FileEntry> arquivos) => _arquivos = arquivos;
+    public ReplayMarkedEnumerator(IReadOnlyList<FileEntry> files) => _files = files;
 
     public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default) =>
-        new(_arquivos, Array.Empty<ScanError>(), new ScanTelemetry());
+        new(_files, Array.Empty<ScanError>(), new ScanTelemetry());
 }

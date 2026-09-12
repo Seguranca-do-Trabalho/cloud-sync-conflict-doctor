@@ -1,147 +1,147 @@
-# Schema do Relatório v1 — Definição Normativa
+# Report Schema v1 — Normative Definition
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Produto | Cloud Sync Conflict Doctor |
+| Product | Cloud Sync Conflict Doctor |
 | Card | t_957718d4 (T03 — Deterministic report schema v1) |
-| Data | 2026-08-22 |
-| Revisão | 1.0 |
-| Responsável | André Santo (forg3) — backend/architect |
-| Status | Aceito |
-| Estende | ADR-0003 (Schema do relatório v1 e regra de determinismo) |
-| Normativo para | Doctor.Core (emissão), Doctor.Cli (`--json`), Doctor.Gui (consumo), Doctor.Tests (fixtures byte-a-byte) |
+| Date | 2026-08-22 |
+| Revision | 1.0 |
+| Owner | forg3 — backend/architect |
+| Status | Accepted |
+| Extends | ADR-0003 (Report schema v1 and determinism rule) |
+| Normative for | Doctor.Core (emission), Doctor.Cli (`--json`), Doctor.Gui (consumption), Doctor.Tests (byte-by-byte fixtures) |
 
-Este documento fecha o schema do relatório v1. Onde este documento e o ADR-0003 divergem em detalhe, este documento prevalece; nenhuma decisão aqui reverte o ADR-0003, apenas o torna operacional.
+This document closes the v1 report schema. Where this document and ADR-0003 diverge in detail, this document prevails; no decision here reverses ADR-0003, it only makes it operational.
 
 ---
 
-## 1. Convenções fundamentais
+## 1. Fundamental Conventions
 
-### 1.1 Codificação
+### 1.1 Encoding
 
-- O documento é UTF-8, **sem BOM**.
-- Quebras de linha: apenas `LF` (`0x0A`).
-- O arquivo termina com exatamente um `\n`.
+- The document is UTF-8, **without BOM**.
+- Line breaks: only `LF` (`0x0A`).
+- File ends with exactly one `\n`.
 
-### 1.2 Caminhos
+### 1.2 Paths
 
-- Todo caminho dentro do relatório é **relativo a `generated_from.root_path`**, nunca absoluto.
-- Separador sempre `/`, em todas as plataformas. Nunca `\`.
-- Sem prefixo `./`, sem segmento vazio, sem `..`.
-- O nome do arquivo é reproduzido **exatamente como existe no filesystem**: nenhuma normalização Unicode (NFC/NFD) é aplicada a nomes. Comparação e ordenação usam os bytes originais.
-- `generated_from.root_path` é o eco literal do argumento recebido pelo CLI, sem canonização. Duas grafias diferentes da mesma árvore produzem relatórios diferentes — isso é variação de invocação, não violação de determinismo. O teste de determinismo usa a mesma string de invocação.
+- Every path within the report is **relative to `generated_from.root_path`**, never absolute.
+- Separator always `/`, on all platforms. Never `\`.
+- No `./` prefix, no empty segment, no `..`.
+- File name is reproduced **exactly as it exists on the filesystem**: no Unicode normalization (NFC/NFD) is applied to names. Comparison and sorting use original bytes.
+- `generated_from.root_path` is the literal echo of the argument received by CLI, without canonicalization. Two different spellings of the same tree produce different reports — this is invocation variation, not determinism violation. The determinism test uses the same invocation string.
 
-### 1.3 Ordenação canônica (normativa)
+### 1.3 Canonical Ordering (normative)
 
-Ordem de bytes UTF-8 bruto (semântica de `memcmp`; equivale à ordem de pontos de código Unicode). Proibido usar collation, locale, `String.Compare` cultural ou normalização antes de ordenar.
+Raw UTF-8 byte order (`memcmp` semantics; equivalent to Unicode code point order). Using collation, locale, `String.Compare` cultural, or normalization before sorting is prohibited.
 
-Como UTF-8 preserva a ordem de pontos de código, comparar os bytes é igual a comparar pontos de código — a regra é independente de plataforma e locale por construção.
+Since UTF-8 preserves code point order, comparing bytes is the same as comparing code points — the rule is platform-independent and locale-independent by construction.
 
-Regras por estrutura:
+Rules per structure:
 
-| Estrutura | Chave de ordenação |
+| Structure | Sort Key |
 |---|---|
-| `groups` | `(normalized_base_name` em bytes, depois `size_bytes` ascendente`)` |
-| `groups[].members` | `path` em bytes |
-| `identical_duplicates` | menor `path` do conjunto, em bytes; empate impossível (ver §1.4) |
-| `identical_duplicates[].files` | `path` em bytes |
-| `real_conflicts` | menor `path` do conjunto, em bytes |
-| `real_conflicts[].files` | `path` em bytes |
-| `placeholders` | `path` em bytes |
-| `placeholders[].kinds` | posição na ordem canônica declarada: `reparse_point` → `recall_on_data_access` → `recall_on_open` → `offline` |
+| `groups` | `(`normalized_base_name` in bytes, then `size_bytes` ascending`)` |
+| `groups[].members` | `path` in bytes |
+| `identical_duplicates` | smallest `path` of the set, in bytes; tie impossible (see §1.4) |
+| `identical_duplicates[].files` | `path` in bytes |
+| `real_conflicts` | smallest `path` of the set, in bytes |
+| `real_conflicts[].files` | `path` in bytes |
+| `placeholders` | `path` in bytes |
+| `placeholders[].kinds` | position in declared canonical order: `reparse_point` → `recall_on_data_access` → `recall_on_open` → `offline` |
 
-Dentro de qualquer lista, a ordem é sempre por caminho quando a entrada tem caminho. Nenhuma lista é ordenada por descoberta, thread, tamanho isolado ou hash.
+Within any list, order is always by path when the entry has a path. No list is ordered by discovery, thread, size alone, or hash.
 
-### 1.4 Totalidade das ordens
+### 1.4 Totality of Orders
 
-Caminhos são únicos dentro de um scan (um caminho identifica exatamente uma entrada), portanto a ordenação por caminho é total: **nenhum desempate adicional é necessário nem definido**. A regra `mtime → size → path` da especificação (§17) governa **decisões de resolução** executadas sobre conjuntos ordenados, não a ordenação do relatório. Não confundir os dois papéis.
+Paths are unique within a scan (a path identifies exactly one entry), so path ordering is total: **no additional tie-break is needed or defined**. The `mtime → size → path` rule from the specification (§17) governs **resolution decisions** executed on ordered sets, not report ordering. Do not confuse the two roles.
 
-### 1.5 Campos de tempo
+### 1.5 Time Fields
 
-- Os únicos campos de tempo de parede do documento são `generated_from.scan_started_utc` e `generated_from.scan_finished_utc`.
-- **Nenhuma lista contém campo de tempo.** Em particular, `mtime` de arquivo **não aparece** no relatório v1: mtime varia com operações na árvore e sua presença em listas quebraria o teste byte-a-byte para estado de árvore estável.
-- Formato dos dois campos: RFC 3339, UTC, largura fixa `YYYY-MM-DDTHH:MM:SS.mmmZ`, com `Z` maiúsculo e exatamente 3 dígitos de milissegundo.
+- The only wall time fields in the document are `generated_from.scan_started_utc` and `generated_from.scan_finished_utc`.
+- **No list contains a time field.** In particular, file `mtime` does **not appear** in the v1 report: mtime varies with tree operations and its presence in lists would break the byte-by-byte test for stable tree state.
+- Format of both fields: RFC 3339, UTC, fixed-width `YYYY-MM-DDTHH:MM:SS.mmmZ`, with uppercase `Z` and exactly 3 millisecond digits.
 
-### 1.6 Máscara para o teste de determinismo (§20 da SPEC)
+### 1.6 Mask for the Determinism Test (SPEC §20)
 
-Os dois campos de §1.5 são os únicos não determinísticos do documento. O teste canônico de determinismo procede assim:
+The two §1.5 fields are the only non-deterministic fields in the document. The canonical determinism test proceeds as follows:
 
-1. Gerar os relatórios dos N scans na mesma árvore;
-2. Em cada relatório, substituir o valor de `scan_started_utc` e de `scan_finished_utc` pela string literal `MASKED-FOR-DETERMINISM-TEST`;
-3. Exigir igualdade **byte a byte** dos documentos mascarados.
+1. Generate reports from the N scans on the same tree;
+2. In each report, replace the value of `scan_started_utc` and `scan_finished_utc` with the literal string `MASKED-FOR-DETERMINISM-TEST`;
+3. Require **byte-by-byte** equality of the masked documents.
 
-Sem a máscara, nenhum par de scans reais pode ser byte-idêntico; a máscara faz parte da definição de pronto do teste, não uma concessão. Toda a demais estrutura — inclusive todos os contadores de telemetria, que são contagens e não tempos — deve coincidir sem máscara.
+Without the mask, no pair of real scans can be byte-identical; the mask is part of the test's done definition, not a concession. All other structure — including all telemetry counters, which are counts not times — must match without the mask.
 
 ---
 
-## 2. Formato exato de serialização
+## 2. Exact Serialization Format
 
-O formato é fixado aqui e **faz parte do schema**: alterar qualquer item desta seção exige bump de `report_schema_version`.
+The format is fixed here and **part of the schema**: changing any item in this section requires bumping `report_schema_version`.
 
-| Aspecto | Valor exato |
+| Aspect | Exact Value |
 |---|---|
-| Codificação | UTF-8 sem BOM |
-| Fim de linha | `LF` (`\n`), inclusive o último |
-| Indentação | 2 espaços por nível; nenhum tab |
-| Separador | `": "` após chave (dois-pontos + um espaço); `,` sem espaço à direita |
-| Chaves vazias | Objeto vazio imprime `{}`; array vazio imprime `[]`, ambos inline |
-| Ordem das chaves | **Declarada** — a sequência de cada objeto é a das tabelas deste documento, e é proibido reordenar |
-| Escapamento de strings | Mínimo RFC 8259: `\"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t` e `\u00XX` para demais caracteres de controle `< 0x20`; barra `/` **não** escapada; caracteres não-ASCII emitidos **literalmente** em UTF-8 (sem `\uXXXX`) |
-| Números | Somente inteiros; notação decimal simples; sem sinal `+`, zeros à esquerda, expoentes ou casas decimais |
-| Estrito | JSON estrito RFC 8259: sem comentários, sem vírgula pendente, sem `NaN` |
+| Encoding | UTF-8 without BOM |
+| Line ending | `LF` (`\n`), including the last |
+| Indentation | 2 spaces per level; no tabs |
+| Separator | `": "` after key (colon + one space); `,` without trailing space |
+| Empty keys | Empty object prints `{}`; empty array prints `[]`, both inline |
+| Key order | **Declared** — each object's sequence is from this document's tables, and reordering is prohibited |
+| String escaping | Minimum RFC 8259: `\"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t` and `\u00XX` for remaining control characters `< 0x20`; forward slash `/` is **not** escaped; non-ASCII characters emitted **literally** in UTF-8 (no `\uXXXX`) |
+| Numbers | Integers only; simple decimal notation; no `+` sign, leading zeros, exponents, or decimal places |
+| Strict | Strict JSON RFC 8259: no comments, no trailing commas, no `NaN` |
 
-Implementação de referência em C#: `System.Text.Json.JsonSerializer` com `WriteIndented = true`, `JavaScriptEncoder.UnsafeRelaxedJsonEscaping` (produz exatamente o escapamento acima) e POCOs cuja ordem de declaração das propriedades replica as tabelas abaixo — a ordem de declaração é a ordem de emissão. Anexar manualmente `\n` final.
+Reference implementation in C#: `System.Text.Json.JsonSerializer` with `WriteIndented = true`, `JavaScriptEncoder.UnsafeRelaxedJsonEscaping` (produces exactly the above escaping) and POCOs whose property declaration order replicates the tables below — declaration order is emission order. Manually append final `\n`.
 
 ---
 
-## 3. Estrutura raiz
+## 3. Root Structure
 
-Todos os campos de todos os objetos são **obrigatórios e sempre presentes**. O v1 não possui campo opcional; listas podem ser vazias, objetos nunca. Consumidores podem indexar diretamente, sem navegação defensiva.
+All fields of all objects are **mandatory and always present**. v1 has no optional fields; lists may be empty, objects never. Consumers can index directly without defensive navigation.
 
-Chaves da raiz, na ordem declarada:
+Root keys, in declared order:
 
-| # | Chave | Tipo | Descrição |
+| # | Key | Type | Description |
 |---|---|---|---|
-| 1 | `report_schema_version` | inteiro ≥ 1 | Constante `1` neste formato. Política de bump: §7. |
-| 2 | `algorithm` | string | Constante `"BLAKE3"`. Nome do algoritmo de hash completo. |
-| 3 | `hash_version` | inteiro ≥ 1 | Versão da definição de hash (algoritmo + receita). Constante `1`. |
-| 4 | `normalization_rules_version` | inteiro ≥ 1 | Versão da lista fixa e ordenada de padrões de normalização de nomes de conflito aplicada neste scan. Constante `1`. |
-| 5 | `generated_from` | objeto | Identificação da execução. Ver §4. |
-| 6 | `telemetry` | objeto | Contadores do pipeline. Ver §5. |
-| 7 | `groups` | array | Grupos candidatos do Level 1. Ver §6. |
-| 8 | `identical_duplicates` | array | Classes de duplicatas idênticas (veredito final). Ver §6.1. |
-| 9 | `real_conflicts` | array | Conjuntos com divergência real de conteúdo (veredito final). Ver §6.2. |
-| 10 | `placeholders` | array | Entradas detectadas como placeholder/online-only e jamais abertas. Ver §6.3. |
+| 1 | `report_schema_version` | integer ≥ 1 | Constant `1` in this format. Bump policy: §7. |
+| 2 | `algorithm` | string | Constant `"BLAKE3"`. Full hash algorithm name. |
+| 3 | `hash_version` | integer ≥ 1 | Hash definition version (algorithm + recipe). Constant `1`. |
+| 4 | `normalization_rules_version` | integer ≥ 1 | Version of the fixed, ordered list of conflict name normalization patterns applied in this scan. Constant `1`. |
+| 5 | `generated_from` | object | Execution identification. See §4. |
+| 6 | `telemetry` | object | Pipeline counters. See §5. |
+| 7 | `groups` | array | Level 1 candidate groups. See §6. |
+| 8 | `identical_duplicates` | array | Identical duplicate classes (final verdict). See §6.1. |
+| 9 | `real_conflicts` | array | Sets with real content divergence (final verdict). See §6.2. |
+| 10 | `placeholders` | array | Entries detected as placeholder/online-only and never opened. See §6.3. |
 
-`normalization_rules_version` foi acrescentado em relação ao exemplo do ADR-0003 porque o agrupamento (e logo o conteúdo de `groups`) depende dessa versão; é um terceiro eixo de versionamento independente (§7).
+`normalization_rules_version` was added relative to the ADR-0003 example because grouping (and thus `groups` content) depends on this version; it is a third independent versioning axis (§7).
 
 ## 4. `generated_from`
 
-Ordem declarada: `root_path`, `scan_started_utc`, `scan_finished_utc`.
+Declared order: `root_path`, `scan_started_utc`, `scan_finished_utc`.
 
-| Chave | Tipo | Descrição |
+| Key | Type | Description |
 |---|---|---|
-| `root_path` | string | Eco literal do argumento do CLI (§1.2). |
-| `scan_started_utc` | timestamp | Início do scan, formato de §1.5. |
-| `scan_finished_utc` | timestamp | Fim do scan, formato de §1.5. Sempre ≥ `scan_started_utc`. |
+| `root_path` | string | Literal echo of the CLI argument (§1.2). |
+| `scan_started_utc` | timestamp | Scan start, §1.5 format. |
+| `scan_finished_utc` | timestamp | Scan end, §1.5 format. Always ≥ `scan_started_utc`. |
 
 ## 5. `telemetry`
 
-Contadores inteiros ≥ 0, largura de 64 bits. Ordens declaradas conforme tabela.
+Integer counters ≥ 0, 64-bit width. Declared order per table.
 
-| Chave | Definição precisa |
+| Key | Precise Definition |
 |---|---|
-| `files_enumerated` | Total de entradas de arquivo vistas no Level 0 (diretórios nunca contam). Inclui placeholders. |
-| `files_placeholder` | Entradas classificadas como placeholder (atributos offline/recall ou reparse point) e excluídas de todo acesso a conteúdo. Subconjunto de `files_enumerated`. |
-| `files_skipped` | Entradas não-placeholder que não tiveram **nenhum** byte lido: membros de grupos unitários (fora de `groups`) e nada mais. |
-| `files_partial_hashed` | Entradas não-placeholder que receberam hash parcial no Level 2 (janela inicial 64 KiB + janela final 64 KiB). |
-| `files_full_hashed` | Entradas que sobreviveram ao Level 2 e receberam BLAKE3 completo no Level 3. Subconjunto de `files_partial_hashed`. |
+| `files_enumerated` | Total file entries seen at Level 0 (directories never count). Includes placeholders. |
+| `files_placeholder` | Entries classified as placeholder (offline/recall attributes or reparse point) and excluded from all content access. Subset of `files_enumerated`. |
+| `files_skipped` | Non-placeholder entries that had **zero** bytes read: members of singleton groups (outside `groups`) and nothing else. |
+| `files_partial_hashed` | Non-placeholder entries that received partial hash at Level 2 (first 64 KiB + last 64 KiB window). |
+| `files_full_hashed` | Entries that survived Level 2 and received full BLAKE3 at Level 3. Subset of `files_partial_hashed`. |
 | `bytes_read` | `bytes_read_partial + bytes_read_full`. |
-| `bytes_read_partial` | Bytes lidos durante o passe de hash parcial. Arquivos ≤ 128 KiB têm o arquivo inteiro coberto pelas duas janelas; a leitura conta integralmente aqui. |
-| `bytes_read_full` | Bytes lidos durante o passe de hash completo. |
-| `placeholder_bytes_read` | Bytes lidos de placeholders. **Invariante absoluta: sempre `0`.** Valor ≠ 0 é falha de segurança, não dado. |
+| `bytes_read_partial` | Bytes read during the partial hash pass. Files ≤ 128 KiB have the entire file covered by both windows; the read counts entirely here. |
+| `bytes_read_full` | Bytes read during the full hash pass. |
+| `placeholder_bytes_read` | Bytes read from placeholders. **Absolute invariant: always `0`.** Value ≠ 0 is a security failure, not data. |
 
-Invariantes verificáveis (obrigatórios nos testes):
+Verifiable invariants (mandatory in tests):
 
 ```text
 files_enumerated == files_placeholder + files_skipped + files_partial_hashed
@@ -150,214 +150,214 @@ bytes_read       == bytes_read_partial + bytes_read_full
 placeholder_bytes_read == 0
 ```
 
-## 6. Listas de resultado
+## 6. Result Lists
 
-### 6.0 `groups` — grupos candidatos (Level 1)
+### 6.0 `groups` — Candidate Groups (Level 1)
 
-Inventário completo dos grupos formados por `normalized_base_name + size` com **2 ou mais membros**. Um grupo aparece aqui independentemente do veredito posterior: o consumidor identifica o veredito pela presença/ausência do conjunto nas listas finais — grupo presente em `groups` e ausente de ambas as listas finais foi eliminado no Level 2 (conteúdo provavelmente diferente). Isso é a trilha de auditoria do pipeline.
+Complete inventory of groups formed by `normalized_base_name + size` with **2 or more members**. A group appears here regardless of the subsequent verdict: the consumer identifies the verdict by presence/absence in the final lists — a group present in `groups` and absent from both final lists was eliminated at Level 2 (content probably different). This is the pipeline's audit trail.
 
-Ordem declarada de cada elemento:
+Declared order of each element:
 
-| Chave | Tipo | Descrição |
+| Key | Type | Description |
 |---|---|---|
-| `normalized_base_name` | string | Nome base após normalização de conflitos, extensão preservada. Produzido pela versão `normalization_rules_version`. |
-| `size_bytes` | inteiro ≥ 0 | Tamanho compartilhado por todos os membros (chave de agrupamento). |
-| `members` | array de objeto | Membros do grupo, ordenados por caminho (§1.3). |
+| `normalized_base_name` | string | Base name after conflict normalization, extension preserved. Produced by version `normalization_rules_version`. |
+| `size_bytes` | integer ≥ 0 | Size shared by all members (grouping key). |
+| `members` | array of object | Group members, sorted by path (§1.3). |
 
-`members` é a única forma de entrada sem hash do documento, deliberadamente: no momento do agrupamento só existe caminho. Elemento de `members`, ordem declarada:
+`members` is the only entry form in the document without hash, deliberately: at grouping time only path exists. `members` element, declared order:
 
-| Chave | Tipo |
+| Key | Type |
 |---|---|
 | `path` | string |
 
 ### 6.1 `identical_duplicates`
 
-Um elemento por classe de equivalência por conteúdo pleno (BLAKE3 igual), com 2 ou mais arquivos. Só se forma a partir de grupo cujos hashes completos são **todos iguais**.
+One element per equivalence class by full content (equal BLAKE3), with 2 or more files. Only forms from groups whose full hashes are **all equal**.
 
-Ordem declarada de cada elemento:
+Declared order of each element:
 
-| Chave | Tipo | Descrição |
+| Key | Type | Description |
 |---|---|---|
-| `hash` | string | BLAKE3 completo, 64 caracteres hexdeciais **minúsculos**. Igual para todos os membros por definição. |
-| `size_bytes` | inteiro ≥ 0 | Tamanho comum. |
-| `files` | array de string | Caminhos relativos, ordenados por bytes (§1.3). |
+| `hash` | string | Full BLAKE3, 64 **lowercase** hex characters. Equal for all members by definition. |
+| `size_bytes` | integer ≥ 0 | Common size. |
+| `files` | array of string | Relative paths, sorted by bytes (§1.3). |
 
 ### 6.2 `real_conflicts`
 
-Um elemento por grupo candidato cujos hashes completos apresentam **ao menos dois valores distintos** após sobreviver ao Level 2. O elemento cobre **todos** os membros do grupo, incluindo subconjuntos internamente idênticos: os hashes por arquivo permitem ao consumidor reconstruir os subagrupamentos. Grupo nunca gera entrada simultânea em `identical_duplicates` e `real_conflicts` — a classificação por grupo é mutuamente exclusiva.
+One element per candidate group whose full hashes show **at least two distinct values** after surviving Level 2. The element covers **all** group members, including internally identical subsets: per-file hashes allow the consumer to reconstruct sub-groupings. A group never generates simultaneous entries in `identical_duplicates` and `real_conflicts` — group classification is mutually exclusive.
 
-Ordem declarada de cada elemento:
+Declared order of each element:
 
-| Chave | Tipo | Descrição |
+| Key | Type | Description |
 |---|---|---|
-| `normalized_base_name` | string | Como em §6.0. |
-| `size_bytes` | inteiro > 0 | Tamanho comum do grupo. |
-| `files` | array de objeto | Todos os membros do grupo, ordenados por caminho. |
+| `normalized_base_name` | string | As in §6.0. |
+| `size_bytes` | integer > 0 | Common group size. |
+| `files` | array of object | All group members, sorted by path. |
 
-Elemento de `files`, ordem declarada:
+`files` element, declared order:
 
-| Chave | Tipo | Descrição |
+| Key | Type | Description |
 |---|---|---|
-| `path` | string | Caminho relativo. |
-| `hash` | string | BLAKE3 completo individual, 64 hex minúsculos. |
+| `path` | string | Relative path. |
+| `hash` | string | Individual full BLAKE3, 64 lowercase hex. |
 
 ### 6.3 `placeholders`
 
-Entradas detectadas como placeholder/online-only antes de qualquer acesso a conteúdo. Nunca possuem hash — a ausência de hash é a prova do comportamento seguro.
+Entries detected as placeholder/online-only before any content access. Never have hash — hash absence is proof of safe behavior.
 
-Ordem declarada de cada elemento:
+Declared order of each element:
 
-| Chave | Tipo | Descrição |
+| Key | Type | Description |
 |---|---|---|
-| `path` | string | Caminho relativo, ordenação global por bytes. |
-| `kinds` | array de string | Rótulos detectados, sem duplicatas, na ordem canônica: `reparse_point`, `recall_on_data_access`, `recall_on_open`, `offline`. Valores permitidos: somente esses quatro. |
-| `size_bytes` | inteiro ≥ 0 | Tamanho obtido por metadados de enumeração (Level 0), sem abrir o arquivo. |
+| `path` | string | Relative path, global sort by bytes. |
+| `kinds` | array of string | Detected labels, no duplicates, in canonical order: `reparse_point`, `recall_on_data_access`, `recall_on_open`, `offline`. Allowed values: only these four. |
+| `size_bytes` | integer ≥ 0 | Size obtained from enumeration metadata (Level 0), without opening the file. |
 
 ---
 
-## 7. Política de versionamento e bump
+## 7. Versioning and Bump Policy
 
-Três eixos independentes. Uma causa produz bump de **um** eixo, nunca de dois.
+Three independent axes. One cause produces a bump of **one** axis, never two.
 
 ### 7.1 `report_schema_version`
 
-Bump obrigatório (+1) quando mudar qualquer coisa que altere os **bytes possíveis** do documento:
+Mandatory bump (+1) when changing anything that alters the **possible bytes** of the document:
 
-- adicionar, remover, renomear ou aninhar campo;
-- mudar tipo, obrigatoriedade, enumeração ou domínio de valores;
-- mudar regra de ordenação, incluindo a ordem canônica de `kinds`;
-- mudar qualquer item da §2 (indentação, escapamento, ordem de chaves, fim de linha);
-- mudar a regra de caminhos relativos (§1.2) ou a máscara de determinismo (§1.6).
+- adding, removing, renaming, or nesting a field;
+- changing type, optionality, enumeration, or value domain;
+- changing sort rule, including the canonical order of `kinds`;
+- changing any item in §2 (indentation, escaping, key order, line ending);
+- changing the relative path rule (§1.2) or the determinism mask (§1.6).
 
-Política conservadora deliberada: **também há bump em mudança aditiva** (campo novo). Os consumidores são estritos e consomem exatamente uma versão; compatibilidade retroativa por tolerância a campo desconhecido não é objetivo do v1. Mudança de valor constante (`report_schema_version` de exemplo em docs) não é bump.
+Deliberately conservative policy: **there is also a bump for additive changes** (new field). Consumers are strict and consume exactly one version; backward compatibility via tolerance for unknown fields is not a v1 goal. Changing a constant value (e.g. `report_schema_version` example in docs) is not a bump.
 
-Consumidor que receber versão desconhecida deve recusar o documento com erro explícito, nunca tentar interpretar aproximadamente.
+Consumer receiving an unknown version must refuse the document with an explicit error, never try to approximate interpretation.
 
 ### 7.2 `hash_version`
 
-Bump obrigatório quando mudar a **definição do hash exposto**:
+Mandatory bump when changing the **exposed hash definition**:
 
-- troca de algoritmo (`algorithm` muda junto — os dois campos são coerentes por definição);
-- mudança no comprimento/truncamento do hash publicado;
-- mudança na receita de hash parcial (janelas, composição) — mesmo que o hash completo não mude, pois invalida comparações históricas;
-- introdução de hash chaveado.
+- algorithm swap (`algorithm` changes along — the two fields are coherent by definition);
+- change in published hash length/truncation;
+- change in partial hash recipe (windows, composition) — even if full hash does not change, because it invalidates historical comparisons;
+- introduction of keyed hash.
 
-Efeito colateral normativo: bump de `hash_version` **invalida o cache incremental** — linhas de cache cujo `hash_version` difere não podem ser reaproveitadas (SPEC §12: cache carrega `algorithm` e `hash_version`). Não causa bump de schema: os campos continuam existindo com o mesmo nome e tipo.
+Normative side effect: `hash_version` bump **invalidates the incremental cache** — cache rows whose `hash_version` differs cannot be reused (SPEC §12: cache carries `algorithm` and `hash_version`). Does not cause schema bump: fields continue to exist with same name and type.
 
 ### 7.3 `normalization_rules_version`
 
-Bump obrigatório quando mudar a lista fixa e ordenada de padrões de normalização de nomes: incluir, remover, reordenar padrões ou alterar a semântica de um padrão. Efeito: agrupamentos podem mudar (outro `groups` para a mesma árvore). **Não** causa bump de schema (estrutura intacta) **nem** de hash (definição de hash intacta). Relatórios gerados sob versões diferentes de normalização não são comparáveis entre si em `groups`, e sim em `identical_duplicates`/`real_conflicts` apenas quando os agrupamentos coincidirem — o consumidor deve tratar relatórios de versões distintas de normalização como séries separadas.
+Mandatory bump when changing the fixed, ordered list of name normalization patterns: including, removing, reordering patterns, or altering pattern semantics. Effect: groupings may change (different `groups` for the same tree). Does **not** cause schema bump (structure intact) **nor** hash bump (hash definition intact). Reports generated under different normalization versions are not comparable in `groups`, but are in `identical_duplicates`/`real_conflicts` only when groupings match — consumer must treat reports from different normalization versions as separate series.
 
-### 7.4 Matriz-resumo
+### 7.4 Summary Matrix
 
-| Causa | report_schema_version | hash_version | normalization_rules_version | Cache |
+| Cause | report_schema_version | hash_version | normalization_rules_version | Cache |
 |---|---|---|---|---|
-| Campo novo/removido/tipo/ordenação/serialização | bump | — | — | — |
-| Algoritmo ou receita de hash muda | — | bump | — | invalidado |
-| Padrão de normalização muda | — | — | bump | válido (hashes continuam corretos) |
+| New/removed field/type/ordering/serialization | bump | — | — | — |
+| Algorithm or hash recipe changes | — | bump | — | invalidated |
+| Normalization pattern changes | — | — | bump | valid (hashes remain correct) |
 
 ---
 
-## 8. Fórmulas derivadas para consumidores
+## 8. Derived Formulas for Consumers
 
-Normativas para GUI e testes — implementações devem chegar aos mesmos valores:
+Normative for GUI and tests — implementations must arrive at the same values:
 
 ```text
-total_arquivos_duplicados_excedentes = Σ (len(files) - 1) sobre identical_duplicates
-espaco_recuperavel_identico         = Σ ((len(files) - 1) * size_bytes) sobre identical_duplicates
-conflitos_reais                     = len(real_conflicts)
-arquivos_em_conflito                = Σ len(files) sobre real_conflicts
-placeholders_ignorados              = len(placeholders)
+total_excess_duplicate_files = Σ (len(files) - 1) over identical_duplicates
+recoverable_identical_space   = Σ ((len(files) - 1) * size_bytes) over identical_duplicates
+real_conflicts                = len(real_conflicts)
+files_in_conflict             = Σ len(files) over real_conflicts
+ignored_placeholders          = len(placeholders)
 ```
 
-Estas fórmulas respondem a primeira tela da GUI (SPEC §15). Por isso o v1 não traz bloco `summary`: toda soma derivável é proibida no documento, eliminando risco de inconsistência entre resumo e listas.
+These formulas answer the GUI's first screen (SPEC §15). This is why v1 carries no `summary` block: every derivable sum is prohibited in the document, eliminating inconsistency risk between summary and lists.
 
 ---
 
-## 9. Fora de escopo do v1 (decisões explícitas de não-fazer)
+## 9. Out of Scope for v1 (Explicit Non-Doing Decisions)
 
-- **Sugestão de qual arquivo manter** (`recommended_keep`): decisão de resolução pertence ao motor de resolução com estratégia escolhida pelo usuário (SPEC §17); o relatório é evidência, não política.
-- **Bloco `summary`**: derivável por §8; redundância é risco de inconsistência.
-- **`mtime` em entradas**: proibido em lista (§1.5).
-- **Hash parcial no relatório**: a receita ainda será fechada pelo card de hashing; expô-la congelaria a receita antes da hora. A telemetria de bytes já audita o Level 2.
-- **Correlação entre grupos de mesmo base name e tamanhos diferentes**: o agrupamento v1 é `base + size` (SPEC §7); variantes que divergiram em tamanho caem em grupos distintos e não são correlacionadas. Limitação conhecida, registrada; mudança aqui seria bump de schema em versão futura com card próprio.
+- **Suggestion of which file to keep** (`recommended_keep`): resolution decision belongs to the resolution engine with strategy chosen by user (SPEC §17); report is evidence, not policy.
+- **`summary` block**: derivable per §8; redundancy is inconsistency risk.
+- **`mtime` in entries**: prohibited in lists (§1.5).
+- **Partial hash in report**: recipe still to be closed by hashing card; exposing it would freeze the recipe prematurely. Byte telemetry already audits Level 2.
+- **Correlation between same-base-name groups of different sizes**: v1 grouping is `base + size` (SPEC §7); variants that diverged in size fall into separate groups and are not correlated. Known limitation, recorded; changing here would be schema bump in future version with dedicated card.
 
 ---
 
-## 10. Fixture oficial `fixtures/report-v1-exemplo.json`
+## 10. Official Fixture `fixtures/report-v1-example.json`
 
-### 10.1 Árvore sintética de referência
+### 10.1 Reference Synthetic Tree
 
-Raiz lógica: `report-v1-tree/` dentro de `fixtures/` (invocação simulada: `conflictdoctor scan fixtures/report-v1-tree --json`). Conteúdos são definidos por fórmula determinística e regeneráveis pelo script versionado `fixtures/generate-report-v1-tree.py` — que reside **fora** da árvore, para que um scan capture exatamente os arquivos do fixture. Os dois diretórios de placeholder existem vazios na árvore versionada (`arquivo morto`, `arquivos grandes`). Verificação permanente dos conteúdos: `sha256sum` sobre os 8 arquivos listados abaixo (§10.3).
+Logical root: `report-v1-tree/` inside `fixtures/` (simulated invocation: `conflictdoctor scan fixtures/report-v1-tree --json`). Contents defined by deterministic formula and regenerable by versioned script `fixtures/generate-report-v1-tree.py` — which resides **outside** the tree, so a scan captures exactly the fixture's files. The two placeholder directories exist empty in the versioned tree (`dead file`, `large files`). Permanent content verification: `sha256sum` over the 8 files listed below (§10.3).
 
-| Caminho relativo | Conteúdo | Tamanho | Papel no fixture |
+| Relative Path | Content | Size | Role in Fixture |
 |---|---|---|---|
-| `docs/foto-reuniao.jpg` | C1 | 96 B | Tríplice idêntica |
-| `docs/backup/foto-reuniao.jpg` | C1 | 96 B | Tríplice idêntica |
-| `fotos/foto-reuniao.jpg` | C1 | 96 B | Tríplice idêntica |
-| `projetos/orcamento.xlsx` | X1 | 262144 B | Conflito real |
-| `projetos/orcamento-DESKTOP-ABC123 (conflicted copy).xlsx` | X2 | 262144 B | Conflito real |
-| `notas/reuniao.txt` | N1 | 44 B | Grupo eliminado no Level 2 |
-| `notas/arquivo morto/reuniao.txt` | N2 | 44 B | Grupo eliminado no Level 2 |
-| `leiame.txt` | L | 32 B | Arquivo único (`files_skipped`) |
-| `arquivos grandes/video-aula.mp4` | — (não versionado) | ilustrativo | Placeholder simulado |
-| `arquivo morto/relatorio antigo.docx` | — (não versionado) | ilustrativo | Placeholder simulado |
+| `docs/photo-meeting.jpg` | C1 | 96 B | Identical triple |
+| `docs/backup/photo-meeting.jpg` | C1 | 96 B | Identical triple |
+| `photos/photo-meeting.jpg` | C1 | 96 B | Identical triple |
+| `projects/budget.xlsx` | X1 | 262144 B | Real conflict |
+| `projects/budget-DESKTOP-ABC123 (conflicted copy).xlsx` | X2 | 262144 B | Real conflict |
+| `notes/meeting.txt` | N1 | 44 B | Group eliminated at Level 2 |
+| `notes/dead file/meeting.txt` | N2 | 44 B | Group eliminated at Level 2 |
+| `readme.txt` | L | 32 B | Unique file (`files_skipped`) |
+| `large files/video-lesson.mp4` | — (not versioned) | illustrative | Simulated placeholder |
+| `dead file/old report.docx` | — (not versioned) | illustrative | Simulated placeholder |
 
-Definições de conteúdo (geração reproduzível pelo script):
+Content definitions (reproducible by script):
 
 ```text
-C1[i]           = (i * 7 + 3) mod 256,                i em [0, 96)
-X1[i] = X2[i]   = i mod 251,                          i em [0, 262144)
-X1[i]           = 0xAA para i em [131072, 131088)
-X2[i]           = 0xBB para i em [131072, 131088)
-N1              = "notas da reuniao de planejamento - versao A\n"   (44 bytes)
-N2              = "notas da reuniao de planejamento - versao B\n"   (44 bytes)
-L               = "Arquivo unico - sem duplicatas.\n"               (32 bytes)
+C1[i]           = (i * 7 + 3) mod 256,                i in [0, 96)
+X1[i] = X2[i]   = i mod 251,                          i in [0, 262144)
+X1[i]           = 0xAA for i in [131072, 131088)
+X2[i]           = 0xBB for i in [131072, 131088)
+N1              = "meeting planning notes - version A\n"   (44 bytes)
+N2              = "meeting planning notes - version B\n"   (44 bytes)
+L               = "Unique file - no duplicates.\n"         (32 bytes)
 ```
 
-X1 e X2 diferem apenas no intervalo de 16 bytes em `[131072, 131088)`, que está fora das janelas de hash parcial (primeiros 64 KiB = `[0, 65536)`; últimos 64 KiB = `[196608, 262144)`): hash parcial igual, hash completo diferente — é isto que caracteriza o conflito real no pipeline.
+X1 and X2 differ only in the 16-byte range `[131072, 131088)`, which is outside the partial hash windows (first 64 KiB = `[0, 65536)`; last 64 KiB = `[196608, 262144)`): equal partial hash, different full hash — this is what characterizes the real conflict in the pipeline.
 
-Os dois placeholders simulam metadados que só existem no Windows (`FILE_ATTRIBUTE_*`, reparse points) e por isso não têm arquivo versionado: seus `size_bytes` são ilustrativos e não verificáveis contra árvore Linux. Todos os demais campos do fixture são verificáveis contra os arquivos versionados.
+The two placeholders simulate metadata that only exists on Windows (`FILE_ATTRIBUTE_*`, reparse points) and therefore have no versioned file: their `size_bytes` are illustrative and not verifiable against a Linux tree. All other fixture fields are verifiable against versioned files.
 
-### 10.2 Valores esperados
+### 10.2 Expected Values
 
-- `groups`: 3 grupos — `foto-reuniao.jpg` (3 membros), `orcamento.xlsx` (2 membros), `reuniao.txt` (2 membros), nesta ordem por `(base, size)` em bytes: `foto-reuniao.jpg` < `orcamento.xlsx` < `reuniao.txt`.
-- `identical_duplicates`: 1 entrada (tríplice de `foto-reuniao.jpg`, menor caminho `docs/backup/foto-reuniao.jpg`).
-- `real_conflicts`: 1 entrada (par `orcamento`).
-- Grupo `reuniao.txt` presente em `groups` e ausente das duas listas finais: eliminado no Level 2.
-- `placeholders`: 2 entradas, `arquivo morto/relatorio antigo.docx` antes de `arquivos grandes/video-aula.mp4` (ordem de bytes: `arquivo` < `arquivos`, porque o espaço `0x20` precede `s`).
-- Telemetria: `files_enumerated=10`, `files_placeholder=2`, `files_skipped=1`, `files_partial_hashed=7`, `files_full_hashed=5`, `bytes_read_partial=262632` (288 + 2×131072 + 88), `bytes_read_full=524864` (288 + 2×262144), `bytes_read=787496`, `placeholder_bytes_read=0`.
-- Os hashes BLAKE3 do fixture foram calculados com a biblioteca oficial (`Blake3`, NuGet) sobre exatamente os conteúdos de §10.1; não são ilustrativos.
+- `groups`: 3 groups — `photo-meeting.jpg` (3 members), `budget.xlsx` (2 members), `meeting.txt` (2 members), in this order by `(base, size)` in bytes: `photo-meeting.jpg` < `budget.xlsx` < `meeting.txt`.
+- `identical_duplicates`: 1 entry (triple of `photo-meeting.jpg`, smallest path `docs/backup/photo-meeting.jpg`).
+- `real_conflicts`: 1 entry (`budget` pair).
+- Group `meeting.txt` present in `groups` and absent from both final lists: eliminated at Level 2.
+- `placeholders`: 2 entries, `dead file/old report.docx` before `large files/video-lesson.mp4` (byte order: `dead` < `large`, because `0x20` precedes `l`).
+- Telemetry: `files_enumerated=10`, `files_placeholder=2`, `files_skipped=1`, `files_partial_hashed=7`, `files_full_hashed=5`, `bytes_read_partial=262632` (288 + 2×131072 + 88), `bytes_read_full=524864` (288 + 2×262144), `bytes_read=787496`, `placeholder_bytes_read=0`.
+- Fixture BLAKE3 hashes were calculated with the official library (`Blake3`, NuGet) over exactly the §10.1 contents; they are not illustrative.
 
-### 10.3 Reprodução e verificação
+### 10.3 Reproduction and Verification
 
-Artefatos de verificação versionados neste repositório:
+Verification artifacts versioned in this repository:
 
-- `fixtures/generate-report-v1-tree.py` — regenera a árvore sintética exata da §10.1;
-- `tools/report-v1-fixturegen/` — projeto C#/.NET 8 (pacote oficial `Blake3`, NuGet) que emite o JSON do fixture no formato exato da §2;
-- `scripts/validate_report_v1.py` — validador estrutural do relatório v1 (ordem declarada das chaves, ordenação canônica por bytes UTF-8, invariantes de telemetria, formato dos hashes, ordem canônica de `kinds`); exit code 0 = conforme, 1 = violações listadas.
+- `fixtures/generate-report-v1-tree.py` — regenerates the exact synthetic tree from §10.1;
+- `tools/report-v1-fixturegen/` — C#/.NET 8 project (official `Blake3` package, NuGet) that emits the fixture JSON in the exact format from §2;
+- `scripts/validate_report_v1.py` — structural validator for v1 report (declared key order, canonical UTF-8 byte sorting, telemetry invariants, hash format, `kinds` canonical order); exit code 0 = compliant, 1 = violations listed.
 
 ```text
 python3 fixtures/generate-report-v1-tree.py
-dotnet run --project tools/report-v1-fixturegen -- <raiz-do-repositorio>
-python3 scripts/validate_report_v1.py fixtures/report-v1-exemplo.json
+dotnet run --project tools/report-v1-fixturegen -- <repo-root>
+python3 scripts/validate_report_v1.py fixtures/report-v1-example.json
 cd fixtures/report-v1-tree
-sha256sum "docs/backup/foto-reuniao.jpg" "docs/foto-reuniao.jpg" "fotos/foto-reuniao.jpg" \
-          "leiame.txt" "notas/arquivo morto/reuniao.txt" "notas/reuniao.txt" \
-          "projetos/orcamento-DESKTOP-ABC123 (conflicted copy).xlsx" "projetos/orcamento.xlsx"
+sha256sum "docs/backup/photo-meeting.jpg" "docs/photo-meeting.jpg" "photos/photo-meeting.jpg" \
+          "readme.txt" "notes/dead file/meeting.txt" "notes/meeting.txt" \
+          "projects/budget-DESKTOP-ABC123 (conflicted copy).xlsx" "projects/budget.xlsx"
 ```
 
-sha256 de referência (registrado na emissão deste documento):
+Reference sha256 (recorded at document issuance):
 
 ```text
-c9f1a5f79d7bea01a54f4edb41673722f627ee2e82dda324946b63cf4b9b16af  docs/backup/foto-reuniao.jpg
-c9f1a5f79d7bea01a54f4edb41673722f627ee2e82dda324946b63cf4b9b16af  docs/foto-reuniao.jpg
-c9f1a5f79d7bea01a54f4edb41673722f627ee2e82dda324946b63cf4b9b16af  fotos/foto-reuniao.jpg
-8fc2d4ad5de8aad5d7c58bba230f634bbf35a6cda881b19b6d76a35b25f8f414  leiame.txt
-f1aa8dbb2cc2b3fff8c8842ac17c2d2b5c1ae1feac32eb957bf3886f5358355b  notas/arquivo morto/reuniao.txt
-1197d0e5fa85136614d806540720970c786340c6b4ad6fab3afe360259309ba4  notas/reuniao.txt
-6384a8ea4e63a28461f4a83328e9ab1c1b13bf3c59b7fc4f7a1267c83a8b4c0d  projetos/orcamento-DESKTOP-ABC123 (conflicted copy).xlsx
-1d73b17db393481a4bc4d5294de368995b2c5e4f2512b542433bbd90789cc56e  projetos/orcamento.xlsx
+c9f1a5f79d7bea01a54f4edb41673722f627ee2e82dda324946b63cf4b9b16af  docs/backup/photo-meeting.jpg
+c9f1a5f79d7bea01a54f4edb41673722f627ee2e82dda324946b63cf4b9b16af  docs/photo-meeting.jpg
+c9f1a5f79d7bea01a54f4edb41673722f627ee2e82dda324946b63cf4b9b16af  photos/photo-meeting.jpg
+8fc2d4ad5de8aad5d7c58bba230f634bbf35a6cda881b19b6d76a35b25f8f414  readme.txt
+f1aa8dbb2cc2b3fff8c8842ac17c2d2b5c1ae1feac32eb957bf3886f5358355b  notes/dead file/meeting.txt
+1197d0e5fa85136614d806540720970c786340c6b4ad6fab3afe360259309ba4  notes/meeting.txt
+6384a8ea4e63a28461f4a83328e9ab1c1b13bf3c59b7fc4f7a1267c83a8b4c0d  projects/budget-DESKTOP-ABC123 (conflicted copy).xlsx
+1d73b17db393481a4bc4d5294de368995b2c5e4f2512b542433bbd90789cc56e  projects/budget.xlsx
 ```
 
-Qualquer alteração futura nestes conteúdos invalida o fixture e exige regeneração completa (conteúdos, hashes e telemetria juntos), mantendo a auto-consistência exigida por este documento.
+Any future change to these contents invalidates the fixture and requires full regeneration (contents, hashes, and telemetry together), maintaining the self-consistency required by this document.

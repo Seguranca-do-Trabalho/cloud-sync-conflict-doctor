@@ -18,7 +18,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
 
-  <!-- Testes de ViewModel exercitam membros internos (sugestão determinística, fila). -->
+  <!-- ViewModel tests exercise internal members (deterministic suggestion, queue). -->
   <ItemGroup>
     <InternalsVisibleTo Include="Doctor.Tests" />
   </ItemGroup>

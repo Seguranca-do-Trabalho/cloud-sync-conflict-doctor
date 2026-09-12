@@ -1,21 +1,21 @@
-# Release Candidate 1 — conflictdoctor (v1 gratuita)
+# Release Candidate 1 — conflictdoctor (v1 free)
 
 **Build:** `dotnet publish src/Doctor.Cli -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`
-**Artefato:** `dist/rc1-win-x64/conflictdoctor.exe` (67 MB, self-contained .NET 8)
-**Data:** 2026-08-23 · **Autor:** André Santo (forg3) | junkyardgoodies.app
+**Artifact:** `dist/rc1-win-x64/conflictdoctor.exe` (67 MB, self-contained .NET 8)
+**Date:** 2026-08-23 · **Author:** forg3
 
-## Smoke test executado (Linux, dotnet run)
-Árvore com duplicata idêntica + arquivo único:
-- schema v2, BLAKE3, telemetria completa (incl. `files_excluded_conflictdoctor`)
-- grupo detectado corretamente, exit code 0
+## Smoke Test Executed (Linux, dotnet run)
+Tree with identical duplicate + unique file:
+- v2 schema, BLAKE3, full telemetry (incl. `files_excluded_conflictdoctor`)
+- Group correctly detected, exit code 0
 
-## Estado da main neste RC
-- 541/541 testes verdes · cobertura Doctor.Core 93,37%
-- CI local verde (build + suíte + guardas anti-delete/GUIVM/NDES)
-- GATEs 1, 2 fechados; GATE 4 baseline registrado; GATE 5 auditoria consolidada
-- EPIC 19: veredito "CAN I TRUST THE DELETE BUTTON?" = **SIM**
+## Main State in This RC
+- 541/541 green tests · Doctor.Core coverage 93.37%
+- Local CI green (build + suite + anti-delete/GUIVM/NDES guards)
+- GATEs 1, 2 closed; GATE 4 baseline logged; GATE 5 audit consolidated
+- EPIC 19: "CAN I TRUST THE DELETE BUTTON?" verdict = **YES**
 
-## Limitações conhecidas do RC1
-- Job Windows do CI pendente (Actions desligadas no mês) — PLH-03 só roda em Windows
-- Sem assinatura de código (adiada para a v2 paga por decisão do dono)
-- Distribuição v1: anexo do GitHub Releases, gratuita
+## Known RC1 Limitations
+- Windows CI job pending (Actions disabled this month) — PLH-03 runs only on Windows
+- No code signing (deferred to paid v2 per owner decision)
+- v1 distribution: GitHub Releases attachment, free

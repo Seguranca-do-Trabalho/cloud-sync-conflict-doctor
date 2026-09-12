@@ -1,10 +1,10 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Tipo de região de diff (decisão do orquestrador, card T23 — SPEC §16; ADR-0011):
-/// <see cref="Equal"/> trecho casado; <see cref="Added"/> somente no documento right;
-/// <see cref="Removed"/> somente no left; <see cref="Changed"/> par substituto
-/// (remoção pareada 1:1 com adição dentro do mesmo bloco).
+/// Diff region type (orchestrator decision, card T23 — SPEC §16; ADR-0011):
+/// <see cref="Equal"/> matched span; <see cref="Added"/> only in right document;
+/// <see cref="Removed"/> only in left; <see cref="Changed"/> substitute pair
+/// (removal paired 1:1 with addition within the same block).
 /// </summary>
 public enum RegionKind
 {
@@ -15,10 +15,10 @@ public enum RegionKind
 }
 
 /// <summary>
-/// Trecho de divergência/igualdade entre dois documentos. Índices 0-based com
-/// CONTAGENS de elementos (nunca índice final). Regiões consecutivas particionam
-/// ambos os documentos em ordem: soma(LeftCount) == linhas de left e
-/// soma(RightCount) == linhas de right.
+/// Span of divergence/equality between two documents. 0-based indices with
+/// ELEMENT COUNTS (never end index). Consecutive regions partition
+/// both documents in order: sum(LeftCount) == left lines and
+/// sum(RightCount) == right lines.
 /// </summary>
 public sealed record DiffRegion(
     RegionKind Kind,

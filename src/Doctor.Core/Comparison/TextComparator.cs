@@ -1,18 +1,18 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Comparador textual linha a linha (SPEC §16 "Texto"; ADR-0011 item 2; contratos.md
-/// IDocumentComparator). Normalização antes do diff: CRLF→LF; BOM (UTF-8/UTF-16)
-/// reconhecido e ignorado — BOM divergente SOZINHO não torna os arquivos diferentes.
-/// Comparação de linha exata pos-normalização, sem trim. Motor:
-/// <see cref="LcsDiff"/> (ADR-0011 item 5 — LCS próprio, sem dependência externa).
-/// Gate herdado (ADR-0011 item 4): placeholder ⇒ <see cref="PlaceholderReadException"/>
-/// ANTES de qualquer abertura — zero bytes lidos de placeholder.
+/// Line-by-line text comparator (SPEC §16 "Text"; ADR-0011 item 2; contracts.md
+/// IDocumentComparator). Normalization before diff: CRLF→LF; BOM (UTF-8/UTF-16)
+/// recognized and ignored — BOM divergence alone does not make files different.
+/// Post-normalization exact line comparison, no trim. Engine:
+/// <see cref="LcsDiff"/> (ADR-0011 item 5 — own LCS, no external dependency).
+/// Inherited gate (ADR-0011 item 4): placeholder ⇒ <see cref="PlaceholderReadException"/>
+/// BEFORE any opening — zero placeholder bytes read.
 /// </summary>
 public sealed class TextComparator : IDocumentComparator
 {
-    /// <summary>Extensões tratadas como texto puro no v1 (decisão do orquestrador, card T23).</summary>
-    public static readonly IReadOnlyList<string> ExtensoesTexto = new[]
+    /// <summary>Extensions treated as plain text in v1 (orchestrator decision, card T23).</summary>
+    public static readonly IReadOnlyList<string> TextExtensions = new[]
     {
         ".txt", ".log", ".ini", ".cfg", ".conf",
     };
@@ -23,13 +23,13 @@ public sealed class TextComparator : IDocumentComparator
         GatePlaceholder(left);
         GatePlaceholder(right);
 
-        var linhasLeft = LerLinhasNormalizadas(left.Path);
-        var linhasRight = LerLinhasNormalizadas(right.Path);
+        var leftLines = ReadNormalizedLines(left.Path);
+        var rightLines = ReadNormalizedLines(right.Path);
 
-        var regioes = LcsDiff.Diff(linhasLeft, linhasRight);
-        bool iguais = regioes.Count == 0
-            || regioes.All(r => r.Kind == RegionKind.Equal);
-        return new ComparisonResult("text", iguais, regioes);
+        var regions = LcsDiff.Diff(leftLines, rightLines);
+        bool equal = regions.Count == 0
+            || regions.All(r => r.Kind == RegionKind.Equal);
+        return new ComparisonResult("text", equal, regions);
     }
 
     private static void GatePlaceholder(FileEntry entry)
@@ -40,39 +40,39 @@ public sealed class TextComparator : IDocumentComparator
         }
     }
 
-    /// <summary>Lê o arquivo como UTF-8, remove BOM se presente e divide em linhas com fim LF.</summary>
-    private static List<string> LerLinhasNormalizadas(string path)
+    /// <summary>Reads the file as UTF-8, removes BOM if present and splits into LF-ended lines.</summary>
+    private static List<string> ReadNormalizedLines(string path)
     {
         using var reader = new StreamReader(path);
-        var texto = reader.ReadToEnd();
-        if (texto.Length > 0 && texto[0] == '\uFEFF')
+        var text = reader.ReadToEnd();
+        if (text.Length > 0 && text[0] == '\uFEFF')
         {
-            texto = texto[1..];
+            text = text[1..];
         }
 
-        texto = texto.Replace("\r\n", "\n", StringComparison.Ordinal);
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        if (texto.Length == 0)
+        if (text.Length == 0)
         {
             return [];
         }
 
-        var linhas = new List<string>();
-        int inicio = 0;
-        for (int i = 0; i < texto.Length; i++)
+        var lines = new List<string>();
+        int start = 0;
+        for (int i = 0; i < text.Length; i++)
         {
-            if (texto[i] == '\n')
+            if (text[i] == '\n')
             {
-                linhas.Add(texto[inicio..i]);
-                inicio = i + 1;
+                lines.Add(text[start..i]);
+                start = i + 1;
             }
         }
 
-        if (inicio < texto.Length)
+        if (start < text.Length)
         {
-            linhas.Add(texto[inicio..]);
+            lines.Add(text[start..]);
         }
 
-        return linhas;
+        return lines;
     }
 }

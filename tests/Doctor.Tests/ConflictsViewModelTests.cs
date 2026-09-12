@@ -5,9 +5,9 @@ using Xunit;
 namespace Doctor.Tests;
 
 /// <summary>
-/// t_2a116a88 — ciclo 4 (RED): a tela Conflitos reais tem ViewModel próprio,
-/// consumindo o relatório em forma schema v1, com a sugestão determinística
-/// mtime → size → path exposta por linha.
+/// t_2a116a88 — cycle 4 (RED): the Real Conflicts screen has its own ViewModel,
+/// consuming the report in schema v1 shape, with the deterministic
+/// mtime → size → path suggestion exposed per row.
 /// </summary>
 public class ConflictsViewModelTests
 {
@@ -15,27 +15,27 @@ public class ConflictsViewModelTests
         new FakeScanEngine(FakeScanEngine.ScanScenario.Nominal).Scan(@"C:\demo");
 
     [Fact]
-    public void Lista_grupos_com_versao_mantida_sugerida_e_bytes_nao_mantidos()
+    public void Groups_list_with_suggested_kept_version_and_unkept_bytes()
     {
         var conflicts = new ConflictsViewModel { Report = ReportNominal() };
 
         Assert.Single(conflicts.Groups);
-        var grupo = conflicts.Groups[0];
+        var group = conflicts.Groups[0];
 
-        // Sugestão determinística: mtime mais recente → versão DESKTOP-4K2F.
+        // Deterministic suggestion: newest mtime → DESKTOP-4K2F version.
         Assert.Equal(
             "Projetos/orcamento (DESKTOP-4K2F conflicted copy 2026-08-13).xlsx",
-            grupo.SuggestedKeepPath);
+            group.SuggestedKeepPath);
 
-        // Bytes elegíveis para quarentena neste grupo: soma das versões − mantida.
-        Assert.Equal(88_412L + 91_077L, grupo.BytesToQuarantine);
+        // Quarantine-eligible bytes in this group: sum of versions − kept.
+        Assert.Equal(88_412L + 91_077L, group.BytesToQuarantine);
 
-        // Tamanho comum do grupo (schema §6.2) formatado pt-BR fixo: 91.077/1.024 = 88,94 KB.
-        Assert.Equal("88,94 KB", grupo.TotalSizeLabel);
+        // Common group size (schema §6.2) formatted: 91,077/1,024 = 88.94 KB.
+        Assert.Equal("88.94 KB", group.TotalSizeLabel);
     }
 
     [Fact]
-    public void Sem_relatorio_lista_vazia()
+    public void Without_report_list_is_empty()
     {
         var conflicts = new ConflictsViewModel();
 
@@ -43,40 +43,40 @@ public class ConflictsViewModelTests
     }
 
     [Fact]
-    public void Cenario_sem_conflitos_lista_vazia()
+    public void No_conflicts_scenario_list_is_empty()
     {
-        var report = new FakeScanEngine(FakeScanEngine.ScanScenario.SemConflitos).Scan(@"C:\demo");
+        var report = new FakeScanEngine(FakeScanEngine.ScanScenario.NoConflicts).Scan(@"C:\demo");
         var conflicts = new ConflictsViewModel { Report = report };
 
         Assert.Empty(conflicts.Groups);
     }
 
     [Fact]
-    public void Empate_de_mtime_e_size_prefere_menor_caminho_em_bytes_utf8()
+    public void Mtime_and_size_tie_prefers_shorter_path_in_utf8_bytes()
     {
         var report = ReportNominal();
-        var empate = new ConflictGroup
+        var tie = new ConflictGroup
         {
-            BaseName = "teste.txt",
+            BaseName = "test.txt",
             TotalBytes = 10,
             Versions =
             [
                 new ConflictVersion
                 {
-                    Path = "b/teste.txt", SizeBytes = 10,
+                    Path = "b/test.txt", SizeBytes = 10,
                     MtimeUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
                 },
                 new ConflictVersion
                 {
-                    Path = "a/teste.txt", SizeBytes = 10,
+                    Path = "a/test.txt", SizeBytes = 10,
                     MtimeUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
                 },
             ],
         };
 
-        var row = new ConflictGroupRow(empate);
+        var row = new ConflictGroupRow(tie);
 
-        // Empate total de mtime e size: menor caminho em bytes UTF-8 ("a/…").
-        Assert.Equal("a/teste.txt", row.SuggestedKeepPath);
+        // Complete mtime and size tie: shortest path in UTF-8 bytes ("a/…").
+        Assert.Equal("a/test.txt", row.SuggestedKeepPath);
     }
 }

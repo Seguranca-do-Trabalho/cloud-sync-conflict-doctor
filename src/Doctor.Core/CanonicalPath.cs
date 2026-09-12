@@ -1,48 +1,49 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Canon de caminhos relativos e defesa contra nomes hostis (card T17 — sprint S11;
-/// SPEC §35 agente Security "path traversal"; GATE 5 "path/reparse attacks testados";
-/// filosofia de falha fechada do ADR-0002).
+/// Canon for relative paths and defense against hostile names (card T17 — sprint S11;
+/// SPEC §35 Security agent "path traversal"; GATE 5 "path/reparse attacks tested";
+/// ADR-0002 fail-closed philosophy).
 ///
-/// Contrato de <see cref="IsValidName"/>: aprova SOMENTE nome relativo seguro —
-/// rejeita null/vazio, caracteres de controle (&lt; 0x20 e DEL), segmento vazio
-/// (sequências "//", separador inicial/final em qualquer variante), qualquer
-/// segmento "." ou ".." (traversal nunca é sanitizado silenciosamente), nomes
-/// reservados NTFS (CON, PRN, AUX, NUL, COM1-9, LPT1-9 — reconhecidos pelo Windows
-/// como STEM antes do primeiro ponto, em qualquer caixa, em qualquer segmento do
-/// caminho), terminação em ponto ou espaço (o Win32 descarta esses sufixos na
-/// criação — vetor de confusão) e extensão acima de 255 caracteres (componente que
-/// o NTFS não armazenaria não pode receber aval do gate).
+/// Contract of <see cref="IsValidName"/>: approves ONLY safe relative names —
+/// rejects null/empty, control characters (&lt; 0x20 and DEL), empty segment
+/// ("//" sequences, leading/trailing separator in any variant), any
+/// segment "." or ".." (traversal is never silently sanitized), NTFS reserved
+/// names (CON, PRN, AUX, NUL, COM1-9, LPT1-9 — recognized by Windows as
+/// STEM before the first dot, in any case, in any path segment), trailing dot
+/// or space (Win32 discards these suffixes on creation — confusion vector) and
+/// extension above 255 characters (component that NTFS would not store cannot
+/// pass the gate).
 ///
-/// Contrato de <see cref="Normalize"/>: canoniza separador '\' → '/', preserva a
-/// caixa original (a comparação canônica fica por conta de
-/// <see cref="StringComparer.OrdinalIgnoreCase"/> no consumidor — semântica de
-/// igualdade NTFS; NÃO confundir com <see cref="PathOrder"/>, que ordena o
-/// relatório por Ordinal sensível a caixa conforme SPEC §3) e trunca extensão
-/// acima de 255 para 255 — única reparação permitida. Qualquer outro nome hostil
-/// lança <see cref="ArgumentException"/>: falha fechada, nunca saída sanitizada.
+/// Contract of <see cref="Normalize"/>: canonizes separator '\' → '/', preserves
+/// original case (canonical comparison is left to
+/// <see cref="StringComparer.OrdinalIgnoreCase"/> in the consumer — NTFS equality
+/// semantics; do NOT confuse with <see cref="PathOrder"/>, which sorts the
+/// report by Ordinal case-sensitive per SPEC §3) and truncates extension
+/// above 255 to 255 — the only repair allowed. Any other hostile name
+/// throws <see cref="ArgumentException"/>: fail-closed, never sanitized output.
 ///
-/// O caminho canônico é RELATIVO à raiz do scan: caminho absoluto ("/x", "C:\x")
-/// produz segmento vazio/drive e é rejeitado — a fronteira da árvore é responsabilidade
-/// da enumeração (ADR-0004), e este tipo garante que nada aprovado escape dela.
+/// The canonical path is RELATIVE to the scan root: absolute path ("/x", "C:\x")
+/// produces empty segment/drive and is rejected — the tree boundary is the
+/// responsibility of the enumeration (ADR-0004), and this type ensures nothing
+/// approved escapes it.
 /// </summary>
 public static class CanonicalPath
 {
-    /// <summary>Tabela reservada Win32/NTFS: nome exato (antes do primeiro ponto) proibido em qualquer segmento.</summary>
-    private static readonly HashSet<string> NomesReservados = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>Win32/NTFS reserved table: exact name (before the first dot) forbidden in any segment.</summary>
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "CON", "PRN", "AUX", "NUL",
         "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
         "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     };
 
-    /// <summary>Teto da extensão (cartão T17): acima disso o componente é hostil até reparo.</summary>
-    public const int ComprimentoMaximoExtensao = 255;
+    /// <summary>Extension ceiling (card T17): above this the component is hostile until repaired.</summary>
+    public const int MaxExtensionLength = 255;
 
     /// <summary>
-    /// Gate de nome: true somente se <paramref name="path"/> é um caminho relativo
-    /// seguro pelos critérios da documentação do tipo. Falha fechada — na dúvida,
+    /// Name gate: true only if <paramref name="path"/> is a safe relative path
+    /// per the type's documentation criteria. Fail-closed — when in doubt,
     /// false.
     /// </summary>
     public static bool IsValidName(string? path)
@@ -56,46 +57,46 @@ public static class CanonicalPath
         {
             if (c < ' ' || c == '\u007F')
             {
-                return false; // caractere de controle (inclui DEL)
+                return false; // control character (includes DEL)
             }
         }
 
-        var segmentos = path.Split('/', '\\');
+        var segments = path.Split('/', '\\');
 
-        foreach (var segmento in segmentos)
+        foreach (var segment in segments)
         {
-            // Segmento vazio: sequência "//", separador nas pontas ou caminho absoluto.
-            // "." e "..": traversal em qualquer posição — nunca aprovado.
-            if (segmento.Length == 0 || segmento == "." || segmento == "..")
+            // Empty segment: "//" sequence, separator at edges or absolute path.
+            // "." and "..": traversal at any position — never approved.
+            if (segment.Length == 0 || segment == "." || segment == "..")
             {
                 return false;
             }
 
-            // Win32 descarta ponto/espaço finais ao criar o componente; aprovar
-            // seria endossar um nome que o volume reescreve.
-            if (segmento.EndsWith('.') || segmento.EndsWith(' '))
+            // Win32 discards trailing dot/space when creating the component; approving
+            // would endorse a name the volume rewrites.
+            if (segment.EndsWith('.') || segment.EndsWith(' '))
             {
                 return false;
             }
 
-            // Reserva NTFS vale para o STEM (porção antes do primeiro ponto),
-            // em qualquer caixa — "con.txt" colide com o device CON tanto quanto "CON".
-            var ponto = segmento.IndexOf('.');
-            var stem = ponto < 0 ? segmento : segmento[..ponto];
+            // NTFS reservation applies to the STEM (portion before the first dot),
+            // in any case — "con.txt" collides with the CON device as much as "CON".
+            var dot = segment.IndexOf('.');
+            var stem = dot < 0 ? segment : segment[..dot];
 
-            if (NomesReservados.Contains(stem))
+            if (ReservedNames.Contains(stem))
             {
                 return false;
             }
         }
 
-        // Extensão do ÚLTIMO segmento: componente com mais de 255 caracteres de
-        // extensão não existe no NTFS; o gate não aprova o impossível (a rota
-        // legítima é o reparo por <see cref="Normalize"/>).
-        var ultimo = segmentos[^1];
-        var ultimoPonto = ultimo.LastIndexOf('.');
+        // Extension of the LAST segment: component with more than 255 characters of
+        // extension does not exist in NTFS; the gate does not approve the impossible
+        // (the legitimate route is repair by <see cref="Normalize"/>).
+        var last = segments[^1];
+        var lastDot = last.LastIndexOf('.');
 
-        if (ultimoPonto >= 0 && ultimo.Length - ultimoPonto - 1 > ComprimentoMaximoExtensao)
+        if (lastDot >= 0 && last.Length - lastDot - 1 > MaxExtensionLength)
         {
             return false;
         }
@@ -104,62 +105,62 @@ public static class CanonicalPath
     }
 
     /// <summary>
-    /// Forma canônica do caminho: separador '/', caixa original preservada e
-    /// extensão truncada a 255 quando excede o teto. Rejeita com
-    /// <see cref="ArgumentException"/> todo nome hostil que não seja o caso de
-    /// extensão longa — nunca devolve forma sanitizada de traversal ou reservado.
+    /// Canonical form of the path: separator '/', original case preserved and
+    /// extension truncated to 255 when it exceeds the ceiling. Rejects with
+    /// <see cref="ArgumentException"/> every hostile name except the long extension
+    /// case — never returns sanitized form of traversal or reserved.
     /// </summary>
     public static string Normalize(string? path)
     {
         if (string.IsNullOrEmpty(path))
         {
-            throw new ArgumentException("Caminho nulo ou vazio não tem forma canônica.", nameof(path));
+            throw new ArgumentException("Null or empty path has no canonical form.", nameof(path));
         }
 
-        var canonico = path.Replace('\\', '/');
+        var canonical = path.Replace('\\', '/');
 
-        if (IsValidName(canonico))
+        if (IsValidName(canonical))
         {
-            return canonico;
+            return canonical;
         }
 
-        // Único reparo permitido: extensão acima de 255 é truncada ao teto.
-        var reparado = TruncarExtensao(canonico);
+        // Only allowed repair: extension above 255 is truncated to ceiling.
+        var repaired = TruncateExtension(canonical);
 
-        if (!ReferenceEquals(reparado, canonico) && IsValidName(reparado))
+        if (!ReferenceEquals(repaired, canonical) && IsValidName(repaired))
         {
-            return reparado;
+            return repaired;
         }
 
         throw new ArgumentException(
-            $"Caminho hostil recusado pelo canon (traversal, reservado NTFS, controle ou estrutura inválida): \"{path}\".",
+            $"Hostile path rejected by canon (traversal, NTFS reserved, control or invalid structure): \"{path}\".",
             nameof(path));
     }
 
     /// <summary>
-    /// Retorna o caminho com a extensão do último segmento truncada a 255
-    /// caracteres, ou a MESMA instância quando não há reparo a fazer (evita
-    /// alocação no caminho comum e permite ao chamador distinguir os casos).
+    /// Returns the path with the last segment's extension truncated to 255
+    /// characters, or the SAME instance when there is no repair to make (avoids
+    /// allocation in the common case and lets the caller distinguish the cases).
     /// </summary>
-    private static string TruncarExtensao(string caminho)
+    private static string TruncateExtension(string path)
     {
-        var ultimoSeparador = caminho.LastIndexOf('/');
-        var ultimoPonto = caminho.LastIndexOf('.');
-        var inicioExtensao = ultimoPonto + 1;
+        var lastSeparator = path.LastIndexOf('/');
+        var lastDot = path.LastIndexOf('.');
+        var extensionStart = lastDot + 1;
 
-        // Ponto precisa estar no último segmento e abrir uma extensão longa demais.
-        if (ultimoPonto < 0 || ultimoPonto < ultimoSeparador || inicioExtensao <= ultimoSeparador)
+        // Dot must be in the last segment and open an extension that's too long.
+        if (lastDot < 0 || lastDot < lastSeparator || extensionStart <= lastSeparator)
         {
-            return caminho;
+            return path;
         }
 
-        var comprimentoExtensao = caminho.Length - inicioExtensao;
+        var extensionLength = path.Length - extensionStart;
 
-        if (comprimentoExtensao <= ComprimentoMaximoExtensao)
+        if (extensionLength <= MaxExtensionLength)
         {
-            return caminho;
+            return path;
         }
 
-        return caminho.Remove(inicioExtensao, comprimentoExtensao - ComprimentoMaximoExtensao);
+        return path.Remove(extensionStart, extensionLength - MaxExtensionLength);
     }
 }

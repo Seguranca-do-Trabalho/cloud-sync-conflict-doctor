@@ -5,9 +5,9 @@ using Xunit;
 namespace Doctor.Tests;
 
 /// <summary>
-/// t_2a116a88 — ciclo 5 (RED): fila de quarentena e confirmação saem da
-/// MainWindowViewModel para sub-VMs próprias. A MainWindow fica com
-/// navegação (Screen enum) e orquestração apenas.
+/// t_2a116a88 — cycle 5 (RED): quarantine queue and confirmation moved from
+/// MainWindowViewModel to dedicated sub-VMs. MainWindow retains navigation
+/// (Screen enum) and orchestration only.
 /// </summary>
 public class QuarantineConfirmationViewModelTests
 {
@@ -15,13 +15,13 @@ public class QuarantineConfirmationViewModelTests
         new FakeScanEngine(FakeScanEngine.ScanScenario.Nominal).Scan(@"C:\demo");
 
     [Fact]
-    public void Fila_aceita_item_sem_duplicar_e_conta_em_digitos_crus()
+    public void Queue_accepts_item_without_duplicates_and_counts_in_raw_digits()
     {
         var quarantine = new QuarantineViewModel();
 
         Assert.False(quarantine.HasItems);
-        quarantine.Queue("Fotos/viagem-2025/praia - copia.jpg");
-        quarantine.Queue("Fotos/viagem-2025/praia - copia.jpg"); // repetido: não duplica
+        quarantine.Queue("Photos/trip-2025/beach - copy.jpg");
+        quarantine.Queue("Photos/trip-2025/beach - copy.jpg"); // duplicate: does not add twice
 
         Assert.Equal(1, quarantine.Count);
         Assert.True(quarantine.HasItems);
@@ -30,10 +30,10 @@ public class QuarantineConfirmationViewModelTests
     }
 
     [Fact]
-    public void Limpar_esvazia_a_fila()
+    public void Clear_empties_queue()
     {
         var quarantine = new QuarantineViewModel();
-        quarantine.Queue("Projetos/orcamento.xlsx");
+        quarantine.Queue("Projects/budget.xlsx");
 
         quarantine.Clear();
 
@@ -43,7 +43,7 @@ public class QuarantineConfirmationViewModelTests
     }
 
     [Fact]
-    public void Confirmacao_resume_fila_com_mensagem_de_seguranca()
+    public void Confirmation_summarizes_queue_with_safety_message()
     {
         var confirmation = new ConfirmationViewModel();
         confirmation.Complete(["a.txt", "b.txt", "c.txt"]);
@@ -51,14 +51,13 @@ public class QuarantineConfirmationViewModelTests
         Assert.Equal(3, confirmation.ItemsMoved);
         Assert.Equal("3", confirmation.ItemsMovedLabel);
 
-        // Segurança §2: nada é descartado; rótulo nunca fala em apagar.
-        Assert.Contains("quarentena", confirmation.SafetyMessage);
-        Assert.DoesNotContain("apag", confirmation.SafetyMessage.ToLowerInvariant());
+        // Safety §2: nothing is discarded; label never says delete.
+        Assert.Contains("quarantine", confirmation.SafetyMessage);
         Assert.DoesNotContain("delet", confirmation.SafetyMessage.ToLowerInvariant());
     }
 
     [Fact]
-    public void Confirmacao_sem_fila_tem_estado_zero_seguro()
+    public void Confirmation_without_queue_has_safe_zero_state()
     {
         var confirmation = new ConfirmationViewModel();
 
@@ -68,21 +67,21 @@ public class QuarantineConfirmationViewModelTests
     }
 
     [Fact]
-    public void Orquestracao_MainWindow_delega_para_sub_vms()
+    public void Orchestration_MainWindow_delegates_to_sub_vms()
     {
         var vm = new MainWindowViewModel(new FakeScanEngine());
         vm.ChosenFolder = @"C:\Users\demo\OneDrive";
         vm.StartScanCommand.Execute(null);
-        vm.OpenDuplicatesCommand.Execute(null);   // §15: Resumo → Duplicatas
-        vm.OpenConflictsCommand.Execute(null);    // §15: Duplicatas → Conflitos
+        vm.OpenDuplicatesCommand.Execute(null);   // §15: Summary → Duplicates
+        vm.OpenConflictsCommand.Execute(null);    // §15: Duplicates → Conflicts
 
-        // Comparação enfileira as não mantidas na sub-VM de quarentena.
+        // Comparison queues unkept versions in quarantine sub-VM.
         vm.CompareConflictCommand.Execute(vm.Report!.RealConflicts[0]);
         vm.QueueOtherVersionsForQuarantineCommand.Execute(null);
 
-        Assert.Equal(2, vm.Quarantine.Count); // 3 versões − 1 mantida
+        Assert.Equal(2, vm.Quarantine.Count); // 3 versions - 1 kept
 
-        // Confirmar move a fila para a sub-VM de confirmação.
+        // Confirming moves queue to confirmation sub-VM.
         vm.ConfirmQuarantineCommand.Execute(null);
         Assert.Equal(MainWindowViewModel.Screen.Quarantine, vm.CurrentScreen);
 
@@ -90,7 +89,7 @@ public class QuarantineConfirmationViewModelTests
         Assert.Equal(MainWindowViewModel.Screen.Confirmation, vm.CurrentScreen);
         Assert.Equal(2, vm.Confirmation.ItemsMoved);
 
-        // Reiniciar limpa fila e confirmação (novo scan começa do zero).
+        // Restarting clears queue and confirmation (fresh scan starts from zero).
         vm.RestartCommand.Execute(null);
         Assert.Equal(MainWindowViewModel.Screen.ChooseFolder, vm.CurrentScreen);
         Assert.Equal(0, vm.Quarantine.Count);

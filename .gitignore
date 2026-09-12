@@ -21,3 +21,6 @@ tests/*/TestResults/
 # Binários e artefatos de build/grafos grandes (não rastrear)
 dist/
 results/
+
+# Ferramentas locais de IA e editor
+.opencode/

@@ -5,9 +5,9 @@ using Xunit;
 namespace Doctor.Tests;
 
 /// <summary>
-/// t_2a116a88 — ciclo 2 (RED): o Resumo passa a ser um SummaryViewModel próprio
-/// (GUIVM-01), respondendo as 5 perguntas do §15 a PARTIR dos dados do relatório
-/// em forma schema v1 — nunca de números soltos.
+/// t_2a116a88 — cycle 2 (RED): the Summary is now a dedicated SummaryViewModel
+/// (GUIVM-01), answering the 5 §15 questions FROM report data in schema v1
+/// shape — never from loose numbers.
 /// </summary>
 public class SummaryViewModelTests
 {
@@ -19,55 +19,55 @@ public class SummaryViewModelTests
     {
         var summary = new SummaryViewModel { Report = ReportNominal() };
 
-        // 1. Arquivos encontrados = files_enumerated (dígitos crus, InvariantCulture).
+        // 1. Files found = files_enumerated (raw digits, InvariantCulture).
         Assert.Equal("16", summary.FilesFound);
 
-        // 2. Duplicatas idênticas = cópias redundantes: (3-1) + (2-1).
+        // 2. Identical duplicates = redundant copies: (3-1) + (2-1).
         Assert.Equal("3", summary.IdenticalDuplicates);
 
-        // 3. Divergências reais = número de grupos com divergência real.
+        // 3. Real conflicts = number of groups with real divergence.
         Assert.Equal("1", summary.RealConflicts);
 
-        // 4. Placeholders ignorados = files_placeholder (nunca abertos).
+        // 4. Placeholders ignored = files_placeholder (never opened).
         Assert.Equal("2", summary.PlaceholdersIgnored);
 
-        // 5. Espaço recuperável = fórmula explícita testada abaixo.
-        // Perdedoras de duplicatas (4.556.064) + versões não mantidas do conflito
-        // (179.489) = 4.735.553 B → 4,52 MiB com separador pt-BR fixo.
-        Assert.Equal("4,52 MB", summary.RecoverableSpace);
+        // 5. Recoverable space = explicitly tested formula below.
+        // Duplicate losers (4,556,064) + unkept conflict versions
+        // (179,489) = 4,735,553 B → 4.52 MB with invariant separator.
+        Assert.Equal("4.52 MB", summary.RecoverableSpace);
     }
 
     /// <summary>
-    /// A fórmula do espaço recuperável é testada explicitamente, por parcela:
-    /// perdedoras das duplicatas idênticas + versões que não serão mantidas
-    /// nos conflitos reais (sugestão determinística mtime → size → path).
+    /// The recoverable space formula is explicitly tested, by part:
+    /// identical duplicate losers + versions that will not be kept
+    /// in real conflicts (deterministic suggestion mtime → size → path).
     /// </summary>
     [Fact]
-    public void Formula_do_espaco_recuperavel_soma_perdedoras_e_versoes_nao_mantidas()
+    public void Recoverable_space_formula_sums_losers_and_unkept_versions()
     {
         var report = ReportNominal();
 
-        // Parcela 1 — duplicatas idênticas: todas as cópias menos a mantida
-        // (mantida = menor caminho em bytes UTF-8 dentro da classe).
-        long perdedorasDuplicatas =
+        // Part 1 — identical duplicates: all copies minus the kept one
+        // (kept = shortest path in UTF-8 bytes within the class).
+        long duplicateLosers =
             report.IdenticalDuplicates.Sum(g => (long)(g.Files.Count - 1) * g.SizeBytes);
-        Assert.Equal(2 * 1_048_576L + 1 * 2_458_912L, perdedorasDuplicatas); // 4.556.064
+        Assert.Equal(2 * 1_048_576L + 1 * 2_458_912L, duplicateLosers); // 4,556,064
 
-        // Parcela 2 — conflitos reais: soma das versões que NÃO serão mantidas
-        // (mantida sugerida = mtime mais recente → "orcamento (DESKTOP-4K2F…)", 90.240 B).
-        long naoMantidasConflitos = report.RealConflicts.Sum(g =>
+        // Part 2 — real conflicts: sum of versions that will NOT be kept
+        // (suggested kept = newest mtime → "orcamento (DESKTOP-4K2F…)", 90,240 B).
+        long unkeptConflicts = report.RealConflicts.Sum(g =>
             g.Versions.Where(v => !ReferenceEquals(v, ScanReport.SuggestVersionToKeep(g)))
                       .Sum(v => v.SizeBytes));
-        Assert.Equal(88_412L + 91_077L, naoMantidasConflitos); // 179.489
+        Assert.Equal(88_412L + 91_077L, unkeptConflicts); // 179,489
 
-        // Total esperado e propriedade do relatório coincidem com a fórmula.
-        long esperado = perdedorasDuplicatas + naoMantidasConflitos;
-        Assert.Equal(esperado, report.RecoverableBytes);
-        Assert.Equal(4_556_064L + 179_489L, report.RecoverableBytes); // 4.735.553
+        // Expected total and report property match the formula.
+        long expected = duplicateLosers + unkeptConflicts;
+        Assert.Equal(expected, report.RecoverableBytes);
+        Assert.Equal(4_556_064L + 179_489L, report.RecoverableBytes); // 4,735,553
     }
 
     [Fact]
-    public void Sem_relatorio_as_cinco_respostas_sao_zero_seguras()
+    public void Without_report_all_five_answers_are_safely_zero()
     {
         var summary = new SummaryViewModel();
 
@@ -79,29 +79,29 @@ public class SummaryViewModelTests
     }
 
     [Theory]
-    [InlineData(FakeScanEngine.ScanScenario.SemDuplicatas)]
-    [InlineData(FakeScanEngine.ScanScenario.SemConflitos)]
-    [InlineData(FakeScanEngine.ScanScenario.SoPlaceholders)]
-    public void Bordas_do_motor_produzem_resumo_coerente(FakeScanEngine.ScanScenario cenario)
+    [InlineData(FakeScanEngine.ScanScenario.NoDuplicates)]
+    [InlineData(FakeScanEngine.ScanScenario.NoConflicts)]
+    [InlineData(FakeScanEngine.ScanScenario.PlaceholdersOnly)]
+    public void Engine_edge_cases_produce_coherent_summary(FakeScanEngine.ScanScenario scenario)
     {
-        var report = new FakeScanEngine(cenario).Scan(@"C:\demo");
+        var report = new FakeScanEngine(scenario).Scan(@"C:\demo");
         var summary = new SummaryViewModel { Report = report };
 
-        if (cenario == FakeScanEngine.ScanScenario.SemDuplicatas)
+        if (scenario == FakeScanEngine.ScanScenario.NoDuplicates)
         {
             Assert.Equal("0", summary.IdenticalDuplicates);
             Assert.Equal("1", summary.RealConflicts);
         }
 
-        if (cenario == FakeScanEngine.ScanScenario.SemConflitos)
+        if (scenario == FakeScanEngine.ScanScenario.NoConflicts)
         {
             Assert.Equal("3", summary.IdenticalDuplicates);
             Assert.Equal("0", summary.RealConflicts);
         }
 
-        if (cenario == FakeScanEngine.ScanScenario.SoPlaceholders)
+        if (scenario == FakeScanEngine.ScanScenario.PlaceholdersOnly)
         {
-            // Só placeholders: nada elegível para quarentena, nada recuperável.
+            // Placeholders only: nothing eligible for quarantine, nothing recoverable.
             Assert.Equal("2", summary.PlaceholdersIgnored);
             Assert.Equal("0", summary.IdenticalDuplicates);
             Assert.Equal("0", summary.RealConflicts);

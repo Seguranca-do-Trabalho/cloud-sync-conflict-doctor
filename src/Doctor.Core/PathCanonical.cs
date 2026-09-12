@@ -3,55 +3,55 @@ namespace Doctor.Core;
 using System.Text;
 
 /// <summary>
-/// Módulo ÚNICO de canonização e contenção de caminhos ABSOLUTOS na fronteira do
-/// filesystem (card S11-1/t_17f56008; threat-model T-01 mitigações (a)/(b)/(c);
-/// regras R2/R12; SPEC §7–§9; ADR-0002 falha fechada; decisões D4/D5/D6 do card).
-/// Complementar a <see cref="CanonicalPath"/> (gate de NOMES relativos do T17):
-/// aquele aprova nomes antes de existirem no volume; este governa caminhos que o
-/// sistema operacional já materializou ou vai materializar.
+/// UNIQUE module for canonization and containment of ABSOLUTE paths at the
+/// filesystem boundary (card S11-1/t_17f56008; threat-model T-01 mitigations (a)/(b)/(c);
+/// rules R2/R12; SPEC §7–§9; ADR-0002 fail-closed; decisions D4/D5/D6 of the card).
+/// Complementary to <see cref="CanonicalPath"/> (T17 RELATIVE name gate):
+/// that approves names before they exist on the volume; this governs paths that the
+/// operating system has already materialized or will materialize.
 ///
-/// Contrato:
-/// (a) <see cref="CanonicalizeRoot"/> canoniza a raiz UMA única vez na entrada —
-///     resolução plena via GetFullPath e conversão para a forma estendida \\?\ —
-///     e é ESTA string, byte-exata, que alimenta toda comparação de contenção.
-///     <see cref="ToExtendedLength"/> desliga em Windows a resolução Win32 que trunca
-///     caminhos acima de 260 chars e descarta trailing dot/space: os dois vetores
-///     do T-01. Em POSIX é identidade declarada (não existe limite nem reescrita).
-/// (b) <see cref="Combine"/> combina segmentos ESTRUTURALMENTE com re-canonicalização
-///     a cada passo — concatenação crua de strings é proibida no produto. Um segmento
-///     absoluto injetado não é sanitizado em silêncio: a re-canonicalização torna o
-///     desvio EXPLÍCITO no produto e a contenção o reprova (falha fechada — nunca
-///     "conserto").
-/// (c) <see cref="EnsureContained"/> verifica contenção BYTE-A-BYTE (D4:
-///     StringComparison.Ordinal sobre UTF-16 code units — nenhum fold Unicode/locale
-///     numa decisão de caminho, coerente com o StringComparer.Ordinal de
-///     <see cref="PathOrder"/>) do caminho resolvido contra o prefixo canônico da raiz,
-///     ANTES de toda operação de escrita/move. Fora da raiz ⇒
-///     <see cref="PathEscapeException"/> — falha fechada, operação abortada sem tocar nada.
+/// Contract:
+/// (a) <see cref="CanonicalizeRoot"/> canonizes the root ONCE at entry —
+///     full resolution via GetFullPath and conversion to \\?\ extended form —
+///     and it is THIS string, byte-exact, that feeds all containment comparisons.
+///     <see cref="ToExtendedLength"/> disables on Windows the Win32 resolution that truncates
+///     paths above 260 chars and discards trailing dot/space: the two vectors
+///     of T-01. On POSIX it is declared identity (there is no limit nor rewriting).
+/// (b) <see cref="Combine"/> combines paths STRUCTURALLY with re-canonicalization
+///     at each step — raw string concatenation is forbidden in the product. An injected
+///     absolute segment is not silently sanitized: re-canonicalization makes the
+///     deviation EXPLICIT in the product and containment rejects it (fail-closed — never
+///     "fixing").
+/// (c) <see cref="EnsureContained"/> checks BYTE-BYTE containment (D4:
+///     StringComparison.Ordinal over UTF-16 code units — no Unicode/locale fold
+///     in a path decision, consistent with <see cref="PathOrder"/>'s
+///     StringComparer.Ordinal) of the resolved path against the canonical root prefix,
+///     BEFORE every write/move operation. Outside root ⇒
+///     <see cref="PathEscapeException"/> — fail-closed, operation aborted without touching anything.
 ///
-/// Nomes são preservados EXATAMENTE como o filesystem os dá (T-01 mitigação (c)):
-/// nada aqui corrige trailing dot/space, reservados ou caixa. A detecção de caracteres
-/// de controle bidi para o RELATÓRIO é <see cref="HasBidiControlChars"/> — marcador
-/// estrutural (D5); a renderização/escape cabe ao EPIC 10 (R12). O agrupamento por
-/// normalized_base_name permanece em bytes UTF-8 exatos (SPEC §7): homóglifo é OUTRO
-/// nome e nunca é fundido aqui.
+/// Names are preserved EXACTLY as the filesystem gives them (T-01 mitigation (c)):
+/// nothing here fixes trailing dot/space, reserved names or case. Detection of bidi
+/// control characters for the REPORT is <see cref="HasBidiControlChars"/> — structural
+/// marker (D5); rendering/escaping is left to EPIC 10 (R12). Grouping by
+/// normalized_base_name remains in exact UTF-8 bytes (SPEC §7): homoglyph is a DIFFERENT
+/// name and is never merged here.
 ///
-/// Consumidores obrigatórios (D6): quarentena move/restore hoje; os EPICs 03/07/08
-/// consomem esta mesma primitiva com seus testes de integração próprios.
+/// Mandatory consumers (D6): quarantine move/restore today; EPICs 03/07/08
+/// consume this same primitive with their own integration tests.
 /// </summary>
 public static class PathCanonical
 {
-    /// <summary>Prefixo estendido de dispositivo Win32.</summary>
-    private const string PrefixoEstendido = @"\??\";
+    /// <summary>Win32 extended device prefix.</summary>
+    private const string ExtendedPrefix = @"\??\";
 
-    /// <summary>Prefixo estendido UNC.</summary>
-    private const string PrefixoUncEstendido = @"\??\UNC\";
+    /// <summary>Extended UNC prefix.</summary>
+    private const string ExtendedUncPrefix = @"\??\UNC\";
 
     /// <summary>
-    /// Caracteres de controle Unicode bidirecional (R12/D5): embutidos num nome,
-    /// reordenam a RENDERIZAÇÃO ("fdp\u202Eexe.pdf" exibe "exe.pdf") sem alterar os
-    /// bytes armazenados. Lista fixa e auditável — U+202A–U+202E (embedding/overrides),
-    /// U+2066–U+2069 (isolates), U+200E/U+200F (marcas LRM/RLM) e U+061C (árabe).
+    /// Bidirectional Unicode control characters (R12/D5): embedded in a name,
+    /// they reorder RENDERING ("fdp\u202Eexe.pdf" displays "exe.pdf") without altering
+    /// the stored bytes. Fixed and auditable list — U+202A–U+202E (embedding/overrides),
+    /// U+2066–U+2069 (isolates), U+200E/U+200F (LRM/RLM marks) and U+061C (Arabic).
     /// </summary>
     private static readonly ReadOnlyMemory<char> BidiControls = new[]
     {
@@ -62,8 +62,8 @@ public static class PathCanonical
     };
 
     /// <summary>
-    /// Forma canônica da RAIZ: absoluta, resolvida e convertida para a forma estendida.
-    /// Canonize UMA vez na entrada; reutilize o retorno byte-exato em toda contenção.
+    /// Canonical form of the ROOT: absolute, resolved and converted to extended form.
+    /// Canonicalize ONCE at entry; reuse the byte-exact return in all containment checks.
     /// </summary>
     public static string CanonicalizeRoot(string root)
     {
@@ -73,10 +73,10 @@ public static class PathCanonical
     }
 
     /// <summary>
-    /// Conversão para a forma estendida \\?\ (idempotente). Em Windows desliga a
-    /// resolução Win32 que trunca acima de 260 chars e descarta trailing dot/space —
-    /// os dois vetores do T-01. Em POSIX é identidade declarada e documentada: não
-    /// existe o limite nem a reescrita. Caminho já estendido volta intocado.
+    /// Conversion to \\?\ extended form (idempotent). On Windows disables the
+    /// Win32 resolution that truncates above 260 chars and discards trailing dot/space —
+    /// the two vectors of T-01. On POSIX it is declared and documented identity: there is
+    /// no limit nor rewriting. Already extended path returns untouched.
     /// </summary>
     public static string ToExtendedLength(string path)
     {
@@ -84,93 +84,94 @@ public static class PathCanonical
 
         if (!OperatingSystem.IsWindows())
         {
-            return path; // POSIX: sem limite MAX_PATH; identidade explícita e documentada.
+            return path; // POSIX: no MAX_PATH limit; explicit and documented identity.
         }
 
-        if (path.StartsWith(PrefixoEstendido, StringComparison.Ordinal))
+        if (path.StartsWith(ExtendedPrefix, StringComparison.Ordinal))
         {
-            return path; // idempotente
+            return path; // idempotent
         }
 
-        // UNC ("\servidor\share\x") usa o dispositivo UNC do namespace estendido.
+        // UNC ("\\server\share\x") uses the extended namespace UNC device.
         if (path.StartsWith(@"\\", StringComparison.Ordinal))
         {
-            return PrefixoUncEstendido + path[2..];
+            return ExtendedUncPrefix + path[2..];
         }
 
-        // Caminho drive-relativo ("C:x.txt") precisa do completo antes do prefixo.
-        var completo = Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
+        // Drive-relative path ("C:x.txt") needs the full path before the prefix.
+        var full = Path.IsPathRooted(path) ? path : Path.GetFullPath(path);
 
-        return PrefixoEstendido + completo;
+        return ExtendedPrefix + full;
     }
 
     /// <summary>
-    /// Combinação ESTRUTURAL de caminhos com RE-CANONIZAÇÃO a cada segmento (R2:
-    /// concatenação crua proibida). Cada segmento é resolvido contra a base acumulada;
-    /// um segmento ROOTED (absoluto) substitui a base na re-canonicalização — o desvio
-    /// fica EXPLÍCITO no produto em vez de mascarado, e cabe ao chamador fechá-lo com
-    /// <see cref="EnsureContained"/>, exigida em todo ponto de escrita/move deste produto.
-    /// A saída sai sempre na forma estendida canônica.
+    /// STRUCTURAL path combination with RE-CANONIZATION at each segment (R2:
+    /// raw concatenation forbidden). Each segment is resolved against the accumulated
+    /// base; a ROOTED (absolute) segment replaces the base on re-canonicalization — the
+    /// deviation becomes EXPLICIT in the product instead of masked, and it is up to the
+    /// caller to close it with <see cref="EnsureContained"/>, required at every
+    /// write/move point in this product.
+    /// Output is always in canonical extended form.
     /// </summary>
     public static string Combine(string root, params string[] segments)
     {
         ArgumentNullException.ThrowIfNull(segments);
 
-        var acumulado = Path.GetFullPath(root);
+        var accumulated = Path.GetFullPath(root);
 
-        foreach (var segmento in segments)
+        foreach (var segment in segments)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(segmento);
+            ArgumentException.ThrowIfNullOrWhiteSpace(segment);
 
-            // Re-canonicalização estrutural: rooted reinicia a resolução (desvio
-            // visível), relativo desce da base (GetFullPath resolve "."/"..",
-            // separadores duplicados e componentes redundantes).
-            acumulado = Path.IsPathRooted(segmento)
-                ? Path.GetFullPath(segmento)
-                : Path.GetFullPath(segmento, acumulado);
+            // Structural re-canonicalization: rooted restarts resolution (visible
+            // deviation), relative descends from base (GetFullPath resolves "."/"..",
+            // duplicate separators and redundant components).
+            accumulated = Path.IsPathRooted(segment)
+                ? Path.GetFullPath(segment)
+                : Path.GetFullPath(segment, accumulated);
         }
 
-        return ToExtendedLength(acumulado);
+        return ToExtendedLength(accumulated);
     }
 
     /// <summary>
-    /// Verificação de CONTENÇÃO byte-a-byte (D4) do caminho resolvido contra a raiz
-    /// canônica. Chamar ANTES de toda operação de escrita/move. Comparação Ordinal
-    /// (UTF-16 code units): "/raiz-evil" vs "/raiz" é REPROVADO pelo exame do caractere
-    /// de fronteira. Fora da raiz ⇒ <see cref="PathEscapeException"/>.
+    /// BYTE-BYTE CONTAINMENT check (D4) of the resolved path against the canonical
+    /// root. Call BEFORE every write/move operation. Ordinal comparison
+    /// (UTF-16 code units): "/root-evil" vs "/root" is REJECTED by the boundary
+    /// character check. Outside root ⇒ <see cref="PathEscapeException"/>.
     /// </summary>
     public static void EnsureContained(string path, string root)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
 
-        var resolvido = ToExtendedLength(Path.GetFullPath(path));
-        var raizCanonica = CanonicalizeRoot(root);
+        var resolved = ToExtendedLength(Path.GetFullPath(path));
+        var canonicalRoot = CanonicalizeRoot(root);
 
-        if (!resolvido.StartsWith(raizCanonica, StringComparison.Ordinal))
+        if (!resolved.StartsWith(canonicalRoot, StringComparison.Ordinal))
         {
-            throw new PathEscapeException(path, root, resolvido);
+            throw new PathEscapeException(path, root, resolved);
         }
 
-        // Dentro do prefixo: ou É a raiz, ou o próximo caractere TEM que ser separador.
-        if (resolvido.Length > raizCanonica.Length)
+        // Within the prefix: either it IS the root, or the next character MUST be a separator.
+        if (resolved.Length > canonicalRoot.Length)
         {
-            var fronteira = resolvido[raizCanonica.Length];
-            if (fronteira != Path.DirectorySeparatorChar
-                && fronteira != Path.AltDirectorySeparatorChar
-                && fronteira != Path.VolumeSeparatorChar)
+            var boundary = resolved[canonicalRoot.Length];
+            if (boundary != Path.DirectorySeparatorChar
+                && boundary != Path.AltDirectorySeparatorChar
+                && boundary != Path.VolumeSeparatorChar)
             {
-                throw new PathEscapeException(path, root, resolvido);
+                throw new PathEscapeException(path, root, resolved);
             }
         }
     }
 
     /// <summary>
-    /// Verdadeiro se o NOME contém caractere de controle bidi (lista fixa acima).
-    /// Função PURA sobre UTF-16 code units: nenhum fold visual/locale — homóglifo NÃO
-    /// é detectado aqui (homóglifo é outro nome legítimo; agrupamento fica por bytes
-    /// exatos no Level 1, SPEC §7). Alimenta o marcador estrutural
-    /// <see cref="FileEntry.HasBidiControlChars"/> (D5) e o escape do relatório (R12).
+    /// True if the NAME contains a bidi control character (fixed list above).
+    /// PURE function over UTF-16 code units: no visual/locale fold — homoglyph is NOT
+    /// detected here (homoglyph is another legitimate name; grouping stays on exact
+    /// bytes at Level 1, SPEC §7). Feeds the structural marker
+    /// <see cref="FileEntry.HasBidiControlChars"/> (D5) and report escaping (R12).
     /// </summary>
     public static bool HasBidiControlChars(string? name)
     {
@@ -179,13 +180,13 @@ public static class PathCanonical
             return false;
         }
 
-        var tabela = BidiControls.Span;
+        var table = BidiControls.Span;
 
         foreach (var c in name)
         {
-            foreach (var proibido in tabela)
+            foreach (var forbidden in table)
             {
-                if (c == proibido)
+                if (c == forbidden)
                 {
                     return true;
                 }
@@ -197,26 +198,26 @@ public static class PathCanonical
 }
 
 /// <summary>
-/// Falha FECHADA de contenção (ADR-0002 item 4; T-01/R2): um caminho resolvido escapou
-/// do prefixo canônico da raiz. Carrega pretendido, raiz e resolvido para auditoria.
-/// Nenhuma operação destrutiva prossegue após esta exceção (R11).
+/// FAIL-CLOSED containment failure (ADR-0002 item 4; T-01/R2): a resolved path escaped
+/// the canonical root prefix. Carries intended, root and resolved for audit.
+/// No destructive operation proceeds after this exception (R11).
 /// </summary>
 public sealed class PathEscapeException : InvalidOperationException
 {
-    public PathEscapeException(string caminhoPretendido, string raiz, string caminhoResolvido)
-        : base($"Contenção violada (T-01/R2): '{caminhoResolvido}' está fora da raiz canônica '{raiz}' (pretendido: '{caminhoPretendido}'). Operação recusada.")
+    public PathEscapeException(string requestedPath, string root, string resolvedPath)
+        : base($"Containment violated (T-01/R2): '{resolvedPath}' is outside canonical root '{root}' (requested: '{requestedPath}'). Operation refused.")
     {
-        RequestedPath = caminhoPretendido;
-        Root = raiz;
-        ResolvedPath = caminhoResolvido;
+        RequestedPath = requestedPath;
+        Root = root;
+        ResolvedPath = resolvedPath;
     }
 
-    /// <summary>Caminho pretendido pelo chamador (antes da canonização).</summary>
+    /// <summary>Path requested by the caller (before canonization).</summary>
     public string RequestedPath { get; }
 
-    /// <summary>Raiz canônica exigida como prefixo byte-a-byte.</summary>
+    /// <summary>Canonical root required as byte-by-byte prefix.</summary>
     public string Root { get; }
 
-    /// <summary>Caminho após re-canonicalização (forma estendida).</summary>
+    /// <summary>Path after re-canonicalization (extended form).</summary>
     public string ResolvedPath { get; }
 }

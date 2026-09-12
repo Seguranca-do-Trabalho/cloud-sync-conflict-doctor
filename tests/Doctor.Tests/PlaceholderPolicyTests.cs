@@ -4,8 +4,8 @@ namespace Doctor.Tests;
 
 /// <summary>
 /// T07 — PlaceholderPolicy (SPEC §6): OFFLINE, RECALL_ON_OPEN, RECALL_ON_DATA_ACCESS
-/// e ReparsePoint marcam a entrada como placeholder. Policy pura: em Linux os atributos
-/// são simulados construindo FileEntry diretamente (não há FS nativo com esses bits aqui).
+/// and ReparsePoint mark entry as placeholder. Pure policy: on Linux attributes
+/// are simulated by constructing FileEntry directly (no native FS with these bits here).
 /// </summary>
 public class PlaceholderPolicyTests
 {
@@ -24,7 +24,7 @@ public class PlaceholderPolicyTests
     [InlineData((FileAttributes)0x00040000)]                      // FILE_ATTRIBUTE_RECALL_ON_OPEN
     [InlineData((FileAttributes)0x00400000)]                      // FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
     [InlineData(FileAttributes.ReparsePoint)]                     // 0x400
-    public void IsPlaceholder_AttributeSimulado_Detecta(FileAttributes attribute)
+    public void IsPlaceholder_SimulatedAttribute_Detects(FileAttributes attribute)
     {
         var entry = Entry(attribute);
 
@@ -32,15 +32,15 @@ public class PlaceholderPolicyTests
     }
 
     [Fact]
-    public void IsPlaceholder_ArquivoNormal_NaoEhPlaceholder()
+    public void IsPlaceholder_NormalFile_IsNotPlaceholder()
     {
         Assert.False(PlaceholderPolicy.IsPlaceholder(Entry(FileAttributes.Normal)));
     }
 
     [Fact]
-    public void IsPlaceholder_CombinacaoComBitsNormais_Detecta()
+    public void IsPlaceholder_CombinationWithNormalBits_Detects()
     {
-        // OneDrive: ReadOnly | Offline | ReparsePoint num mesmo arquivo real.
+        // OneDrive: ReadOnly | Offline | ReparsePoint on the same real file.
         var entry = Entry(FileAttributes.ReadOnly | FileAttributes.Offline | FileAttributes.ReparsePoint);
 
         Assert.True(PlaceholderPolicy.IsPlaceholder(entry));
@@ -51,7 +51,7 @@ public class PlaceholderPolicyTests
     [InlineData((FileAttributes)0x00040000, PlaceholderKind.RecallOnOpen)]
     [InlineData((FileAttributes)0x00400000, PlaceholderKind.RecallOnDataAccess)]
     [InlineData(FileAttributes.ReparsePoint, PlaceholderKind.ReparsePoint)]
-    public void Classify_AttributeSimulado_ReportaKindCorreto(FileAttributes attribute, PlaceholderKind expected)
+    public void Classify_SimulatedAttribute_ReportsCorrectKind(FileAttributes attribute, PlaceholderKind expected)
     {
         Assert.Equal(expected, PlaceholderPolicy.Classify(Entry(attribute)));
     }

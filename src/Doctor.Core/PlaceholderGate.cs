@@ -3,48 +3,48 @@ namespace Doctor.Core;
 using System.Diagnostics;
 
 /// <summary>
-/// Exceção de segurança (SPEC §6 "NÃO TOCAR"; ADR-0005 item 6; threat-model T-03):
-/// sinaliza tentativa de ler/hashear conteúdo de placeholder. Nunca é capturada para
-/// "seguir em frente" — quem a recebe tem um bug de gate a corrigir.
+/// Security exception (SPEC §6 "DO NOT TOUCH"; ADR-0005 item 6; threat-model T-03):
+/// signals attempt to read/hash placeholder content. Never caught to
+/// "proceed anyway" — whoever receives it has a gate bug to fix.
 /// </summary>
 [DebuggerDisplay("PlaceholderReadException: {" + nameof(EntryPath) + "}")]
 public sealed class PlaceholderReadException : InvalidOperationException
 {
     public PlaceholderReadException(string entryPath)
-        : base($"Placeholder NAO PODE ser aberto nem hasheado (SPEC §6): {entryPath}")
+        : base($"Placeholder CANNOT be opened or hashed (SPEC §6): {entryPath}")
         => EntryPath = entryPath;
 
-    /// <summary>Caminho do placeholder rejeitado — diagnóstico e telemetria de teste.</summary>
+    /// <summary>Path of the refused placeholder — diagnostics and test telemetry.</summary>
     public string EntryPath { get; }
 }
 
 /// <summary>
-/// Violação do GATE DE PIPELINE (SPEC §6/§21 — escopo T09 reduzido pelo orquestrador):
-/// lançada quando algum código tenta obter conteúdo de placeholder fora do fluxo
-/// permitido, ou quando a telemetria recebida já carrega PlaceholderBytesRead != 0
-/// (valor != 0 é violação de segurança, não dado — Telemetry.cs). Nunca é capturada
-/// para "seguir em frente": quem a recebe tem um bug de gate a corrigir.
+/// PIPELINE GATE violation (SPEC §6/§21 — T09 scope reduced by orchestrator):
+/// thrown when code attempts to obtain placeholder content outside the allowed
+/// flow, or when received telemetry already carries PlaceholderBytesRead != 0
+/// (value != 0 is a security violation, not data — Telemetry.cs). Never caught
+/// to "proceed anyway": whoever receives it has a gate bug to fix.
 /// </summary>
 [DebuggerDisplay("PlaceholderViolationException: {" + nameof(EntryPath) + "}")]
 public sealed class PlaceholderViolationException : InvalidOperationException
 {
-    public PlaceholderViolationException(string? entryPath, string motivo)
-        : base($"Violacao do gate de placeholder (SPEC §6): {motivo} {entryPath ?? "(sem caminho)"}")
+    public PlaceholderViolationException(string? entryPath, string reason)
+        : base($"Placeholder gate violation (SPEC §6): {reason} {entryPath ?? "(no path)"}")
         => EntryPath = entryPath;
 
-    /// <summary>Caminho da entrada rejeitada; null quando a violação é de telemetria.</summary>
+    /// <summary>Path of the refused entry; null when the violation is telemetry.</summary>
     public string? EntryPath { get; }
 }
 
 /// <summary>
-/// GATE DURO (SPEC §6/§21; ADR-0004 regra 3; ADR-0005 item 6; threat-model T-03):
-/// TODO IHasher do produto atravessa este decorator. Antes de qualquer abertura de
-/// stream, a entrada é reclassificada por <see cref="PlaceholderPolicy"/> — o único
-/// ponto de decisão do produto. Bloqueia:
-/// 1. entradas marcadas IsPlaceholder no Level 0;
-/// 2. entradas não marcadas cujos atributos crus revelem placeholder (duplo gate da
-///    mitigação R3/T-03: marcação ausente ou stale não passa).
-/// Consequência automatizada: placeholder_bytes_read == 0 (PLH-01/02).
+/// HARD GATE (SPEC §6/§21; ADR-0004 rule 3; ADR-0005 item 6; threat-model T-03):
+/// EVERY product IHasher goes through this decorator. Before any stream opening,
+/// the entry is reclassified by <see cref="PlaceholderPolicy"/> — the product's
+/// single decision point. Blocks:
+/// 1. entries marked IsPlaceholder at Level 0;
+/// 2. unmarked entries whose raw attributes reveal placeholder (double gate from
+///    R3/T-03 mitigation: missing or stale marking does not pass).
+/// Automated consequence: placeholder_bytes_read == 0 (PLH-01/02).
 /// </summary>
 public sealed class PlaceholderGuardedHasher : IHasher
 {
@@ -67,7 +67,7 @@ public sealed class PlaceholderGuardedHasher : IHasher
 
     private static void Enforce(FileEntry entry)
     {
-        // Duplo gate: flag do Level 0 OU qualquer bit suspeito nos atributos crus.
+        // Double gate: Level 0 flag OR any suspicious bit in raw attributes.
         if (entry.IsPlaceholder || PlaceholderPolicy.IsPlaceholder(entry))
         {
             throw new PlaceholderReadException(entry.Path);
@@ -76,16 +76,16 @@ public sealed class PlaceholderGuardedHasher : IHasher
 }
 
 /// <summary>
-/// GATE DE PIPELINE (T09 — SPEC §6/§21; ADR-0005 item 6): ponto único por onde TODO
-/// acesso a conteúdo passa após a enumeração Level 0. Garante POR CONSTRUÇÃO que
-/// placeholder não gera leitura:
-/// 1. <see cref="Enforce"/> separa o resultado L0 em fluxo seguro (não-placeholders,
-///    para L1/L2/L3) e lista Placeholders[] do relatório (schema v1 §6.3);
-/// 2. <see cref="OpenRead"/> reclassifica cada abertura via <see cref="PlaceholderPolicy"/>
-///    (duplo gate: marcação L0 + bits crus) e lança <see cref="PlaceholderViolationException"/>
-///    ANTES de tocar a fonte;
-/// 3. recusa telemetria de entrada já violada — o gate nunca "lava" um contador
-///    PlaceholderBytesRead != 0.
+/// PIPELINE GATE (T09 — SPEC §6/§21; ADR-0005 item 6): single point through which ALL
+/// content access passes after Level 0 enumeration. Guarantees BY CONSTRUCTION that
+/// placeholder produces no reading:
+/// 1. <see cref="Enforce"/> splits the L0 result into safe flow (non-placeholders,
+///    for L1/L2/L3) and the report Placeholders[] list (schema v1 §6.3);
+/// 2. <see cref="OpenRead"/> reclassifies each opening via <see cref="PlaceholderPolicy"/>
+///    (double gate: L0 marking + raw bits) and throws <see cref="PlaceholderViolationException"/>
+///    BEFORE touching the source;
+/// 3. refuses already-violated input telemetry — the gate never "cleans" a
+///    PlaceholderBytesRead != 0 counter.
 /// </summary>
 public sealed class PlaceholderGate : IStreamSource
 {
@@ -95,25 +95,25 @@ public sealed class PlaceholderGate : IStreamSource
         => _streams = streams ?? throw new ArgumentNullException(nameof(streams));
 
     /// <summary>
-    /// Aplica o gate ao resultado da enumeração: devolve relatório parcial com apenas
-    /// entradas seguras em <c>Files</c>, placeholders projetados em
-    /// <see cref="PartialReport.Placeholders"/> e telemetria derivada com
-    /// <c>placeholder_bytes_read == 0</c> garantido por construção. Lança
-    /// <see cref="PlaceholderViolationException"/> se a entrada já vier violada.
+    /// Applies the gate to the enumeration result: returns a partial report with only
+    /// safe entries in <c>Files</c>, placeholders projected into
+    /// <see cref="PartialReport.Placeholders"/> and derived telemetry with
+    /// <c>placeholder_bytes_read == 0</c> guaranteed by construction. Throws
+    /// <see cref="PlaceholderViolationException"/> if the entry is already violated.
     /// </summary>
     public PartialReport Enforce(EnumerationResult enumeration)
     {
         ArgumentNullException.ThrowIfNull(enumeration);
 
         if (enumeration.Telemetry.PlaceholderBytesRead != 0)
-            throw new PlaceholderViolationException(null, "telemetria de entrada ja violada (placeholder_bytes_read != 0):");
+            throw new PlaceholderViolationException(null, "input telemetry already violated (placeholder_bytes_read != 0):");
 
         var files = new List<FileEntry>();
         var placeholders = new List<PlaceholderRecord>();
 
         foreach (var entry in enumeration.Files)
         {
-            // Duplo gate: flag do Level 0 OU qualquer bit suspeito nos atributos crus.
+            // Double gate: Level 0 flag OR any suspicious bit in raw attributes.
             if (entry.IsPlaceholder || PlaceholderPolicy.IsPlaceholder(entry))
                 placeholders.Add(PlaceholderReport.Records(new[] { entry }).Single());
             else
@@ -131,17 +131,17 @@ public sealed class PlaceholderGate : IStreamSource
             });
     }
 
-    /// <summary>Único caminho legítimo para conteúdo pós-L0. Recusa placeholder.</summary>
+    /// <summary>Single legitimate path to content post-L0. Refuses placeholder.</summary>
     public Stream OpenRead(FileEntry entry)
     {
         if (entry.IsPlaceholder || PlaceholderPolicy.IsPlaceholder(entry))
-            throw new PlaceholderViolationException(entry.Path, "abertura de conteudo bloqueada:");
+            throw new PlaceholderViolationException(entry.Path, "content opening blocked:");
 
         return _streams.OpenRead(entry);
     }
 }
 
-/// <summary>Relatório parcial produzido pelo gate: base de L1/L2/L3 e do relatório final.</summary>
+/// <summary>Partial report produced by the gate: basis for L1/L2/L3 and the final report.</summary>
 public sealed record PartialReport(
     IReadOnlyList<FileEntry> Files,
     IReadOnlyList<PlaceholderRecord> Placeholders,

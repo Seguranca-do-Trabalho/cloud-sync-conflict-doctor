@@ -1,150 +1,155 @@
 # Cloud Sync Conflict Doctor
 
-> "Você tem 1.847 arquivos duplicados e 23 divergências reais nesta pasta. 1.812 são cópias idênticas — posso colocar em quarentena agora."
+> "You have 1,847 duplicate files and 23 real divergences in this folder. 1,812 are byte-identical copies — I can quarantine them now."
 
-![status](https://img.shields.io/badge/status-em%20desenvolvimento-orange) ![stack](https://img.shields.io/badge/C%23-.NET%208-blueviolet) ![segurança](https://img.shields.io/badge/delete-direto%20nunca-red) ![licença](https://img.shields.io/badge/v1-gratuita-green)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![FOSS](https://img.shields.io/badge/FOSS-Free%20%26%20Open%20Source-green.svg)](LICENSE) [![Status](https://img.shields.io/badge/status-in%20development-orange)](README.md) [![Stack](https://img.shields.io/badge/C%23-.NET%208-blueviolet)](CloudSyncConflictDoctor.sln) [![Safety](https://img.shields.io/badge/safety-quarantine%20only-red)](README.md) [![Tests](https://img.shields.io/badge/tests-541%20passed-brightgreen)](tests/Doctor.Tests)
 
-**Autor:** André Santo (forg3) | junkyardgoodies.app
+**Author:** forg3
 
-## Para que serve
+## What it does
 
-Quem usa OneDrive, Google Drive, Dropbox, Nextcloud ou iCloud conhece a rotina: `relatório (conflicted copy).docx`, `planilha-DESKTOP-A1B2C3.xlsx`, `foto (1).jpg`, `foto (2).jpg`… O provedor de nuvem cria essas cópias em silêncio, nunca avisa qual versão é a boa, e a pasta apodrece por anos porque o usuário tem medo de apagar a errada.
+Anyone who uses OneDrive, Google Drive, Dropbox, Nextcloud, or iCloud knows the routine: `document (conflicted copy).docx`, `spreadsheet-DESKTOP-A1B2C3.xlsx`, `photo (1).jpg`, `photo (2).jpg`... The cloud provider creates these copies silently, never tells you which version is correct, and the folder rots for years because the user is afraid of deleting the wrong one.
 
-O **Cloud Sync Conflict Doctor** escaneia uma pasta sincronizada local e responde, com evidência auditável:
+**Cloud Sync Conflict Doctor** scans a locally synced folder and answers, with auditable evidence:
 
-- quantas cópias são **idênticas byte a byte** (podem ir para quarentena sem risco);
-- quais são **divergências reais** do mesmo documento (precisam de decisão humana);
-- quais arquivos são *placeholders* online-only (ele nem toca — ver abaixo);
-- quanto espaço pode ser recuperado com segurança.
+- how many copies are **byte-identical** (can be quarantined risk-free);
+- which are **real divergences** of the same document (need human decision);
+- which files are *online-only placeholders* (it won't touch them — see below);
+- how much space can be safely recovered.
 
-É uma ferramenta de decisão confiável para limpeza de árvores de sincronização — não mais um deduplicador burro que não entende conflito.
+It is a trustworthy decision tool for cleaning up sync trees — not another dumb deduplicator that doesn't understand conflict.
 
-## Como funciona
+## How it works
 
-Pipeline determinístico em cascata — o desempenho vem de **não ler** o que não precisa:
+Deterministic cascade pipeline — performance comes from **not reading** what doesn't need to be read:
 
 ```text
-LEVEL 0  Enumeração (só metadados: caminho, tamanho, mtime, atributos, file id)
-         → placeholders OFFLINE / RECALL_* / reparse points são MARCADOS E PULADOS.
-           Nunca são abertos: tocar neles dispararia download da nuvem inteira.
-LEVEL 1  Agrupamento por (nome-base normalizado + tamanho)
-         → grupo de 1 elemento? Descartado sem ler 1 byte.
-         → normalização limitada e versionada dos sufixos de conflito
+LEVEL 0  Enumeration (metadata only: path, size, mtime, attributes, file id)
+         → OFFLINE / RECALL_* / reparse point placeholders are MARKED AND SKIPPED.
+           Never opened: touching them would trigger a full cloud download.
+LEVEL 1  Grouping by (normalized base name + size)
+         → single-element group? Discarded without reading 1 byte.
+         → limited, versioned normalization of conflict suffixes
            ((conflicted copy), -DESKTOP-XXXX, " (1)", ~$, .sb-hex…)
-LEVEL 2  Hash parcial BLAKE3 (primeiros 64 KiB + últimos 64 KiB) só nos sobreviventes
-         → mata falso positivo "mesmo nome, mesmo tamanho, conteúdo diferente".
-LEVEL 3  Hash completo BLAKE3 só nas colisões do nível 2
-         → hash igual = duplicata idêntica | hash diferente = divergência real.
+LEVEL 2  Partial BLAKE3 hash (first 64 KiB + last 64 KiB) on survivors only
+         → kills false positive "same name, same size, different content".
+LEVEL 3  Full BLAKE3 hash only on Level 2 collisions
+         → same hash = identical duplicate | different hash = real divergence.
 ```
 
-Garantias de projeto (todas testadas, não declaradas):
+Design guarantees (all tested, not declared):
 
-- **Determinismo byte-a-byte:** a mesma árvore produz o mesmo relatório JSON sempre — ordenação por caminho em bytes UTF-8 (nunca locale), empate resolvido por `mtime → tamanho → caminho`, zero paralelismo na decisão (paralelismo só na leitura).
-- **Segurança antes de conveniência:** nada é apagado. Jamais. Toda remoção vira **quarentena datada** com manifesto (`original_path`, hash BLAKE3, motivo, regra) e **restore verificado**, que nunca sobrescreve arquivo existente silenciosamente.
-- **BLAKE3 versionado:** algoritmo explícito no schema do relatório (`algorithm/hash_version/report_schema_version`); trocar hash é bump de formato.
-- **Cache incremental SQLite** chaveado por file ID/inode — renomear/mover não invalida cache; o segundo scan é quase instantâneo.
-- **Local-first absoluto:** zero upload, zero telemetria obrigatória, zero conteúdo enviado para qualquer serviço.
-- **Calibração por mídia:** SSD/NVMe → paralelismo alto na leitura; HDD com seek penalty → leitura serial (detectado via IOCTL, configurável, nunca fixo).
+- **Byte-for-byte determinism:** the same tree produces the same JSON report every time — path ordering by UTF-8 bytes (never locale), tie broken by `mtime → size → path`, zero parallelism in decision-making (parallelism only in I/O).
+- **Safety before convenience:** nothing is deleted. Ever. Every removal becomes a **dated quarantine** with a manifest (`original_path`, BLAKE3 hash, reason, rule) and **verified restore**, which never silently overwrites an existing file.
+- **Versioned BLAKE3:** algorithm explicit in the report schema (`algorithm/hash_version/report_schema_version`); changing the hash is a format bump.
+- **Incremental SQLite cache** keyed by file ID/inode — renaming/moving doesn't invalidate the cache; the second scan is nearly instant.
+- **Absolute local-first:** zero upload, zero mandatory telemetry, zero content sent to any service.
+- **Media calibration:** SSD/NVMe → high read parallelism; HDD with seek penalty → serial read (detected via IOCTL, configurable, never hardcoded).
 
-Distribuição: CLI (`conflictdoctor scan <pasta> --json`) desde o dia um, GUI de consumidor como produto principal (fluxo Pasta → Scan → Resumo → Duplicatas → Conflitos → Comparar → Quarentena → Confirmação).
+Distribution: CLI (`conflictdoctor scan <folder> --json`) from day one, consumer GUI as the main product (flow: Folder → Scan → Summary → Duplicates → Conflicts → Compare → Quarantine → Confirmation).
 
 ## Stack
 
-C#/.NET 8 · solução `CloudSyncConflictDoctor.sln`: `src/Doctor.Core` (motor), `src/Doctor.Cli`, `src/Doctor.Gui` (Avalonia — hipótese de trabalho), `tests/Doctor.Tests`. SQLite via `Microsoft.Data.Sqlite`, hashing via Blake3.
+C#/.NET 8 · solution `CloudSyncConflictDoctor.sln`: `src/Doctor.Core` (engine), `src/Doctor.Cli`, `src/Doctor.Gui` (Avalonia — working hypothesis), `tests/Doctor.Tests`. SQLite via `Microsoft.Data.Sqlite`, hashing via Blake3.
 
-## Estado atual (agosto/2026)
+## Current state (August 2026)
 
-Concluído e revisado (**GATE 1 — Architecture Ready fechado**):
+Completed and reviewed (**GATE 1 — Architecture Ready closed**):
 
-- ADRs 0001–0011 (linguagem, quarentena, schema, scanner, hashing, cache, concorrência, CLI, GUI, quarentena detalhada, comparador);
-- Threat model com 11 casos concretos de destruição de dados e mitigação mapeada;
-- Schema do relatório v1 fechado com fixture real (hashes BLAKE3 calculados);
-- Estratégia de testes completa (suítes DET/PLH/QDT mapeadas para os gates);
-- Harness de benchmark + gerador de dataset sintético versionado;
-- Protótipo Level 0 funcional (enumeração cross-platform + marcação de placeholder na origem);
-- Esqueleto de GUI navegável com as 9 telas do fluxo e linguagem visual de segurança (ação destrutiva sempre rotulada "Mover para quarentena", nunca "apagar"), ViewModels com 49 testes verdes.
+- ADRs 0001–0011 (language, quarantine, schema, scanner, hashing, cache, concurrency, CLI, GUI, detailed quarantine, comparator);
+- Threat model with 11 concrete data destruction cases and mitigations mapped;
+- Report schema v1 closed with real fixture (BLAKE3 hashes calculated);
+- Complete test strategy (DET/PLH/QDT suites mapped to gates);
+- Benchmark harness + versioned synthetic dataset generator;
+- Functional Level 0 prototype (cross-platform enumeration + placeholder marking at source);
+- Navigable GUI skeleton with the 9 screens of the flow and safety visual language (destructive action always labeled "Move to quarantine", never "delete"), ViewModels with 49 green tests.
 
-Em execução: motor do scan (pipeline Level 0/1), gate de placeholder com telemetria zero-bytes, state machine da GUI, contrato de telemetria (bytes evitados).
+In progress: scan engine (Level 0/1 pipeline), zero-bytes placeholder gate with telemetry, GUI state machine, telemetry contract (bytes avoided).
 
-## O que falta (roadmap até o release)
+## What's missing (roadmap to release)
 
-| Marco | Conteúdo | Gate |
+| Milestone | Content | Gate |
 |---|---|---|
-| Motor completo | Level 1–3, classificação duplicata vs divergência | GATE 2 (Scanner Correctness) |
-| Segurança | Path traversal, TOCTOU, reparse attacks, fail-closed | GATE 5 |
-| Resolução | keep-newest/largest/machine/manual + empate determinístico | GATE 3 (Resolution Safety) |
-| Performance | Benchmark 1M arquivos, telemetria de bytes evitados | GATE 4 |
-| CI | GitHub Actions ubuntu+windows, suítes determinismo/placeholder/no-delete | GATE 6 |
-| Distribuição v1 (gratuita) | Build self-contained win-x64 via GitHub Releases (sem assinatura de código — adiada para a v2 paga) | GATE 6 |
-| Auditoria final | *"Can I trust the delete button?"* — revisão adversarial | pré-RC |
+| Complete engine | Level 1–3, duplicate vs divergence classification | GATE 2 (Scanner Correctness) |
+| Security | Path traversal, TOCTOU, reparse attacks, fail-closed | GATE 5 |
+| Resolution | keep-newest/largest/machine/manual + deterministic tiebreak | GATE 3 (Resolution Safety) |
+| Performance | 1M file benchmark, bytes-avoided telemetry | GATE 4 |
+| CI | GitHub Actions ubuntu+windows, determinism/placeholder/no-delete suites | GATE 6 |
+| v1 distribution (free) | Self-contained win-x64 build via GitHub Releases (no code signing — deferred to paid v2) | GATE 6 |
+| Final audit | *"Can I trust the delete button?"* — adversarial review | pre-RC |
 
-> **Estratégia comercial:** v1 é **gratuita** para validação em campo. Empacotamento com instalador assinado (MSIX/winget/Store), licensing Ed25519 e precificação ficam para a **v2**, quando o produto estiver provado.
+> **Commercial strategy:** v1 is **free** for field validation. Installer packaging with signed code (MSIX/winget/Store), Ed25519 licensing, and pricing are reserved for **v2**, when the product is proven.
 
-## Estado atual (2026-08-23, noite) — RC1
+## Current state (2026-08-23, evening) — RC1
 
-- **Board Kanban concluído: 70/70 cards done** — todos os EPICs, suítes QA, S11 completo,
-  GATEs 1/2 fechados com evidência, GATE 4 baseline, GATE 5 consolidado, GATE 6 pendência
-  estrutural documentada (Actions desligadas + job Windows)
-- **EPIC 19 executado:** *"Can I trust the delete button?"* → veredito **SIM**
+- **Kanban board completed: 70/70 cards done** — all EPICs, QA suites, S11 complete,
+  GATEs 1/2 closed with evidence, GATE 4 baseline, GATE 5 consolidated, GATE 6 structural
+  dependency documented (Actions disabled + Windows job)
+- **EPIC 19 executed:** *"Can I trust the delete button?"* → verdict **YES**
   (`docs/audit/epic19-can-i-trust-the-delete-button-2026-08-23.md`)
-- **RC1 gerado:** `conflictdoctor.exe` win-x64 self-contained (67 MB), smoke E2E aprovado
+- **RC1 generated:** `conflictdoctor.exe` win-x64 self-contained (67 MB), E2E smoke test passed
   (`docs/release/RC1-notes.md`)
-- Auditoria GATE 2/6 com evidências reais: `docs/qa/auditoria-gate26-2026-08-23.md`
+- GATE 2/6 audit with real evidence: `docs/qa/auditoria-gate26-2026-08-23.md`
 
-## Histórico — tarde de 2026-08-23
+## History — afternoon of 2026-08-23
 
-- **522 testes verdes** na `main`; cobertura 83.4% line-rate (coverlet)
-- **CI local**: `./scripts/ci/local-ci.sh` — build Release + suíte completa + guardas estáticas
-  (anti-`File.Delete`/`Directory.Delete`, anti-`Process.Start`, GUIVM-02 anti-rótulo-destrutivo)
-- **Hardening S11 concluído:** PathCanonical (S11-1), ReparsePolicy (S11-2 via T18),
-  TOCTOU+cache poisoning (S11-3/4 via T19), fail-closed com `UnresolvedGroup` auditável (S11-5),
-  auditoria GATE 5 consolidada com matriz SEG-01..23 (S11-6) e SEG-12 verde
-  (exclusão estrutural de `ConflictDoctor/` na enumeração)
-- **Comparadores v1 completos:** texto (LCS), binário, markdown e CSV (ADR-0011)
-- Benchmark round-01 sobre dataset real de 1M arquivos registrado em `docs/bench/rounds/`
-- GATEs fechados: 1 (Architecture), 2 (Scanner Correctness); GATE 4 baseline registrado
+- **522 green tests** on `main`; 83.4% line-rate coverage (coverlet)
+- **Local CI**: `./scripts/ci/local-ci.sh` — Release build + full suite + static guards
+  (anti-`File.Delete`/`Directory.Delete`, anti-`Process.Start`, GUIVM-02 anti-destructive-label)
+- **S11 Hardening completed:** PathCanonical (S11-1), ReparsePolicy (S11-2 via T18),
+  TOCTOU+cache poisoning (S11-3/4 via T19), fail-closed with auditable `UnresolvedGroup` (S11-5),
+  GATE 5 audit consolidated with SEG-01..23 matrix (S11-6) and SEG-12 green
+  (structural exclusion of `ConflictDoctor/` in enumeration)
+- **v1 Comparators complete:** text (LCS), binary, markdown and CSV (ADR-0011)
+- Benchmark round-01 on real 1M file dataset recorded in `docs/bench/rounds/`
+- Closed gates: 1 (Architecture), 2 (Scanner Correctness); GATE 4 baseline recorded
 
-## Ideias e questões abertas
+## Open questions
 
-- **Diff semântico de Office** (parágrafos/células/fórmulas via Open XML): entra no v1 ou é o gancho do Pro? Análise em curso no board.
-- **Escopo de providers no v1**: os cinco de uma vez ou Windows-first progressivo? (arquitetura já desacoplada de vendor.)
-- **Naming**: "Conflict Doctor" descreve mas não vende — pesquisa de nome/trademark planejada.
-- Comparação CSV orientada a linha/coluna e diff markdown no comparador v1.
-- Modo MSP/RMM: execução headless agendada com relatório JSON consolidado (o EXE é o produto; wrapper PowerShell é só implantação).
+- **Semantic Office diff** (paragraphs/cells/formulas via Open XML): goes into v1 or is the Pro hook? Analysis in progress on the board.
+- **Provider scope in v1**: all five at once or progressive Windows-first? (architecture already vendor-decoupled.)
+- **Naming**: "Conflict Doctor" describes but doesn't sell — name/trademark research planned.
+- Line/column-oriented CSV comparison and markdown diff in the v1 comparator.
+- MSP/RMM mode: headless scheduled execution with consolidated JSON report (the EXE is the product; PowerShell wrapper is just deployment).
 
 ## CI/CD — local (Linux) vs GitHub Actions
 
-Com as **GitHub Actions da org desligadas neste mês**, o CI roda **localmente** via
+With **GitHub Actions for the org disabled this month**, CI runs **locally** via
 `./scripts/ci/local-ci.sh`:
 
-| Etapa | Equivalente no Actions | Status |
+| Step | Actions equivalent | Status |
 |---|---|---|
-| Build Release (`dotnet build -c Release`) | job linux | ✓ verde |
-| Suíte completa (`dotnet test`) | job linux | ✓ 541/541 |
-| Guarda anti-`File.Delete`/`Directory.Delete` em `src/` | — (extra) | ✓ PASS |
-| Guarda anti-`Process.Start` em `src/` | — (extra) | ✓ PASS |
-| Guarda GUIVM-02 (zero rótulo destrutivo na GUI) | — (extra) | ✓ PASS |
-| Cobertura Doctor.Core (coverlet) | — (extra) | ✓ 93,37% |
+| Release Build (`dotnet build -c Release`) | linux job | ✓ green |
+| Full suite (`dotnet test`) | linux job | ✓ 541/541 |
+| Anti-`File.Delete`/`Directory.Delete` guard in `src/` | — (extra) | ✓ PASS |
+| Anti-`Process.Start` guard in `src/` | — (extra) | ✓ PASS |
+| GUIVM-02 guard (zero destructive labels in GUI) | — (extra) | ✓ PASS |
+| Doctor.Core coverage (coverlet) | — (extra) | ✓ 93.37% |
 
-**Limitação conhecida:** o CI local cobre a versão **Linux apenas**. O job Windows do
-workflow (`.github/workflows/ci.yml`) exige execução num SO Windows nativo — os testes
-de placeholders reais OneDrive (PLH-03), junctions NTFS e FileId por volume usam APIs
-do Cloud Filter que não existem em Linux (Wine não implementa o Cloud Filter API, logo
-não é alternativa válida). O build cruzado para Windows já está provado: o RC1
-(`conflictdoctor.exe` win-x64 self-contained) foi compilado aqui mesmo. Quando as
-Actions forem reativadas, o push dispara o workflow sozinho e o job Windows executa
-os testes nativos — último requisito para fechar formalmente o GATE 6.
+**Known limitation:** local CI covers the **Linux version only**. The Windows job in the
+workflow (`.github/workflows/ci.yml`) requires a native Windows OS — the real OneDrive
+placeholder tests (PLH-03), NTFS junctions, and FileId-per-volume tests use Cloud Filter
+APIs that don't exist on Linux (Wine doesn't implement the Cloud Filter API, so it's not
+a valid alternative). Cross-compilation to Windows is already proven: the RC1
+(`conflictdoctor.exe` win-x64 self-contained) was built right here. When Actions are
+re-enabled, the push triggers the workflow and the Windows job runs the native tests —
+the final requirement to formally close GATE 6.
 
-## Desenvolvimento
+## Development
 
-Este projeto é executado via **Hermes Kanban** (board `conflict-doctor`): cards com Definition of Done, dependências explícitas, gates formais de revisão e handoffs auditáveis. A especificação completa está em [`docs/SPEC.md`](docs/SPEC.md) e as decisões de arquitetura em [`docs/adr/`](docs/adr/).
+This project runs via **Hermes Kanban** (board `conflict-doctor`): cards with Definition of Done, explicit dependencies, formal review gates, and auditable handoffs. Full specification at [`docs/SPEC.md`](docs/SPEC.md) and architecture decisions at [`docs/adr/`](docs/adr/).
 
 ```bash
-# build e testes (requer .NET 8 SDK)
+# build and tests (requires .NET 8 SDK)
 dotnet build CloudSyncConflictDoctor.sln
 dotnet test tests/Doctor.Tests
 ```
 
 ---
+ 
+**Golden rule of the product:** the user needs to get to the point of saying *"I know exactly why these files were chosen and I know I can undo it."*
 
-**Regra de ouro do produto:** o usuário precisa chegar ao ponto de dizer *"eu sei exatamente por que estes arquivos foram escolhidos e sei que posso desfazer."*
+## License
+
+This project is Free and Open Source Software (FOSS) licensed under the [MIT License](LICENSE).
+Copyright (c) 2026 forg3.

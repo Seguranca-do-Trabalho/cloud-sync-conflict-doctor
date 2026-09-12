@@ -1,35 +1,35 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Registro de placeholder do relatório (schema-report-v1.md §6.3): caminho,
-/// rótulos na ordem canônica declarada e tamanho obtido por metadados de
-/// enumeração — nunca por abertura do arquivo.
+/// Placeholder report record (schema-report-v1.md §6.3): path,
+/// labels in declared canonical order and size obtained from enumeration
+/// metadata — never by opening the file.
 /// </summary>
 public sealed record PlaceholderRecord
 {
-    /// <summary>Caminho relativo, ordenação global por bytes.</summary>
+    /// <summary>Relative path, global sort by bytes.</summary>
     public required string Path { get; init; }
 
-    /// <summary>Rótulos detectados, sem duplicatas, na ordem canônica:
+    /// <summary>Detected labels, no duplicates, in canonical order:
     /// reparse_point → recall_on_data_access → recall_on_open → offline.
-    /// Valores permitidos: somente esses quatro.</summary>
+    /// Allowed values: only these four.</summary>
     public required IReadOnlyList<string> Kinds { get; init; }
 
-    /// <summary>Tamanho visto no Level 0, sem abrir o arquivo.</summary>
+    /// <summary>Size seen at Level 0, without opening the file.</summary>
     public required long SizeBytes { get; init; }
 }
 
 /// <summary>
-/// T09 — projeção das entradas Level 0 para a lista Placeholders[] do relatório.
-/// Os placeholders ficam fora de L1/L2/L3 por construção: o pipeline os consome
-/// desta lista e nunca os entrega ao hasher (gate: <see cref="PlaceholderGuardedHasher"/>).
-/// Telemetria: FilesPlaceholder conta as entradas; PlaceholderBytesRead permanece 0 —
-/// invariante de segurança (SPEC §21).
+/// T09 — projection of Level 0 entries to the Placeholders[] list in the report.
+/// Placeholders stay outside L1/L2/L3 by construction: the pipeline consumes them
+/// from this list and never delivers them to the hasher (gate: <see cref="PlaceholderGuardedHasher"/>).
+/// Telemetry: FilesPlaceholder counts the entries; PlaceholderBytesRead remains 0 —
+/// security invariant (SPEC §21).
 /// </summary>
 public static class PlaceholderReport
 {
-    /// <summary>Ordem canônica dos rótulos declarada no schema-report-v1.md §6.3.</summary>
-    private static readonly (FileAttributes Bit, string Rotulo)[] OrdemCanonica =
+    /// <summary>Canonical label order declared in schema-report-v1.md §6.3.</summary>
+    private static readonly (FileAttributes Bit, string Label)[] CanonicalOrder =
     {
         (FileAttributes.ReparsePoint, "reparse_point"),
         (PlaceholderPolicy.RecallOnDataAccess, "recall_on_data_access"),
@@ -38,8 +38,8 @@ public static class PlaceholderReport
     };
 
     /// <summary>
-    /// Projeta TODA entrada marcada IsPlaceholder como <see cref="PlaceholderRecord"/>,
-    /// ordenada por bytes de caminho (StringComparer.Ordinal sobre o caminho).
+    /// Projects EVERY IsPlaceholder entry as a <see cref="PlaceholderRecord"/>,
+    /// sorted by path bytes (StringComparer.Ordinal on the path).
     /// </summary>
     public static IReadOnlyList<PlaceholderRecord> Records(IEnumerable<FileEntry> files) => files
         .Where(f => f.IsPlaceholder)
@@ -48,34 +48,34 @@ public static class PlaceholderReport
         .ToArray();
 
     /// <summary>
-    /// Rótulos sem duplicatas, na ordem canônica declarada do schema. Fonte dupla,
-    /// porque o motivo pode vir de dois lugares: dos bits crus (Windows nativo) ou
-    /// da classificação já feita na origem (<see cref="FileEntry.PlaceholderKind"/> —
-    /// inclui a simulação por sidecar da convenção T04).
+    /// Labels without duplicates, in the schema's declared canonical order. Dual source,
+    /// because the reason can come from two places: raw bits (native Windows) or
+    /// classification already done at origin (<see cref="FileEntry.PlaceholderKind"/> —
+    /// includes T04 sidecar simulation).
     /// </summary>
     private static IReadOnlyList<string> Kinds(FileEntry entry)
     {
-        var selecionados = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (bit, rotulo) in OrdemCanonica)
+        var selected = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (bit, label) in CanonicalOrder)
         {
             if ((entry.Attributes & bit) == bit)
             {
-                selecionados.Add(rotulo);
+                selected.Add(label);
             }
         }
 
         if (entry.PlaceholderKind is { } kind)
         {
-            selecionados.Add(Rotulo(kind));
+            selected.Add(Label(kind));
         }
 
-        return OrdemCanonica
-            .Where(linha => selecionados.Contains(linha.Rotulo))
-            .Select(linha => linha.Rotulo)
+        return CanonicalOrder
+            .Where(line => selected.Contains(line.Label))
+            .Select(line => line.Label)
             .ToArray();
     }
 
-    private static string Rotulo(PlaceholderKind kind) => kind switch
+    private static string Label(PlaceholderKind kind) => kind switch
     {
         PlaceholderKind.Offline => "offline",
         PlaceholderKind.RecallOnOpen => "recall_on_open",

@@ -5,18 +5,18 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
-/// <summary>Item a mover para a quarentena: snapshot L0 + decisão auditável
-/// (SPEC §17/§18; ADR-0002). <c>Reason</c>/<c>Rule</c> entram no manifesto.</summary>
+/// <summary>Item to move to quarantine: L0 snapshot + auditable decision
+/// (SPEC §17/§18; ADR-0002). <c>Reason</c>/<c>Rule</c> enter the manifest.</summary>
 public sealed record QuarantineItem(FileEntry Entry, string Reason, string Rule);
 
 /// <summary>
-/// Plano de quarentena (docs/test-strategy.md §2.5): raiz escaneada e timestamp
-/// da operação recebidos por injeção — nunca resolvidos globalmente. O timestamp
-/// congelado torna o <see cref="QuarantineService.Move"/> testável e determinístico.
+/// Quarantine plan (docs/test-strategy.md §2.5): scanned root and operation
+/// timestamp received by injection — never globally resolved. The frozen timestamp
+/// makes <see cref="QuarantineService.Move"/> testable and deterministic.
 /// </summary>
 public sealed record QuarantinePlan(string RootPath, DateTimeOffset TimestampUtc);
 
-/// <summary>Resultado de um move completo: caminhos da operação §18.</summary>
+/// <summary>Complete move result: §18 operation paths.</summary>
 public sealed record QuarantineOperationResult(
     string OperationId,
     string QuarantineDirectory,
@@ -25,66 +25,66 @@ public sealed record QuarantineOperationResult(
     IReadOnlyList<string> MovedPaths,
     IReadOnlyList<string> SkippedStaleMetadata);
 
-/// <summary>Resultado de um restore (§18; ADR-0010 §4).</summary>
+/// <summary>Restore result (§18; ADR-0010 §4).</summary>
 public sealed record RestoreResult(
     string OperationId,
     IReadOnlyList<string> RestoredPaths);
 
-/// <summary>Item restaurado com desvio de caminho registrado no histórico.</summary>
+/// <summary>Restored item with path deviation recorded in history.</summary>
 public sealed record RestoredItem(
     string OriginalPath,
     string ActualPath,
     bool UsedFallbackSuffix);
 
 /// <summary>
-/// Restore abortado: o destino de algum item está ocupado. NADA é sobrescrito
-/// (ADR-0002 item 3, ADR-0010 §4) — a exceção carrega o par conflitante.
+/// Aborted restore: some item's destination is occupied. NOTHING is overwritten
+/// (ADR-0002 item 3, ADR-0010 §4) — the exception carries the conflicting pair.
 /// </summary>
 public sealed class RestoreConflictException : InvalidOperationException
 {
     public RestoreConflictException(string originalPath, string occupiedBy)
-        : base($"Restore cancelado: destino ja ocupado, JAMAIS sobrescrever " +
-               $"(ADR-0002 item 3 / ADR-0010 4): '{originalPath}' ocupado por '{occupiedBy}'.")
+        : base($"Restore cancelled: destination already occupied, NEVER overwrite " +
+               $"(ADR-0002 item 3 / ADR-0010 4): '{originalPath}' occupied by '{occupiedBy}'.")
     {
         OriginalPath = originalPath;
         OccupiedBy = occupiedBy;
     }
 
-    /// <summary>Caminho original pretendido para o restore.</summary>
+    /// <summary>Original path intended for restore.</summary>
     public string OriginalPath { get; }
 
-    /// <summary>Caminho do payload que não pôde voltar.</summary>
+    /// <summary>Path of the payload that could not be returned.</summary>
     public string OccupiedBy { get; }
 }
 
 /// <summary>
-/// Violação de contenção byte-a-byte (threat-model T-01, mitigação (b); regra R2):
-/// um caminho de destino de move/resolve/restore não começa pelo prefixo canônico
-/// da raiz autorizada. Lançada ANTES de qualquer toque — falha fechada, nada é
-/// movido nem escrito.
+/// Byte-by-byte containment violation (threat-model T-01, mitigation (b); rule R2):
+/// a move/resolve/restore destination path does not start with the canonical prefix
+/// of the authorized root. Thrown BEFORE any touch — fail-closed, nothing is
+/// moved or written.
 /// </summary>
 public sealed class QuarantineContainmentException : InvalidOperationException
 {
-    public QuarantineContainmentException(string caminho, string prefixoRaiz)
-        : base($"Contenção violada: destino '{caminho}' está fora do prefixo canônico " +
-               $"'{prefixoRaiz}'. Operação recusada sem tocar nada (T-01/R2).")
+    public QuarantineContainmentException(string path, string rootPrefix)
+        : base($"Containment violated: destination '{path}' is outside the canonical prefix " +
+               $"'{rootPrefix}'. Operation refused without touching anything (T-01/R2).")
     {
-        Caminho = caminho;
-        PrefixoRaiz = prefixoRaiz;
+        Path = path;
+        RootPrefix = rootPrefix;
     }
 
-    /// <summary>Caminho recusado.</summary>
-    public string Caminho { get; }
+    /// <summary>Refused path.</summary>
+    public string Path { get; }
 
-    /// <summary>Prefixo canônico exigido.</summary>
-    public string PrefixoRaiz { get; }
+    /// <summary>Required canonical prefix.</summary>
+    public string RootPrefix { get; }
 }
 
 /// <summary>
-/// Divergência de hash pós-move (threat-model T-04, regra R5): os bytes chegados à
-/// quarentena diferem do hash capturado imediatamente antes do move. A fonte foi
-/// ROLLBACK-ada (move de volta) e a operação é FALHA — nada é declarado sucesso.
-/// O manifesto parcial carrega hash_pre_move ≠ hash_post_move para auditoria.
+/// Post-move hash divergence (threat-model T-04, rule R5): bytes that arrived at
+/// quarantine differ from the hash captured immediately before the move. The source was
+/// ROLLED BACK (moved back) and the operation is FAILED — nothing is declared success.
+/// The partial manifest carries hash_pre_move ≠ hash_post_move for audit.
 /// </summary>
 public sealed class QuarantineRollbackException : QuarantinePartialException
 {
@@ -94,64 +94,64 @@ public sealed class QuarantineRollbackException : QuarantinePartialException
         string hashPreMove,
         string hashPostMove)
         : base(partialManifestPath,
-               $"Divergência TOCTOU pós-move em '{originalPath}': hash_pre_move {hashPreMove} " +
-               $"!= hash_post_move {hashPostMove}. Rollback executado; operação FALHA (R5).")
+               $"Post-move TOCTOU divergence on '{originalPath}': hash_pre_move {hashPreMove} " +
+               $"!= hash_post_move {hashPostMove}. Rollback executed; operation FAILED (R5).")
     {
         OriginalPath = originalPath;
         HashPreMove = hashPreMove;
         HashPostMove = hashPostMove;
     }
 
-    /// <summary>Caminho original cuja operação sofreu rollback.</summary>
+    /// <summary>Original path whose operation was rolled back.</summary>
     public string OriginalPath { get; }
 
-    /// <summary>Hash capturado na fonte imediatamente antes do move.</summary>
+    /// <summary>Hash captured at the source immediately before the move.</summary>
     public string HashPreMove { get; }
 
-    /// <summary>Hash recalculado no payload já na quarentena.</summary>
+    /// <summary>Hash recalculated on the payload already in quarantine.</summary>
     public string HashPostMove { get; }
 }
 
 /// <summary>
-/// Move falhou no meio da operação: itens já movidos permanecem registrados num
-/// manifesto PARCIAL honesto; nada movido fica sem registro (ADR-0002 item 4;
-/// ADR-0010 §3). A exceção aponta o manifesto parcial para auditoria.
+/// Move failed mid-operation: already-moved items remain registered in an
+/// honest PARTIAL manifest; nothing moved goes unrecorded (ADR-0002 item 4;
+/// ADR-0010 §3). The exception points to the partial manifest for audit.
 /// </summary>
 public class QuarantinePartialException : InvalidOperationException
 {
     public QuarantinePartialException(string partialManifestPath, string message)
-        : base($"{message} Manifesto parcial: {partialManifestPath}")
+        : base($"{message} Partial manifest: {partialManifestPath}")
         => PartialManifestPath = partialManifestPath;
 
-    /// <summary>Manifesto com status "partial" refletindo exatamente o que moveu.</summary>
+    /// <summary>Manifest with "partial" status reflecting exactly what was moved.</summary>
     public string PartialManifestPath { get; }
 }
 
 /// <summary>
-/// Serviço de quarentena (EPIC 08 / card T15; SPEC §18; ADR-0002 + ADR-0010):
+/// Quarantine service (EPIC 08 / card T15; SPEC §18; ADR-0002 + ADR-0010):
 ///
-/// • ÚNICA API destrutiva-permissiva do produto é <see cref="File.Move"/> para
-///   <c>&lt;raiz&gt;/ConflictDoctor/quarantine/&lt;op_id&gt;/payload</c>; nenhum
-///   File.Delete/Directory.Delete existe neste módulo (guarda estática QRT).
-/// • operation_id determinístico: <c>yyyyMMddTHHmmssZ-&lt;8 hex BLAKE3 truncado do
-///   conteúdo do manifesto&gt;</c> — mesmo estado ⇒ mesmo id (ADR-0010 §1).
-/// • Ordem canônica: itens ordenados por caminho em bytes UTF-8
-///   (<see cref="StringComparer.Ordinal"/>) antes de qualquer movimento.
-/// • Revalidação TOCTOU size+mtime contra o snapshot L0 antes de cada move;
-///   divergente ⇒ item pulado e registrado (<c>skipped_stale_metadata</c>).
-/// • Falha no meio ⇒ manifesto parcial honesto + <see cref="QuarantinePartialException"/>.
+/// • ONLY destructive-permissive product API is <see cref="File.Move"/> to
+///   <c>&lt;root&gt;/ConflictDoctor/quarantine/&lt;op_id&gt;/payload</c>; no
+///   File.Delete/Directory.Delete exists in this module (static guard QRT).
+/// • Deterministic operation_id: <c>yyyyMMddTHHmmssZ-&lt;8 hex BLAKE3 truncated
+///   from manifest content&gt;</c> — same state ⇒ same id (ADR-0010 §1).
+/// • Canonical order: items sorted by path in UTF-8 bytes
+///   (<see cref="StringComparer.Ordinal"/>) before any move.
+/// • TOCTOU size+mtime revalidation against L0 snapshot before each move;
+///   divergent ⇒ item skipped and recorded (<c>skipped_stale_metadata</c>).
+/// • Mid-failure ⇒ honest partial manifest + <see cref="QuarantinePartialException"/>.
 /// </summary>
 public sealed class QuarantineService
 {
     private const int CopyBufferSize = 256 * 1024;
 
     /// <summary>
-    /// Opções JSON do manifesto. O encoder é o ESTRITO <see cref="JavaScriptEncoder.Default"/>
-    /// (S11-1/SEG-03, R12): escapa TODO caractere não-ASCII e de controle — inclusive
-    /// os bidi (U+202E etc.) — de modo que nenhum byte bruto capaz de reordenar a
-    /// renderização do consumidor (RMM/GUI) saia no documento. Nomes permanecem
-    /// byte-exatos após o decode UTF-8; o custo é só tamanho de escape. O relaxed
-    /// anterior emitia U+202E cru no manifesto — vetor T-01.
+    /// Manifest JSON options. The encoder is the STRICT <see cref="JavaScriptEncoder.Default"/>
+    /// (S11-1/SEG-03, R12): escapes ALL non-ASCII and control characters — including
+    /// bidi (U+202E etc.) — so that no raw byte capable of reordering the
+    /// consumer's rendering (RMM/GUI) appears in the document. Names remain
+    /// byte-exact after UTF-8 decode; the cost is only escape size. The previous relaxed
+    /// encoder emitted raw U+202E in the manifest — T-01 vector.
     /// </summary>
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -159,28 +159,28 @@ public sealed class QuarantineService
         Encoder = JavaScriptEncoder.Default,
     };
 
-    /// <summary>Injeta um opener customizado (testes); produção usa File.OpenRead.</summary>
+    /// <summary>Injects a custom opener (tests); production uses File.OpenRead.</summary>
     private readonly Func<string, Stream> _openRead;
 
-    /// <summary>Movimentador injetável (testes simulam falha de disco/permissão).</summary>
+    /// <summary>Injectable mover (tests simulate disk/permission failure).</summary>
     private readonly Action<string, string> _move;
 
-    /// <param name="openReadOverride">Fonte de leitura para hash/validação; produção usa File.OpenRead.</param>
-    /// <param name="moveOverride">Move primitivo; produção usa File.Move(origem, destino).</param>
+    /// <param name="openReadOverride">Read source for hash/validation; production uses File.OpenRead.</param>
+    /// <param name="moveOverride">Move primitive; production uses File.Move(source, destination).</param>
     public QuarantineService(
         Func<string, Stream>? openReadOverride = null,
         Action<string, string>? moveOverride = null)
     {
         _openRead = openReadOverride ?? (static path => File.OpenRead(path));
-        _move = moveOverride ?? ((origem, destino) => File.Move(origem, destino));
+        _move = moveOverride ?? ((source, destination) => File.Move(source, destination));
     }
 
     /// <summary>
-    /// Move cada item para <paramref name="plan"/>.RootPath +
-    /// ConflictDoctor/quarantine/&lt;op_id&gt;/payload/, grava o manifesto JSON
-    /// atomicamente e devolve o resultado. NUNCA apaga: se o move falhar no meio,
-    /// o estado fica registrado em manifesto parcial e a exceção propaga
-    /// (falha fechada, ADR-0002 item 4).
+    /// Moves each item to <paramref name="plan"/>.RootPath +
+    /// ConflictDoctor/quarantine/&lt;op_id&gt;/payload/, writes the JSON manifest
+    /// atomically and returns the result. NEVER deletes: if the move fails mid-way,
+    /// the state is recorded in a partial manifest and the exception propagates
+    /// (fail-closed, ADR-0002 item 4).
     /// </summary>
     public QuarantineOperationResult Move(
         IReadOnlyList<QuarantineItem> items,
@@ -192,100 +192,100 @@ public sealed class QuarantineService
 
         if (items.Count == 0)
         {
-            throw new ArgumentException("Nenhum item para quarentena.", nameof(items));
+            throw new ArgumentException("No items to quarantine.", nameof(items));
         }
 
         ct.ThrowIfCancellationRequested();
 
-        // Ordem canônica por caminho em bytes UTF-8 (ADR-0003 regra 1) — nunca ordem
-        // de chegada, nunca filesystem order.
-        var ordenados = items
+        // Canonical order by path in UTF-8 bytes (ADR-0003 rule 1) — never arrival
+        // order, never filesystem order.
+        var sorted = items
             .OrderBy(i => i.Entry.Path, StringComparer.Ordinal)
             .ToArray();
 
         var opIdBase = plan.TimestampUtc.ToUniversalTime()
             .ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
 
-        // Diretório provisório sem sufixo determinístico ainda (o id depende do
-        // manifesto, que depende dos paths finais): cria com nome temporário único
-        // baseado NO PLANO, e renomeia ao final. Em duas execuções do mesmo estado
-        // com o mesmo plano, o diretório final tem o MESMO nome.
-        // Combinação ESTRUTURAL (S11-1/R2/D6): nenhum Path.Combine cru sobre dado
-        // de entrada — a cadeia inteira nasce re-canonicalizada na forma estendida.
+        // Provisional directory without deterministic suffix yet (the id depends on
+        // the manifest, which depends on the final paths): creates with a unique
+        // temporary name based on THE PLAN, and renames at the end. In two runs of
+        // the same state with the same plan, the final directory has the SAME name.
+        // STRUCTURAL combination (S11-1/R2/D6): no raw Path.Combine on input
+        // data — the entire chain is born re-canonicalized in extended form.
         var quarantineRoot = PathCanonical.Combine(
             plan.RootPath, "ConflictDoctor", "quarantine");
         Directory.CreateDirectory(quarantineRoot);
 
-        // Payload staging: os arquivos precisam de destino físico ANTES do id final
-        // existir. Usa um diretório de trabalho efêmero dentro da quarentena datada;
-        // ao fechar, renomeia para o diretório definitivo <op_id>.
+        // Payload staging: files need a physical destination BEFORE the final id
+        // exists. Uses an ephemeral working directory inside the dated quarantine;
+        // on close, renames to the final <op_id> directory.
         var stagingName = $"staging-{Guid.NewGuid():N}";
         var stagingDir = PathCanonical.Combine(quarantineRoot, stagingName);
         var payloadDir = PathCanonical.Combine(stagingDir, "payload");
         Directory.CreateDirectory(payloadDir);
 
-        var registros = new List<Dictionary<string, object?>>();
-        var movidos = new List<string>();
-        var pulados = new List<string>();
-        var mapeamentoPayloads = new Dictionary<string, string>(StringComparer.Ordinal);
+        var records = new List<Dictionary<string, object?>>();
+        var moved = new List<string>();
+        var skipped = new List<string>();
+        var payloadMapping = new Dictionary<string, string>(StringComparer.Ordinal);
 
         try
         {
-            for (var indice = 0; indice < ordenados.Length; indice++)
+            for (var index = 0; index < sorted.Length; index++)
             {
                 ct.ThrowIfCancellationRequested();
-                var item = ordenados[indice];
+                var item = sorted[index];
                 var entry = item.Entry;
 
-                // Gate de placeholder (SPEC §6): conteúdo de placeholder NUNCA é lido.
+                // Placeholder gate (SPEC §6): placeholder content is NEVER read.
                 if (entry.IsPlaceholder || PlaceholderPolicy.IsPlaceholder(entry))
                 {
                     throw new PlaceholderViolationException(
-                        entry.Path, "quarentena tentaria ler conteudo de placeholder:");
+                        entry.Path, "quarantine would try to read placeholder content:");
                 }
 
-                // TOCTOU (ADR-0010 §3): revalida size+mtime contra o snapshot L0.
+                // TOCTOU (ADR-0010 §3): revalidates size+mtime against L0 snapshot.
                 var info = new FileInfo(entry.Path);
                 if (!info.Exists
                     || info.Length != entry.Size
                     || info.LastWriteTimeUtc != entry.MtimeUtc.UtcDateTime)
                 {
-                    pulados.Add(entry.Path); // arquivo permanece onde está; registro honesto
+                    skipped.Add(entry.Path); // file stays where it is; honest record
                     continue;
                 }
 
-                // Nome opaco sequencial (ADR-0010 §1): sem relação com o original.
-                var nomePayload = $"{indice + 1:D4}.dat";
-                var destinoAbsoluto = PathCanonical.Combine(payloadDir, nomePayload);
+                // Sequential opaque name (ADR-0010 §1): no relation to original.
+                var payloadName = $"{index + 1:D4}.dat";
+                var absoluteDestination = PathCanonical.Combine(payloadDir, payloadName);
 
-                // Contenção byte-a-byte (T-01/R2) ANTES do move — via primitiva única
-                // PathCanonical (D6), delegada por GarantirContencao para preservar o
-                // contrato público deste módulo (QuarantineContainmentException):
-                // destino E origem têm que cair sob o prefixo canônico da raiz;
-                // senão, falha fechada sem tocar nada.
-                GarantirContencao(destinoAbsoluto, plan.RootPath);
-                GarantirContencao(entry.Path, plan.RootPath);
+                // Byte-by-byte containment (T-01/R2) BEFORE the move — via the single
+                // PathCanonical primitive (D6), delegated by EnsureContainment to preserve
+                // this module's public contract (QuarantineContainmentException):
+                // destination AND source must fall under the canonical root prefix;
+                // otherwise, fail-closed without touching anything.
+                EnsureContainment(absoluteDestination, plan.RootPath);
+                EnsureContainment(entry.Path, plan.RootPath);
 
-                // Hash pré-move do ORIGINAL imediatamente antes do move (T-04/R5),
-                // pela mesma cadeia de leitura do gate (_openRead).
+                // Pre-move hash of the ORIGINAL immediately before the move (T-04/R5),
+                // via the same read chain as the gate (_openRead).
                 var hashPreMove = FullHashBlake3Streaming(entry.Path, ct);
 
-                _move(entry.Path, destinoAbsoluto);
+                _move(entry.Path, absoluteDestination);
 
-                movidos.Add(entry.Path);
-                mapeamentoPayloads[entry.Path] = $"payload/{nomePayload}";
+                moved.Add(entry.Path);
+                payloadMapping[entry.Path] = $"payload/{payloadName}";
 
-                // Hash BLAKE3 completo do PAYLOAD já na quarentena (fonte única de
-                // verdade do manifesto; streaming, nunca carrega inteiro em memória).
-                // É também a VERIFICAÇÃO PÓS-MOVE do R5: divergente do pré-move ⇒
-                // rollback (move de volta) e operação FALHA — nada é declarado sucesso.
-                var hash = FullHashBlake3Streaming(destinoAbsoluto, ct);
+                // Full BLAKE3 hash of the PAYLOAD already in quarantine (single source
+                // of truth in the manifest; streaming, never loads entire file in memory).
+                // It is also the POST-MOVE VERIFICATION of R5: divergent from pre-move ⇒
+                // rollback (move back) and operation FAILED — nothing is declared success.
+                var hash = FullHashBlake3Streaming(absoluteDestination, ct);
                 if (!string.Equals(hash, hashPreMove, StringComparison.Ordinal))
                 {
-                    RollbackPosMove(
+                    RollbackPostMove(
                         stagingDir,
                         payloadDir,
-                        nomePayload,
+                        payloadName,
                         entry,
                         item.Reason,
                         item.Rule,
@@ -298,12 +298,12 @@ public sealed class QuarantineService
                         hash);
                 }
 
-                registros.Add(new Dictionary<string, object?>
+                records.Add(new Dictionary<string, object?>
                 {
                     ["original_path"] = entry.Path,
-                    ["quarantine_path"] = $"payload/{nomePayload}",
+                    ["quarantine_path"] = $"payload/{payloadName}",
                     ["size"] = entry.Size,
-                    ["mtime_utc"] = FormatarTimestamp(entry.MtimeUtc),
+                    ["mtime_utc"] = FormatTimestamp(entry.MtimeUtc),
                     ["hash"] = hash,
                     ["algorithm"] = "BLAKE3",
                     ["hash_version"] = 1,
@@ -312,44 +312,44 @@ public sealed class QuarantineService
                 });
             }
 
-            // Manifesto v1 (ADR-0010 §2): chaves na ordem exata do schema.
-            var manifesto = new Dictionary<string, object?>
+            // Manifest v1 (ADR-0010 §2): keys in exact schema order.
+            var manifest = new Dictionary<string, object?>
             {
                 ["manifest_version"] = 1,
-                ["operation_id"] = null!, // preenchido após derivar o id do conteúdo
-                ["created_utc"] = FormatarTimestamp(plan.TimestampUtc),
-                ["items"] = registros,
-                // status reflete a operação publicada; falhas interrompem antes (parcial honesto)
+                ["operation_id"] = null!, // filled after deriving id from content
+                ["created_utc"] = FormatTimestamp(plan.TimestampUtc),
+                ["items"] = records,
+                // status reflects the published operation; failures abort before (honest partial)
                 ["status"] = "completed",
             };
 
-            // Auditoria TOCTOU (ADR-0010 §3): itens pulados por metadado stale entram
-            // no manifesto publicado. Chave presente APENAS quando houver pulados —
-            // o caso comum permanece com exatamente as 5 chaves do ADR-0010 §2;
-            // mesmo estado ⇒ mesmas chaves ⇒ mesmo id (determinismo).
-            if (pulados.Count > 0)
+            // TOCTOU audit (ADR-0010 §3): items skipped due to stale metadata enter
+            // the published manifest. Key present ONLY when there are skipped —
+            // the common case remains with exactly the 5 keys of ADR-0010 §2;
+            // same state ⇒ same keys ⇒ same id (determinism).
+            if (skipped.Count > 0)
             {
-                manifesto["skipped_stale_metadata"] = pulados.ToArray();
+                manifest["skipped_stale_metadata"] = skipped.ToArray();
             }
 
-            var manifestSemId = Serializar(manifesto, placeholderOpId: true);
+            var manifestWithoutId = Serialize(manifest, placeholderOpId: true);
 
-            // operation_id = timestamp + 8 hex BLAKE3 do corpo do manifesto SEM o id
-            // (auto-referência impossível): mesmo estado ⇒ mesmo corpo ⇒ mesmo id.
-            var suffixHex = Convert.ToHexString(Blake3.Hasher.Hash(manifestSemId).AsSpan())
+            // operation_id = timestamp + 8 hex BLAKE3 of manifest body WITHOUT the id
+            // (impossible self-reference): same state ⇒ same body ⇒ same id.
+            var suffixHex = Convert.ToHexString(Blake3.Hasher.Hash(manifestWithoutId).AsSpan())
                 .ToLowerInvariant()[..8];
             var operationId = $"{opIdBase}-{suffixHex}";
-            manifesto["operation_id"] = operationId;
+            manifest["operation_id"] = operationId;
 
-            var manifestFinal = Serializar(manifesto, placeholderOpId: false);
+            var manifestFinal = Serialize(manifest, placeholderOpId: false);
 
-            // Escrita ATÔMICA do manifesto (ADR-0010 §2): .tmp → File.Move overwrite:false.
+            // ATOMIC manifest write (ADR-0010 §2): .tmp → File.Move overwrite:false.
             var manifestPathFinalStaging = Path.Combine(stagingDir, "manifest.json");
             var tmpPath = manifestPathFinalStaging + ".tmp";
             File.WriteAllBytes(tmpPath, manifestFinal);
             File.Move(tmpPath, manifestPathFinalStaging, overwrite: false);
 
-            // Publica o diretório definitivo <op_id>: renomeia staging → final.
+            // Publishes the final <op_id> directory: renames staging → final.
             var finalDir = Path.Combine(quarantineRoot, operationId);
             Directory.Move(stagingDir, finalDir);
 
@@ -357,224 +357,225 @@ public sealed class QuarantineService
                 operationId,
                 finalDir,
                 Path.Combine(finalDir, "manifest.json"),
-                movidos.Count > 0 || pulados.Count > 0 ? "completed" : "completed",
-                movidos.ToArray(),
-                pulados.ToArray());
+                moved.Count > 0 || skipped.Count > 0 ? "completed" : "completed",
+                moved.ToArray(),
+                skipped.ToArray());
         }
-        catch (Exception excecao) when (excecao is not QuarantinePartialException
-                                      && excecao is not PlaceholderViolationException
-                                            || true)
+        catch (Exception exception) when (exception is not QuarantinePartialException
+                                       && exception is not PlaceholderViolationException
+                                             || true)
         {
-            // Falha fechada (ADR-0002 item 4): registra o estado real num manifesto
-            // PARCIAL honesto dentro do staging e propaga. Nada movido fica sem
-            // registro; nada parcial permanece sem rastro.
-            var parcialPath = Path.Combine(stagingDir, "manifest-partial.json");
+            // Fail-closed (ADR-0002 item 4): records the actual state in an
+            // honest PARTIAL manifest inside staging and propagates. Nothing moved
+            // goes unrecorded; nothing partial goes untraced.
+            var partialPath = Path.Combine(stagingDir, "manifest-partial.json");
             try
             {
-                var parcial = new Dictionary<string, object?>
+                var partial = new Dictionary<string, object?>
                 {
                     ["manifest_version"] = 1,
-                    ["operation_id"] = "(parcial)",
-                    ["created_utc"] = FormatarTimestamp(plan.TimestampUtc),
-                    ["items"] = registros,
+                    ["operation_id"] = "(partial)",
+                    ["created_utc"] = FormatTimestamp(plan.TimestampUtc),
+                    ["items"] = records,
                     ["status"] = "partial",
-                    ["skipped_stale_metadata"] = pulados.ToArray(),
+                    ["skipped_stale_metadata"] = skipped.ToArray(),
                 };
 
-                if (!File.Exists(parcialPath))
+                if (!File.Exists(partialPath))
                 {
-                    File.WriteAllBytes(parcialPath, SerializarParcial(parcial));
+                    File.WriteAllBytes(partialPath, SerializePartial(partial));
                 }
             }
             catch
             {
-                // nem o registro parcial foi possível: propaga a falha original —
-                // nunca mascara um erro com outro.
+                // not even the partial record was possible: propagates the original failure —
+                // never masks one error with another.
             }
 
-            throw excecao is QuarantinePartialException
-                ? excecao
-                : new QuarantinePartialException(parcialPath, Mensagem(excecao));
+            throw exception is QuarantinePartialException
+                ? exception
+                : new QuarantinePartialException(partialPath, Message(exception));
         }
         finally
         {
-            // staging remanescente (falha) NÃO é apagado — preserva evidência.
+            // Remaining staging (failure) is NOT deleted — preserves evidence.
             if (Directory.Exists(stagingDir))
             {
-                // mantém: auditoria do ADR-0002 exige que nada desapareça silenciosamente
+                // kept: ADR-0002 audit requires nothing silently disappears
             }
         }
     }
 
     /// <summary>
-    /// Restaura todos os itens da operação para seus <c>original_path</c>.
-    /// PRÉ-CHECAGEM TOTAL antes do primeiro toque: se QUALQUER destino estiver
-    /// ocupado, lança <see cref="RestoreConflictException"/> sem tocar em NADA
-    /// (nem ocupante, nem payload, nem manifesto). Nunca sobrescreve (ADR-0002
-    /// item 3). Valida o hash BLAKE3 de cada payload antes de mover de volta.
+    /// Restores all items in the operation to their <c>original_path</c>.
+    /// TOTAL PRE-CHECK before the first touch: if ANY destination is
+    /// occupied, throws <see cref="RestoreConflictException"/> without touching
+    /// ANYTHING (neither occupant, nor payload, nor manifest). Never overwrites (ADR-0002
+    /// item 3). Validates BLAKE3 hash of each payload before moving back.
     /// </summary>
     public RestoreResult Restore(string operationId, string rootPath, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operationId);
         ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
 
-        var dirOperacao = Path.Combine(rootPath, "ConflictDoctor", "quarantine", operationId);
-        var manifestPath = Path.Combine(dirOperacao, "manifest.json");
+        var operationDir = Path.Combine(rootPath, "ConflictDoctor", "quarantine", operationId);
+        var manifestPath = Path.Combine(operationDir, "manifest.json");
 
         if (!File.Exists(manifestPath))
         {
             throw new FileNotFoundException(
-                $"Manifesto da operação não encontrado: {manifestPath}", manifestPath);
+                $"Operation manifest not found: {manifestPath}", manifestPath);
         }
 
         using var doc = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
-        var raiz = doc.RootElement;
+        var root = doc.RootElement;
 
-        var status = raiz.GetProperty("status").GetString();
+        var status = root.GetProperty("status").GetString();
         if (status == "partial")
         {
             throw new InvalidOperationException(
-                $"Operação {operationId} está PARTIAL — restore manual exigido; " +
-                "não há como restaurar automaticamente itens nunca movidos.");
+                $"Operation {operationId} is PARTIAL — manual restore required; " +
+                "there is no way to automatically restore items that were never moved.");
         }
 
-        var itens = raiz.GetProperty("items");
-        if (itens.GetArrayLength() == 0)
+        var items = root.GetProperty("items");
+        if (items.GetArrayLength() == 0)
         {
             throw new InvalidOperationException(
-                $"Operação {operationId} não tem itens restauráveis.");
+                $"Operation {operationId} has no restorable items.");
         }
 
-        // ---- fase 1: validar TUDO (hash + destinos livres) sem tocar nada --------
-        var pendentes = new List<(string PayloadAbsoluto, string Destino, string HashEsperado)>();
+        // ---- phase 1: validate EVERYTHING (hash + free destinations) without touching anything --------
+        var pending = new List<(string AbsolutePayload, string Destination, string ExpectedHash)>();
 
-        // Contenção byte-a-byte via primitiva ÚNICA PathCanonical (S11-1/D6): o
-        // destino de CADA item deve cair sob a raiz canônica informada — manifesto
-        // forjado ou corrompido com original_path externo é recusado ANTES de
-        // qualquer toque, sem mover nem escrever nada.
+        // Byte-by-byte containment via the SINGLE PathCanonical primitive (S11-1/D6): each
+        // item's destination must fall under the reported canonical root — forged or
+        // corrupted manifest with external original_path is rejected BEFORE
+        // any touch, without moving or writing anything.
 
-        foreach (var item in itens.EnumerateArray())
+        foreach (var item in items.EnumerateArray())
         {
             ct.ThrowIfCancellationRequested();
-            // Combinação estrutural + contenção (T-01/R2/D6) ANTES da leitura: o
-            // manifesto é dado EXTERNO — quarantine_path/original_path hostis jamais
-            // alcançam o disco fora da raiz, nem para ler, nem para mover.
-            var relativo = item.GetProperty("quarantine_path").GetString()!;
-            var payloadAbsoluto = PathCanonical.Combine(dirOperacao, relativo.Replace('/', Path.DirectorySeparatorChar));
-            var destino = item.GetProperty("original_path").GetString()!;
-            var hashEsperado = item.GetProperty("hash").GetString()!;
+            // Structural combination + containment (T-01/R2/D6) BEFORE reading: the
+            // manifest is EXTERNAL data — hostile quarantine_path/original_path never
+            // reach the disk outside root, not even to read or move.
+            var relative = item.GetProperty("quarantine_path").GetString()!;
+            var absolutePayload = PathCanonical.Combine(operationDir, relative.Replace('/', Path.DirectorySeparatorChar));
+            var destination = item.GetProperty("original_path").GetString()!;
+            var expectedHash = item.GetProperty("hash").GetString()!;
 
-            GarantirContencao(payloadAbsoluto, rootPath);
-            GarantirContencao(destino, rootPath);
+            EnsureContainment(absolutePayload, rootPath);
+            EnsureContainment(destination, rootPath);
 
-            // validação de integridade: payload corrompido ⇒ restore recusado.
-            var hashAtual = FullHashBlake3Streaming(payloadAbsoluto, ct);
-            if (!string.Equals(hashAtual, hashEsperado, StringComparison.Ordinal))
+            // Integrity validation: corrupted payload ⇒ restore refused.
+            var currentHash = FullHashBlake3Streaming(absolutePayload, ct);
+            if (!string.Equals(currentHash, expectedHash, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
-                    $"Integridade FALHOU para '{payloadAbsoluto}': hash atual {hashAtual} " +
-                    $"!= manifesto {hashEsperado}. Restore recusado.");
+                    $"Integrity FAILED for '{absolutePayload}': current hash {currentHash} " +
+                    $"!= manifest {expectedHash}. Restore refused.");
             }
 
-            if (File.Exists(destino) || Directory.Exists(destino))
+            if (File.Exists(destination) || Directory.Exists(destination))
             {
-                throw new RestoreConflictException(destino, payloadAbsoluto);
+                throw new RestoreConflictException(destination, absolutePayload);
             }
 
-            pendentes.Add((payloadAbsoluto, destino, hashEsperado));
+            pending.Add((absolutePayload, destination, expectedHash));
         }
 
-        // ---- fase 2: mover de volta, recriando diretórios pais ausentes ----------
-        var restaurados = new List<string>();
-        foreach (var (payloadAbsoluto, destino, _) in pendentes)
+        // ---- phase 2: move back, recreating missing parent directories ----------
+        var restored = new List<string>();
+        foreach (var (absolutePayload, destination, _) in pending)
         {
             ct.ThrowIfCancellationRequested();
 
-            // Contenção byte-a-byte no retorno também (T-01/R2, D6): o original_path
-            // do manifesto é re-canonicalizado e TEM que cair sob a raiz informada.
-            GarantirContencao(destino, rootPath);
-            GarantirContencao(payloadAbsoluto, rootPath);
+            // Byte-by-byte containment on return as well (T-01/R2, D6): the manifest's
+            // original_path is re-canonicalized and MUST fall under the reported root.
+            EnsureContainment(destination, rootPath);
+            EnsureContainment(absolutePayload, rootPath);
 
-            Directory.CreateDirectory(Path.GetDirectoryName(destino)!);
-            File.Move(payloadAbsoluto, destino, overwrite: false);
-            restaurados.Add(destino);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Move(absolutePayload, destination, overwrite: false);
+            restored.Add(destination);
         }
 
-        // ---- fase 3: marcar restored no manifesto (histórico nunca apagado) -----
-        MarcarRestored(manifestPath, pendentes.Select(p => p.Destino).ToArray(), operationId);
+        // ---- phase 3: mark restored in manifest (history never deleted) -----
+        MarkRestored(manifestPath, pending.Select(p => p.Destination).ToArray(), operationId);
 
-        return new RestoreResult(operationId, restaurados.ToArray());
+        return new RestoreResult(operationId, restored.ToArray());
     }
 
     // ------------------------------------------------------------------
-    // infraestrutura interna
+    // internal infrastructure
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Contenção byte-a-byte (threat-model T-01 mitigação (b); regra R2) — DELEGAÇÃO
-    /// à primitiva ÚNICA <see cref="PathCanonical.EnsureContained"/> (D6 do card
-    /// S11-1): nenhuma segunda implementação de contenção existe no produto. O
-    /// <see cref="PathEscapeException"/> da primitiva é traduzido para
-    /// <see cref="QuarantineContainmentException"/>, contrato público deste módulo
-    /// desde S11-6a — mesmo significado (falha fechada antes de tocar nada),
-    /// mesma superfície para os consumidores.
+    /// Byte-by-byte containment (threat-model T-01 mitigation (b); rule R2) — DELEGATION
+    /// to the SINGLE <see cref="PathCanonical.EnsureContained"/> primitive (D6 of card
+    /// S11-1): no second containment implementation exists in the product. The
+    /// <see cref="PathEscapeException"/> from the primitive is translated to
+    /// <see cref="QuarantineContainmentException"/>, this module's public contract
+    /// since S11-6a — same meaning (fail-closed before touching anything),
+    /// same surface for consumers.
     /// </summary>
-    private static void GarantirContencao(string caminho, string raizOperacao)
+    private static void EnsureContainment(string path, string operationRoot)
     {
         try
         {
-            PathCanonical.EnsureContained(caminho, raizOperacao);
+            PathCanonical.EnsureContained(path, operationRoot);
         }
-        catch (PathEscapeException fuga)
+        catch (PathEscapeException escape)
         {
-            throw new QuarantineContainmentException(fuga.RequestedPath, fuga.Root);
+            throw new QuarantineContainmentException(escape.RequestedPath, escape.Root);
         }
     }
 
     /// <summary>
-    /// Rollback do R5: move o payload divergente DE VOLTA ao caminho original,
-    /// remove o registro do item movido e grava o manifesto parcial com status
-    /// "failed" e a evidência auditable hash_pre_move ≠ hash_post_move. Falha no
-    /// próprio rollback propaga a exceção original — nunca mascara um erro com outro.
+    /// R5 rollback: moves the divergent payload BACK to the original path,
+    /// removes the moved item record and writes the partial manifest with status
+    /// "failed" and the auditable evidence hash_pre_move ≠ hash_post_move. Failure
+    /// in the rollback itself propagates the original exception — never masks
+    /// one error with another.
     /// </summary>
-    private void RollbackPosMove(
+    private void RollbackPostMove(
         string stagingDir,
         string payloadDir,
-        string nomePayload,
+        string payloadName,
         FileEntry entry,
         string reason,
         string rule,
         string hashPreMove,
         string hashPostMove)
     {
-        var payloadAbsoluto = Path.Combine(payloadDir, nomePayload);
+        var absolutePayload = Path.Combine(payloadDir, payloadName);
 
         try
         {
-            if (File.Exists(payloadAbsoluto) && !File.Exists(entry.Path))
+            if (File.Exists(absolutePayload) && !File.Exists(entry.Path))
             {
-                _move(payloadAbsoluto, entry.Path);
+                _move(absolutePayload, entry.Path);
             }
         }
         finally
         {
-            // evidência auditable mesmo se o rollback físico falhar (R11):
-            // registro FALHA com a cadeia hash_pre_move/hash_post_move.
+            // Auditable evidence even if physical rollback fails (R11):
+            // FAILED record with the hash_pre_move/hash_post_move chain.
             try
             {
-                var parcial = new Dictionary<string, object?>
+                var partial = new Dictionary<string, object?>
                 {
                     ["manifest_version"] = 1,
-                    ["operation_id"] = "(parcial)",
-                    ["created_utc"] = FormatarTimestamp(DateTimeOffset.UtcNow),
+                    ["operation_id"] = "(partial)",
+                    ["created_utc"] = FormatTimestamp(DateTimeOffset.UtcNow),
                     ["items"] = new List<Dictionary<string, object?>>
                     {
                         new()
                         {
                             ["original_path"] = entry.Path,
-                            ["quarantine_path"] = $"payload/{nomePayload}",
+                            ["quarantine_path"] = $"payload/{payloadName}",
                             ["size"] = entry.Size,
-                            ["mtime_utc"] = FormatarTimestamp(entry.MtimeUtc),
+                            ["mtime_utc"] = FormatTimestamp(entry.MtimeUtc),
                             ["hash_pre_move"] = hashPreMove,
                             ["hash_post_move"] = hashPostMove,
                             ["algorithm"] = "BLAKE3",
@@ -586,22 +587,22 @@ public sealed class QuarantineService
                     ["status"] = "failed",
                 };
 
-                var parcialPath = Path.Combine(stagingDir, "manifest-partial.json");
-                if (!File.Exists(parcialPath))
+                var partialPath = Path.Combine(stagingDir, "manifest-partial.json");
+                if (!File.Exists(partialPath))
                 {
-                    File.WriteAllBytes(parcialPath, SerializarParcial(parcial));
+                    File.WriteAllBytes(partialPath, SerializePartial(partial));
                 }
             }
             catch
             {
-                // nem o registro foi possível: a exceção do rollback/origem prevalece
+                // not even the record was possible: the rollback/original exception prevails
             }
         }
     }
 
-    private string FullHashBlake3Streaming(string caminho, CancellationToken ct)
+    private string FullHashBlake3Streaming(string path, CancellationToken ct)
     {
-        using var stream = _openRead(caminho);
+        using var stream = _openRead(path);
         using var hasher = Blake3.Hasher.New();
 
         var rented = System.Buffers.ArrayPool<byte>.Shared.Rent(CopyBufferSize);
@@ -620,92 +621,92 @@ public sealed class QuarantineService
         }
 
         var hashBytes = hasher.Finalize();
-        return Convert.ToHexString(hashBytes.AsSpan()).ToLowerInvariant(); // hex minúscula (ADR-0005 §1)
+        return Convert.ToHexString(hashBytes.AsSpan()).ToLowerInvariant(); // lowercase hex (ADR-0005 §1)
     }
 
-    private static string FormatarTimestamp(DateTimeOffset ts) =>
+    private static string FormatTimestamp(DateTimeOffset ts) =>
         ts.ToUniversalTime().UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
 
-    private static byte[] Serializar(Dictionary<string, object?> manifesto, bool placeholderOpId)
+    private static byte[] Serialize(Dictionary<string, object?> manifest, bool placeholderOpId)
     {
         if (placeholderOpId)
         {
-            // Corpo DERIVÁVEL: serializa com operation_id substituído por marcador
-            // fixo — o id deriva do conteúdo real sem auto-referência.
-            var copia = new Dictionary<string, object?>(manifesto)
+            // DERIVABLE BODY: serializes with operation_id replaced by a fixed
+            // marker — the id derives from actual content without self-reference.
+            var copy = new Dictionary<string, object?>(manifest)
             {
                 ["operation_id"] = "<op_id>",
             };
-            return JsonSerializer.SerializeToUtf8Bytes(copia, JsonOptions);
+            return JsonSerializer.SerializeToUtf8Bytes(copy, JsonOptions);
         }
 
-        return JsonSerializer.SerializeToUtf8Bytes(manifesto, JsonOptions);
+        return JsonSerializer.SerializeToUtf8Bytes(manifest, JsonOptions);
     }
 
-    private static byte[] SerializarParcial(Dictionary<string, object?> parcial) =>
-        JsonSerializer.SerializeToUtf8Bytes(parcial, JsonOptions);
+    private static byte[] SerializePartial(Dictionary<string, object?> partial) =>
+        JsonSerializer.SerializeToUtf8Bytes(partial, JsonOptions);
 
-    private void MarcarRestored(string manifestPath, string[] destinos, string operationId)
+    private void MarkRestored(string manifestPath, string[] destinations, string operationId)
     {
-        // Lê, marca item.status=restored, reescreve ATOMICAMENTE (.tmp → Move).
-        // Campos originais preservados; histórico nunca apagado (ADR-0010 §4.4).
+        // Reads, marks item.status=restored, rewrites ATOMICALLY (.tmp → Move).
+        // Original fields preserved; history never deleted (ADR-0010 §4.4).
         var bytes = File.ReadAllBytes(manifestPath);
         using var doc = JsonDocument.Parse(bytes);
-        var raiz = doc.RootElement;
+        var root = doc.RootElement;
 
-        var manifestoReescrito = new Dictionary<string, object?>();
-        foreach (var prop in raiz.EnumerateObject())
+        var rewrittenManifest = new Dictionary<string, object?>();
+        foreach (var prop in root.EnumerateObject())
         {
             switch (prop.Name)
             {
                 case "items":
-                    var itens = new List<Dictionary<string, object?>>();
+                    var items = new List<Dictionary<string, object?>>();
                     var idx = 0;
                     foreach (var item in prop.Value.EnumerateArray())
                     {
-                        var dict = JsonElementParaDict(item);
-                        // ADR-0010 §4.4: status do ITEM → "restored"; desvio de caminho
-                        // registrado ao lado; histórico original preservado.
+                        var dict = JsonElementToDict(item);
+                        // ADR-0010 §4.4: item status → "restored"; path deviation
+                        // recorded alongside; original history preserved.
                         dict["status"] = "restored";
-                        dict["restored_to"] = destinos[idx];
+                        dict["restored_to"] = destinations[idx];
                         idx++;
-                        itens.Add(dict);
+                        items.Add(dict);
                     }
 
-                    manifestoReescrito["items"] = itens;
+                    rewrittenManifest["items"] = items;
                     break;
                 case "status":
-                    manifestoReescrito["status"] = "restored";
+                    rewrittenManifest["status"] = "restored";
                     break;
                 default:
-                    // JsonElement.Clone() preserva ValueKind (números continuam números).
-                    manifestoReescrito[prop.Name] = prop.Value.Clone();
+                    // JsonElement.Clone() preserves ValueKind (numbers stay numbers).
+                    rewrittenManifest[prop.Name] = prop.Value.Clone();
                     break;
             }
         }
 
         var tmp = manifestPath + ".restore.tmp";
-        File.WriteAllBytes(tmp, JsonSerializer.SerializeToUtf8Bytes(manifestoReescrito, JsonOptions));
-        // Reescrita ATÔMICA do PRÓPRIO manifesto da operação (ADR-0010 §4.4 —
-        // "reescrevendo o manifesto atomicamente; histórico nunca é apagado"):
-        // o alvo é metadado interno nosso, nunca conteúdo do usuário — o destino
-        // de usuário só recebe payload após verificação de que está LIVRE.
+        File.WriteAllBytes(tmp, JsonSerializer.SerializeToUtf8Bytes(rewrittenManifest, JsonOptions));
+        // ATOMIC rewrite of the operation's OWN manifest (ADR-0010 §4.4 —
+        // "atomically rewriting the manifest; history is never deleted"):
+        // the target is our own internal metadata, never user content — the user
+        // destination only receives payload after verifying it is FREE.
         File.Move(tmp, manifestPath, overwrite: true);
     }
 
-    private static Dictionary<string, object?> JsonElementParaDict(JsonElement elemento)
+    private static Dictionary<string, object?> JsonElementToDict(JsonElement element)
     {
         var dict = new Dictionary<string, object?>();
-        foreach (var prop in elemento.EnumerateObject())
+        foreach (var prop in element.EnumerateObject())
         {
-            // Clone() preserva o ValueKind: size continua número, strings continuam
-            // strings — o manifesto reescrito mantém os tipos do schema v1.
+            // Clone() preserves ValueKind: size stays number, strings stay
+            // strings — the rewritten manifest maintains v1 schema types.
             dict[prop.Name] = prop.Value.Clone();
         }
 
         return dict;
     }
 
-    private static string Mensagem(Exception excecao) =>
-        $"Move interrompido: {excecao.GetType().Name}: {excecao.Message}";
+    private static string Message(Exception exception) =>
+        $"Move interrupted: {exception.GetType().Name}: {exception.Message}";
 }

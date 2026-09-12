@@ -3,40 +3,40 @@ using System.Text;
 namespace Doctor.Gui.Engine;
 
 /// <summary>
-/// Motor falso: dados fixos de demonstração DEMO — nenhum acesso a filesystem.
-/// Estrutura em forma do schema v1 (docs/schema-report-v1.md): telemetria com os
-/// 9 contadores e invariantes mantidas, listas pré-ordenadas por caminho em bytes
-/// UTF-8 (§3). Cenários selecionáveis cobrem as bordas do card: nominal,
-/// zero duplicatas, zero conflitos, só placeholders.
+/// Fake engine: fixed DEMO demonstration data — no filesystem access.
+/// Structured in the shape of schema v1 (docs/schema-report-v1.md): telemetry with the
+/// 9 counters and invariants maintained, lists pre-sorted by path in UTF-8
+/// bytes (§3). Selectable scenarios cover the card's edge cases: nominal,
+/// zero duplicates, zero conflicts, placeholders only.
 /// </summary>
 public sealed class FakeScanEngine : IScanEngine
 {
-    /// <summary>Cenários DEMO selecionáveis para exercitar bordas da GUI.</summary>
+    /// <summary>Selectable DEMO scenarios to exercise GUI edge cases.</summary>
     public enum ScanScenario
     {
-        /// <summary>Duplicatas idênticas + conflito real + placeholders.</summary>
+        /// <summary>Identical duplicates + real conflict + placeholders.</summary>
         Nominal,
-        /// <summary>Borda: nenhuma classe de duplicata idêntica; conflitos e placeholders presentes.</summary>
-        SemDuplicatas,
-        /// <summary>Borda: nenhum grupo com divergência real; duplicatas e placeholders presentes.</summary>
-        SemConflitos,
-        /// <summary>Borda: apenas placeholders; nenhum byte de conteúdo é lido.</summary>
-        SoPlaceholders,
+        /// <summary>Edge: no identical duplicate classes; conflicts and placeholders present.</summary>
+        NoDuplicates,
+        /// <summary>Edge: no group with real divergence; duplicates and placeholders present.</summary>
+        NoConflicts,
+        /// <summary>Edge: placeholders only; no content bytes are read.</summary>
+        PlaceholdersOnly,
     }
 
     private readonly ScanScenario _scenario;
 
     public FakeScanEngine(ScanScenario scenario = ScanScenario.Nominal) => _scenario = scenario;
 
-    // Janela de hash parcial (Level 2): cabeça + cauda de 64 KiB.
-    private const long JanelaParcialBytes = 64 * 1024;
+    // Partial hash window (Level 2): head + tail of 64 KiB.
+    private const long PartialWindowBytes = 64 * 1024;
 
     public ScanReport Scan(string rootPath, Action<int>? progress = null)
     {
         progress?.Invoke(0);
-        var soPlaceholders = _scenario == ScanScenario.SoPlaceholders;
+        var placeholdersOnly = _scenario == ScanScenario.PlaceholdersOnly;
 
-        var duplicates = _scenario == ScanScenario.SemDuplicatas || soPlaceholders
+        var duplicates = _scenario == ScanScenario.NoDuplicates || placeholdersOnly
             ? []
             : new[]
             {
@@ -57,7 +57,7 @@ public sealed class FakeScanEngine : IScanEngine
                 },
             };
 
-        var conflitos = new[]
+        var conflictsRaw = new[]
         {
             new ConflictGroup
             {
@@ -90,12 +90,12 @@ public sealed class FakeScanEngine : IScanEngine
             },
         };
 
-        var conflicts = _scenario == ScanScenario.SemConflitos || soPlaceholders
+        var conflicts = _scenario == ScanScenario.NoConflicts || placeholdersOnly
             ? []
-            : conflitos;
+            : conflictsRaw;
 
 
-        // Placeholders: NUNCA abertos. Rótulos canônicos do schema v1 §6.3.
+        // Placeholders: NEVER opened. Canonical labels from schema v1 §6.3.
         var placeholdersBase = new[]
         {
             new PlaceholderFile
@@ -118,13 +118,13 @@ public sealed class FakeScanEngine : IScanEngine
         var report = new ScanReport
         {
             RootPath = rootPath,
-            Telemetry = CalcularTelemetry(duplicates, conflicts, placeholders, soPlaceholders),
+            Telemetry = CalculateTelemetry(duplicates, conflicts, placeholders, placeholdersOnly),
             IdenticalDuplicates = duplicates,
             RealConflicts = conflicts,
             Placeholders = placeholders,
         };
 
-        // Progresso fake determinístico: simula fases do pipeline sem I/O real.
+        // Deterministic fake progress: simulates pipeline phases without real I/O.
         foreach (var step in new[] { 20, 45, 70, 90, 100 })
         {
             progress?.Invoke(step);
@@ -134,21 +134,21 @@ public sealed class FakeScanEngine : IScanEngine
     }
 
     /// <summary>
-    /// Telemetria derivada dos próprios dados DEMO — os contadores contam o que o
-    /// cenário representa, não números soltos:
-    /// enumerados = placeholders + únicos (skipped) + hasheados parcialmente;
-    /// bytes lidos seguem as janelas do Level 2 (≤ 128 KiB: arquivo inteiro uma vez)
-    /// e o arquivo inteiro dos sobreviventes no Level 3.
+    /// Telemetry derived from the DEMO data itself — counters count what the
+    /// scenario represents, not loose numbers:
+    /// enumerated = placeholders + singletons (skipped) + partially hashed;
+    /// bytes read follow the Level 2 windows (≤ 128 KiB: whole file once)
+    /// and the whole file of Level 3 survivors.
     /// </summary>
-    private static ScanTelemetry CalcularTelemetry(
+    private static ScanTelemetry CalculateTelemetry(
         IReadOnlyList<DuplicateGroup> duplicates,
         IReadOnlyList<ConflictGroup> conflicts,
         IReadOnlyList<PlaceholderFile> placeholders,
-        bool soPlaceholders)
+        bool placeholdersOnly)
     {
-        if (soPlaceholders)
+        if (placeholdersOnly)
         {
-            // Cenário só de placeholders: nada além deles existe na árvore DEMO.
+            // Placeholders-only scenario: nothing else exists in the DEMO tree.
             return new ScanTelemetry
             {
                 FilesEnumerated = placeholders.Count,
@@ -163,34 +163,34 @@ public sealed class FakeScanEngine : IScanEngine
             };
         }
 
-        // Únicos fora de grupos: nunca hasheados → files_skipped (schema §5).
-        const long unicosSkipped = 4;
+        // Singletons outside groups: never hashed → files_skipped (schema §5).
+        const long singletonsSkipped = 4;
 
-        var versoesConteudo = duplicates.Sum(d => d.Files.Count)
+        var contentVersions = duplicates.Sum(d => d.Files.Count)
                               + conflicts.SelectMany(c => c.Versions).Count();
 
-        var partialHashed = versoesConteudo + 2; // +2 eliminados ainda no Level 2
+        var partialHashed = contentVersions + 2; // +2 eliminated still at Level 2
 
-        // Bytes do passe parcial: arquivos grandes pagam 2×64 KiB; pequenos (≤128 KiB),
-        // o arquivo inteiro uma única vez.
-        long bytesReadPartial = duplicates.Sum(g => ParcialDe(g.SizeBytes, g.Files.Count))
+        // Partial-pass bytes: large files pay 2×64 KiB; small ones (≤128 KiB),
+        // the whole file a single time.
+        long bytesReadPartial = duplicates.Sum(g => PartialOf(g.SizeBytes, g.Files.Count))
                                 + conflicts.SelectMany(c => c.Versions)
-                                           .Sum(v => ParcialDe(v.SizeBytes, 1));
+                                           .Sum(v => PartialOf(v.SizeBytes, 1));
 
-        // Bytes do passe completo: apenas os sobreviventes ao Level 2 — que são
-        // exatamente as versões presentes nas coleções DEMO (os 2 eliminados no L2
-        // não figuram em grupo algum, só no contador files_partial_hashed).
+        // Full-pass bytes: only the Level 2 survivors — which are exactly the
+        // versions present in the DEMO collections (the 2 eliminated at L2
+        // don't appear in any group, only in the files_partial_hashed counter).
         long bytesReadFull =
             duplicates.Sum(d => d.SizeBytes * d.Files.Count)
             + conflicts.SelectMany(c => c.Versions).Sum(v => v.SizeBytes);
 
         return new ScanTelemetry
         {
-            FilesEnumerated = placeholders.Count + unicosSkipped + partialHashed,
-            FilesSkipped = unicosSkipped,
+            FilesEnumerated = placeholders.Count + singletonsSkipped + partialHashed,
+            FilesSkipped = singletonsSkipped,
             FilesPlaceholder = placeholders.Count,
             FilesPartialHashed = partialHashed,
-            FilesFullHashed = versoesConteudo,
+            FilesFullHashed = contentVersions,
             BytesRead = bytesReadPartial + bytesReadFull,
             BytesReadPartial = bytesReadPartial,
             BytesReadFull = bytesReadFull,
@@ -198,15 +198,15 @@ public sealed class FakeScanEngine : IScanEngine
         };
     }
 
-    /// <summary>Bytes do passe L2 por arquivo: min(tamanho, 64 KiB) × 2 (cabeça + cauda).</summary>
-    private static long ParcialDe(long sizeBytes, int copias) =>
-        copias * (Math.Min(sizeBytes, JanelaParcialBytes)
-                  + Math.Min(sizeBytes - JanelaParcialBytes > 0
-                      ? sizeBytes - JanelaParcialBytes
+    /// <summary>L2 partial-pass bytes per file: min(size, 64 KiB) × 2 (head + tail).</summary>
+    private static long PartialOf(long sizeBytes, int copies) =>
+        copies * (Math.Min(sizeBytes, PartialWindowBytes)
+                  + Math.Min(sizeBytes - PartialWindowBytes > 0
+                      ? sizeBytes - PartialWindowBytes
                       : 0,
-                      JanelaParcialBytes));
+                      PartialWindowBytes));
 
-    /// <summary>Ordenação por bytes UTF-8 do caminho (§3 / schema §1.3), nunca locale.</summary>
+    /// <summary>Sort by UTF-8 bytes of the path (§3 / schema §1.3), never locale.</summary>
     private static IReadOnlyList<string> Sorted(params string[] files) =>
         files.OrderBy(f => Encoding.UTF8.GetBytes(f), Comparer<byte[]>.Create(
             (a, b) => a.AsSpan().SequenceCompareTo(b.AsSpan()))).ToList();

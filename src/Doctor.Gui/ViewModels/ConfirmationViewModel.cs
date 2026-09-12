@@ -4,27 +4,27 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Doctor.Gui.ViewModels;
 
 /// <summary>
-/// Sub-ViewModel da tela Confirmação (§15): registra a movimentação concluída
-/// para a quarentena. Segurança §2/ADR-0002: nada é descartado — a mensagem
-/// fala sempre em quarentena e restauração, nunca em apagar ou deletar.
+/// Confirmation screen sub-ViewModel (§15): records the completed move
+/// to quarantine. Safety §2/ADR-0002: nothing is discarded — the message
+/// always speaks of quarantine and restoration, never of deleting or removing.
 /// </summary>
 public partial class ConfirmationViewModel : ObservableObject
 {
     [ObservableProperty]
     private int _itemsMoved;
 
-    /// <summary>Contagem em dígitos crus, nunca locale (§3).</summary>
+    /// <summary>Count in raw digits, never locale (§3).</summary>
     public string ItemsMovedLabel => ItemsMoved.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Mensagem de segurança: todo item permanece na quarentena, recuperável
-    /// pelo manifesto. Estado zero também seguro e explícito.
+    /// Safety message: every item remains in quarantine, recoverable
+    /// via the manifest. Zero state is also safe and explicit.
     /// </summary>
     public string SafetyMessage => ItemsMoved == 0
-        ? "Nenhuma movimentação registrada. Nada sai da pasta do usuário sem passar pela quarentena."
-        : "Itens movidos para a quarentena. Nenhum conteúdo foi descartado: tudo permanece na quarentena e pode ser restaurado pelo manifesto.";
+        ? "No moves recorded. Nothing leaves the user's folder without going through quarantine."
+        : "Items moved to quarantine. No content was discarded: everything remains in quarantine and can be restored from the manifest.";
 
-    /// <summary>Registra a conclusão: a fila transferida vira contagem de itens movidos.</summary>
+    /// <summary>Records completion: the transferred queue becomes the moved-items count.</summary>
     public void Complete(IReadOnlyList<string> queuedPaths)
     {
         ItemsMoved = queuedPaths.Count;

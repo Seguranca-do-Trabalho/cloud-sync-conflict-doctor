@@ -1,9 +1,9 @@
 # CI — Cloud Sync Conflict Doctor
-# Norma: docs/test-strategy.md secao 6 (arquivo UNICO, dois jobs, sem matriz).
-# Gatilhos: push em main, pull_request. Cron desativado (bench smoke BENCH-01/02).
-# Contrato de traits (docs/test-strategy.md secao 1.1):
-#   OS=Windows     -> testes nativos Windows (excluidos do job Linux via filtro)
-#   Category=Determinism -> prova de determinismo EXPLICITa tambem no Linux (SPEC §20)
+# Standard: docs/test-strategy.md section 6 (single file, two jobs, no matrix).
+# Triggers: push to main, pull_request. Cron disabled (bench smoke BENCH-01/02).
+# Traits contract (docs/test-strategy.md section 1.1):
+#   OS=Windows     -> Windows native tests (excluded from Linux job via filter)
+#   Category=Determinism -> EXPLICIT determinism proof also on Linux (SPEC §20)
 
 name: ci
 
@@ -12,7 +12,7 @@ on:
     branches: [main]
   pull_request:
   # schedule:
-  #   - cron: "0 5 * * *" # noturno: bench smoke
+  #   - cron: "0 5 * * *" # nightly: bench smoke
 
 permissions:
   contents: read
@@ -28,8 +28,8 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      # Cache NuGet por hash de lockfile (packages.lock.json); enquanto os csprojs
-      # nao adotam RestorePackagesWithLockFile, a key degrada para runner.os.
+      # NuGet cache by lockfile hash (packages.lock.json); while the csproj files
+      # don't adopt RestorePackagesWithLockFile, the key degrades to runner.os.
       - name: Cache NuGet
         uses: actions/cache@v4
         with:
@@ -41,9 +41,9 @@ jobs:
       - name: Build (Release)
         run: dotnet build CloudSyncConflictDoctor.sln -c Release
 
-      # Suite Linux: tudo exceto OS=Windows; cobertura XPlat + TRX nomeado.
-      # CDD_DETERMINISM_DIR: onde os testes DET publicam scanA/scanB/scanC.json
-      # (contrato definido no EPIC 13.2; nesta fase pode ficar vazio).
+      # Linux suite: everything except OS=Windows; XPlat coverage + named TRX.
+      # CDD_DETERMINISM_DIR: where DET tests publish scanA/scanB/scanC.json
+      # (contract defined in EPIC 13.2; may remain empty at this stage).
       - name: Test (Linux, filtro OS!=Windows)
         run: |
           mkdir -p determinism
@@ -54,8 +54,8 @@ jobs:
             -- RunSettings.RunSettingsPath=tests/Doctor.Tests/coverlet.runsettings \
             --logger "trx;LogFileName=linux.trx"
 
-      # Determinismo EXPLICITO no Linux tambem (linha propria no resumo do PR).
-      - name: Test (determinismo, Category=Determinism)
+      # EXPLICIT determinism on Linux too (its own line in the PR summary).
+      - name: Test (determinism, Category=Determinism)
         run: |
           export CDD_DETERMINISM_DIR="$PWD/determinism"
           mkdir -p determinism
@@ -63,21 +63,21 @@ jobs:
             --filter "Category=Determinism" \
             --logger "trx;LogFileName=linux-determinism.trx"
 
-      # SHA-256 dos relatorios A/B/C (rotulos fixos scanA/scanB/scanC.json,
-      # formato sha256sum "<hash>  <rotulo>"). Tolera ausencia dos JSON nesta
-      # fase; torna-se obrigatoria quando o EPIC 13.2 mergear.
-      - name: Gerar determinism-hashes.txt
+      # SHA-256 of A/B/C reports (fixed labels scanA/scanB/scanC.json,
+      # sha256sum format "<hash>  <label>"). Tolerates missing JSON at this
+      # stage; becomes mandatory once EPIC 13.2 merges.
+      - name: Generate determinism-hashes.txt
         if: always()
         run: |
           : > determinism-hashes.txt
           if ls determinism/scan*.json >/dev/null 2>&1; then
             ( cd determinism && sha256sum scan*.json ) >> determinism-hashes.txt
           else
-            echo "# sem scanA/scanB/scanC.json nesta fase (contrato do EPIC 13.2 ainda nao mergeado)" >> determinism-hashes.txt
+            echo "# no scanA/scanB/scanC.json at this stage (EPIC 13.2 contract not yet merged)" >> determinism-hashes.txt
           fi
           cat determinism-hashes.txt
 
-      - name: Upload resultados linux
+      - name: Upload Linux results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -90,7 +90,7 @@ jobs:
 
   windows:
     name: windows / test
-    runs-on: windows-latest # job onde vive o nativo (OS=Windows)
+    runs-on: windows-latest # job where native code runs (OS=Windows)
     steps:
       - uses: actions/checkout@v4
 
@@ -109,14 +109,14 @@ jobs:
       - name: Build (Release)
         run: dotnet build CloudSyncConflictDoctor.sln -c Release
 
-      # SUITE COMPLETA (sem filtro OS!=Windows), incluindo native-windows.
-      # Limitacao conhecida desta fase: os testes nativos podem falhar sobre o
-      # stub #if WINDOWS do enumerador (T07). Nao desativar nem remover testes;
-      # o job e a evidencia de progresso do EPIC nativo.
-      - name: Test (Windows, suíte completa)
+      # FULL SUITE (no OS!=Windows filter), including native-windows.
+      # Known limitation at this stage: native tests may fail on the
+      # #if WINDOWS stub of the enumerator (T07). Do not disable or remove tests;
+      # this job is the evidence of progress for the native EPIC.
+      - name: Test (Windows, full suite)
         run: dotnet test tests/Doctor.Tests -c Release --no-build --collect:"XPlat Code Coverage" -- RunSettings.RunSettingsPath=tests/Doctor.Tests/coverlet.runsettings --logger "trx;LogFileName=windows.trx"
 
-      - name: Upload resultados windows
+      - name: Upload Windows results
         if: always()
         uses: actions/upload-artifact@v4
         with:

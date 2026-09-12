@@ -1,74 +1,74 @@
-# Diretrizes de Código Inspiradas em Karpathy
+# Karpathy-Inspired Coding Guidelines
 
-Diretrizes comportamentais para reduzir erros comuns de LLM em código. Adaptadas de
+Behavioral guidelines to reduce common LLM coding errors. Adapted from
 [multica-ai/andrej-karpathy-skills](https://github.com/multica-ai/andrej-karpathy-skills)
-(licença MIT), derivadas das observações de Andrej Karpathy sobre falhas típicas de
-agentes de código. Mesclar com as instruções específicas do projeto conforme necessário.
+(MIT license), derived from Andrej Karpathy's observations on typical coding
+agent failure modes. Merge with project-specific instructions as needed.
 
-**Trade-off:** estas diretrizes favorecem cautela em vez de velocidade. Em tarefas
-triviais, use julgamento.
+**Trade-off:** these guidelines favor caution over speed. On trivial tasks,
+use judgment.
 
-## 1. Pensar Antes de Codificar
+## 1. Think Before Coding
 
-**Não presuma. Não esconda confusão. Exponha trade-offs.**
+**Don't assume. Don't hide confusion. Expose trade-offs.**
 
-Antes de implementar:
-- Explicite suas premissas. Se houver incerteza, pergunte.
-- Se existirem múltiplas interpretações, apresente-as — não escolha em silêncio.
-- Se existir abordagem mais simples, diga. Empurre para trás quando couber.
-- Se algo estiver obscuro, pare. Nomeie o que está confuso. Pergunte.
+Before implementing:
+- Make your assumptions explicit. If there is uncertainty, ask.
+- If multiple interpretations exist, present them — do not silently choose.
+- If a simpler approach exists, say so. Push back when appropriate.
+- If something is unclear, stop. Name what is confusing. Ask.
 
-## 2. Simplicidade Primeiro
+## 2. Simplicity First
 
-**Código mínimo que resolve o problema. Nada especulativo.**
+**Minimum code that solves the problem. Nothing speculative.**
 
-- Nenhuma feature além do que foi pedido.
-- Nenhuma abstração para código de uso único.
-- Nenhuma "flexibilidade" ou configurabilidade que não foi solicitada.
-- Nenhum tratamento de erro para cenários impossíveis.
-- Se escreveu 200 linhas e caberia em 50, reescreva.
+- No features beyond what was asked.
+- No abstractions for one-time code.
+- No "flexibility" or configurability that wasn't requested.
+- No error handling for impossible scenarios.
+- If you wrote 200 lines and 50 would do, rewrite it.
 
-Pergunte-se: "Um engenheiro sênior diria que isso está complicado demais?" Se sim,
-simplifique.
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If so,
+simplify it.
 
-## 3. Mudanças Cirúrgicas
+## 3. Surgical Changes
 
-**Toque apenas no necessário. Limpe apenas a sua própria bagunça.**
+**Touch only what is necessary. Clean up only your own mess.**
 
-Ao editar código existente:
-- Não "melhore" código adjacente, comentários ou formatação.
-- Não refatore o que não está quebrado.
-- Siga o estilo existente, mesmo que faria diferente.
-- Se notar código morto não relacionado, mencione — não delete.
+When editing existing code:
+- Do not "improve" adjacent code, comments, or formatting.
+- Do not refactor what isn't broken.
+- Follow existing style, even if you would do it differently.
+- If you notice unrelated dead code, mention it — don't delete it.
 
-Quando suas mudanças criarem órfãos:
-- Remova imports/variáveis/funções que AS SUAS mudanças tornaram não utilizados.
-- Não remova código morto pré-existente sem pedido.
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Do not remove pre-existing dead code without being asked.
 
-O teste: cada linha alterada deve rastrear diretamente ao pedido do usuário.
+The test: every changed line should trace directly to the user's request.
 
-## 4. Execução Orientada a Objetivo
+## 4. Goal-Driven Execution
 
-**Defina critérios de sucesso. Itere até verificar.**
+**Define success criteria. Iterate until verified.**
 
-Transforme tarefas em objetivos verificáveis:
-- "Adicionar validação" → "Escrever testes para entradas inválidas, depois fazê-los passar"
-- "Corrigir o bug" → "Escrever um teste que o reproduz, depois fazê-lo passar"
-- "Refatorar X" → "Garantir testes passando antes e depois"
+Turn tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix bug" → "Write a test reproducing it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
 
-Para tarefas de múltiplas etapas, declare um plano breve:
+For multi-step tasks, declare a brief plan:
 
 ```
-1. [Etapa] -> verificação: [check]
-2. [Etapa] -> verificação: [check]
-3. [Etapa] -> verificação: [check]
+1. [Step] -> verification: [check]
+2. [Step] -> verification: [check]
+3. [Step] -> verification: [check]
 ```
 
-Critérios fortes de sucesso permitem iterar de forma autônoma. Critérios fracos
-("fazer funcionar") exigem clarificação constante.
+Strong success criteria allow autonomous iteration. Weak criteria
+("make it work") require constant clarification.
 
 ---
 
-**Estas diretrizes estão funcionando se:** houver menos mudanças desnecessárias nos
-diffs, menos reescritas por complicação excessiva, e perguntas de esclarecimento
-vierem antes da implementação, não depois dos erros.
+**These guidelines are working if:** there are fewer unnecessary changes in
+diffs, fewer rewrites due to overcomplication, and clarifying questions come
+before implementation, not after mistakes.

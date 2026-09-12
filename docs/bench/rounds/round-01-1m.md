@@ -1,168 +1,168 @@
-# Round 01 — Benchmark 1M de arquivos (GATE 4)
+# Round 01 — 1M File Benchmark (GATE 4)
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Card | t_f3cb006a (T07 — Rodada benchmark 1M + registro GATE 4) |
-| Data | 2026-08-23 |
-| Revisão | 1 |
-| Responsável | André Santo (forg3) |
+| Card | t_f3cb006a (T07 — 1M benchmark run + GATE 4 logging) |
+| Date | 2026-08-23 |
+| Revision | 1 |
+| Owner | forg3 |
 | Branch / worktree | wt/t_f3cb006a @ .worktrees/t_f3cb006a |
-| Commit do código do scanner | 0ca0530 (main — nenhuma alteração de código nesta rodada) |
-| Status | Executada — baseline inicial do benchmark (GATE 4) |
+| Scanner code commit | 0ca0530 (main — no code changes in this run) |
+| Status | Executed — initial benchmark baseline (GATE 4) |
 
-## 1. Objetivo e alcance
+## 1. Objective and Scope
 
-Primeira rodada do benchmark sobre o dataset de 1.000.000 de arquivos
-(docs/benchmark-harness.md §5), estabelecendo o baseline de medição que o GATE 4
-(SPEC §45) exige: benchmark executado, métricas registradas, regressões
-documentadas. Por ser a primeira rodada, não há BEFORE: os valores aqui são o
-**baseline** contra o qual rodadas futuras serão comparadas (harness §6, regra 4).
+First benchmark run on the 1,000,000 file dataset
+(docs/benchmark-harness.md §5), establishing the measurement baseline that GATE 4
+(SPEC §45) requires: benchmark executed, metrics logged, regressions
+documented. Being the first run, there is no BEFORE: values here are the
+**baseline** against which future runs will be compared (harness §6, rule 4).
 
-**Alcance do estágio executado (declaração explícita exigida pela decisão 3 do
-card):** o scanner executável disponível é o Doctor.Cli em main (commit 0ca0530),
-que roda o pipeline L0 (enumeração sidecar-aware) → L1 (agrupamento) → L2
-(hash parcial BLAKE3). O estágio de veredito por hash completo (L3 →
-identical_duplicates / real_conflicts) não produz resultados neste build:
-`files_full_hashed = 0`, `bytes_read_full = 0`, `identical_duplicates = []`,
-`real_conflicts = []`. Os números desta rodada são REAIS e medidos — nada foi
-simulado — mas cobrem somente até L2. Rodadas futuras com L3 integrado devem
-usar esta tabela como BEFORE.
+**Scope of executed stage (explicit declaration required by card decision 3):**
+the available scanner executable is Doctor.Cli on main (commit 0ca0530),
+which runs the L0 pipeline (sidecar-aware enumeration) → L1 (grouping) → L2
+(BLAKE3 partial hash). The full-hash verdict stage (L3 →
+identical_duplicates / real_conflicts) does not produce results in this build:
+`files_full_hashed = 0`, `bytes_read_full = 0`, `identical_duplicates = [],
+real_conflicts = []`. This run's numbers are REAL and measured — nothing was
+simulated — but cover only up to L2. Future runs with L3 integrated must use
+this table as BEFORE.
 
 ## 2. Dataset
 
-Gerador `scripts/bench/generate_dataset.py`, `generator_version = 1`
-(determinístico por seed), composição em 10 shards conforme harness §5:
+Generator `scripts/bench/generate_dataset.py`, `generator_version = 1`
+(deterministic by seed), composed in 10 shards per harness §5:
 
 ```text
-raiz:      /tmp/cd-1m (união das subárvores shard_0 .. shard_9)
-por shard: --files 100000 --dup-groups 5000 --conflict-names 5000
-           --placeholders 6000 --depth 6
-seeds:     20260822, 20260823, ..., 20260831  (shard_0 .. shard_9)
-geração:   14:33:16 – 14:47:06 UTC (13m50s), sequencial, log em generation.log
+root:       /tmp/cd-1m (union of shard_0 .. shard_9 subtrees)
+per shard:  --files 100000 --dup-groups 5000 --conflict-names 5000
+            --placeholders 6000 --depth 6
+seeds:      20260822, 20260823, ..., 20260831  (shard_0 .. shard_9)
+generation: 14:33:16 – 14:47:06 UTC (13m50s), sequential, log in generation.log
 ```
 
-Conferência do composto (`count_verification.json`, script verify_counts.py):
+Composition verification (`count_verification.json`, verify_counts.py script):
 
 ```text
-arquivos encontrados:  1.060.000  (1.000.000 alvo + 60.000 sidecars .placeholder-meta.json)
-arquivos esperados:    1.060.000  (soma dos files_created + sidecars_written dos 10 resumos)
-divergência:           0          (todos os 10 shards batem exatamente)
-bytes em disco:        76.015.949.061 B (~70,8 GiB)
-bytes previstos:       75.999.732.750 B (resumo do gerador; diferença = overhead de diretórios)
+files found:     1,060,000  (1,000,000 target + 60,000 .placeholder-meta.json sidecars)
+files expected:  1,060,000  (sum of files_created + sidecars_written from 10 summaries)
+divergence:      0          (all 10 shards match exactly)
+bytes on disk:   76,015,949,061 B (~70.8 GiB)
+bytes forecast:  75,999,732,750 B (generator summary; difference = directory overhead)
 ```
 
-Resumos JSON de geração por shard versionados em `gen_shard_0..9.json`.
+Per-shard generation JSON summaries versioned in `gen_shard_0..9.json`.
 
-## 3. Condições da máquina
+## 3. Machine Conditions
 
-Registradas em `conditions.txt` (início da rodada):
+Logged in `conditions.txt` (run start):
 
 ```text
-host:      vnic, Ubuntu 24.04 (kernel 6.17.0-1018-oracle), aarch64, VM 4 vCPU
-memória:   23 GiB total / ~14 GiB disponíveis, sem swap
-disco:     ext4, 153 GiB livres antes da geração (193 GiB totais)
-inodes:    25.176.611 livres antes da geração
-carga:     load average 1,47–3,08 durante a rodada — host compartilhado com
-           outras sessões de trabalho Hermes em paralelo (varreduras e builds
-           de cards irmãos). Números absolutos herdam esse ruído; comparações
-           antes/depois futuras devem repetir condições equivalentes.
-/usr/bin/time ausente → peak_RSS e CPU% via wrapper stdlib
-resource.getrusage(RUSAGE_CHILDREN) (harness §3), implementado em run_scan.py.
+host:      vnic, Ubuntu 24.04 (kernel 6.17.0-1018-oracle), aarch64, 4 vCPU VM
+memory:    23 GiB total / ~14 GiB available, no swap
+disk:      ext4, 153 GiB free before generation (193 GiB total)
+inodes:    25,176,611 free before generation
+load:      load average 1.47–3.08 during run — host shared with
+           parallel Hermes work sessions (scans and builds of sibling cards).
+           Absolute numbers inherit this noise; future before/after comparisons
+           should repeat equivalent conditions.
+/usr/bin/time absent → peak_RSS and CPU% via stdlib wrapper
+resource.getrusage(RUSAGE_CHILDREN) (harness §3), implemented in run_scan.py.
 ```
 
-## 4. Procedimento
+## 4. Procedure
 
-1. Build Release do Doctor.Cli no worktree da rodada (0 warnings novos).
-2. Smoke de validação em dataset de 500 arquivos (seed 42): telemetria emitida,
-   gate zero, exit 0.
-3. Geração e conferência do dataset 1M (seção 2).
-4. Execuções sobre `/tmp/cd-1m`: 1 warm-up descartável + 5 medidas
-   (`run_scan.py` → `runwarmup`, `run1..run5` + `.meta.json`), todas exit 0.
-5. Agregação por mediana de 5 (`aggregate_round01.py`) e verificação de
-   determinismo (`compare_determinism.py`, `fingerprint_runs.py`).
+1. Doctor.Cli Release Build in run worktree (0 new warnings).
+2. Smoke validation on 500-file dataset (seed 42): telemetry emitted,
+   zero gate, exit 0.
+3. 1M dataset generation and verification (section 2).
+4. Runs on `/tmp/cd-1m`: 1 disposable warm-up + 5 measured
+   (`run_scan.py` → `runwarmup`, `run1..run5` + `.meta.json`), all exit 0.
+5. Median aggregation of 5 (`aggregate_round01.py`) and determinism
+   verification (`compare_determinism.py`, `fingerprint_runs.py`).
 
-Comando por execução: `dotnet conflictdoctor.dll scan /tmp/cd-1m --json`.
+Command per run: `dotnet conflictdoctor.dll scan /tmp/cd-1m --json`.
 
-## 5. Tabela-modelo (harness §6)
+## 5. Model Table (harness §6)
 
-Mediana de 5 execuções. Baseline: não há BEFORE (primeira rodada).
+Median of 5 runs. Baseline: no BEFORE (first run).
 
 ```text
 dataset:        generator_version=1 seeds=20260822..20260831
                 params=10x(--files 100000 --dup-groups 5000 --conflict-names 5000
                            --placeholders 6000 --depth 6)
-before_commit:  n/a — baseline inicial (código em 0ca0530)
-after_commit:   n/a — primeira rodada; valores abaixo são o BASELINE
+before_commit:  n/a — initial baseline (code at 0ca0530)
+after_commit:   n/a — first run; values below are the BASELINE
 
-wall_clock_s:            92,171   (execuções: 118,64 / 92,17 / 121,17 / 76,62 / 20,21)
-files_enumerated:        1.000.000
-files_read:              16.572   (= files_partial_hashed; ver alcance L2 na seção 1)
-bytes_read:              1.364.973.038
-bytes_read_partial:      1.364.973.038
-bytes_read_full:         0        (L3 fora do estágio executado)
-full_hash_count:         0        (idem)
-peak_RSS_kb:             1.040.328  (~1,02 GiB)
-CPU%:                    34,6     (user+sys/wall via getrusage)
-placeholder_bytes_read:  0 -> 0   GATE: PASS nas 5 execuções
+wall_clock_s:            92.171   (runs: 118.64 / 92.17 / 121.17 / 76.62 / 20.21)
+files_enumerated:        1,000,000
+files_read:              16,572   (= files_partial_hashed; see L2 scope in section 1)
+bytes_read:              1,364,973,038
+bytes_read_partial:      1,364,973,038
+bytes_read_full:         0        (L3 outside executed stage)
+full_hash_count:         0        (same)
+peak_RSS_kb:             1,040,328  (~1.02 GiB)
+CPU%:                    34.6     (user+sys/wall via getrusage)
+placeholder_bytes_read:  0 -> 0   GATE: PASS in all 5 runs
 ```
 
-Contadores complementares (mediana, idênticos nas 5):
+Complementary counters (median, identical across 5):
 
 ```text
-files_placeholder:       60.000
-files_skipped:           0   (emissão atual conta apenas erros de acesso; ver seção 7)
-grupos candidatos (L1):  8.286  (todos com 2 membros: 2 x 8.286 = 16.572 aberturas L2)
-placeholders listados:   60.000
-erros de acesso:         0
-exit code:               0 (limpo) nas 6 execuções
+files_placeholder:       60,000
+files_skipped:           0   (current emission only counts access errors; see section 7)
+candidate groups (L1):   8,286  (all with 2 members: 2 x 8,286 = 16,572 L2 opens)
+listed placeholders:     60,000
+access errors:           0
+exit code:               0 (clean) in all 6 runs
 ```
 
-## 6. Evidência de determinismo
+## 6. Determinism Evidence
 
-- Os 6 stdout têm tamanho idêntico (12.413.941 B); diferem apenas pelo bloco
-  `generated_from` (timestamps vivos, permitidos pelo ADR-0003).
-- Removido o bloco, o SHA-256 do conteúdo canônico é IGUAL nas 6 execuções:
+- All 6 stdouts have identical size (12,413,941 B); differ only in the
+  `generated_from` block (live timestamps, allowed by ADR-0003).
+- Block removed, SHA-256 of canonical content is EQUAL across all 6 runs:
   `1019fd09a88ebef958a87eb10ca3749ff4ef4a956e1fba17390d73d52d103a96`
   (`determinism_check.json`).
 
-## 7. Observações, desvios e limitações
+## 7. Observations, Deviations, and Limitations
 
-1. **Alcance L0–L2**: sem vereditos L3 neste build, `bytes_read` cobre somente
-   janelas parciais/inteiros ≤ 128 KiB (receita ADR-0005). A métrica-chave da
-   SPEC §24 ("menos hashes completos") fica sem contraprova nesta rodada;
-   próxima rodada (com L3 integrado) usa esta tabela como BEFORE.
-2. **Bytes evitados (derivado do relatório, não emitido)**: de
-   75.999.732.750 B lógicos, foram lidos 1.364.973.038 B → **98,2% dos bytes não
-   precisaram ser lidos** (98,34% dos arquivos enumerados nunca abriram:
-   923.428 únicos + 60.000 placeholders). Valor dependente do alcance L2.
-3. **Desvio de contrato de telemetria**: a invariante documentada em
+1. **L0–L2 Scope**: no L3 verdicts in this build, `bytes_read` covers only
+   partial/full windows ≤ 128 KiB (ADR-0005 recipe). The SPEC §24 key metric
+   ("fewer full hashes") has no counterproof in this run;
+   next run (with L3 integrated) uses this table as BEFORE.
+2. **Bytes avoided (derived from report, not emitted)**: of
+   75,999,732,750 logical bytes, 1,364,973,038 bytes were read → **98.2% of bytes
+   did not need to be read** (98.34% of enumerated files never opened:
+   923,428 unique + 60,000 placeholders). Value dependent on L2 scope.
+3. **Telemetry contract deviation**: the invariant documented in
    Telemetry.cs (`files_enumerated = placeholder + skipped + partial_hashed`)
-   não fecha com a emissão atual — `files_skipped = 0` porque a CLI emite só
-   erros de acesso nesse contador; os 923.428 arquivos únicos descartados pelo
-   agrupamento não entram em contador algum. Pendência registrada para card de
-   alinhamento do contrato (T06/T16); não afeta o gate nem as demais métricas.
-4. **Variância de wall_clock alta** (20–121 s): aquecimento progressivo do page
-   cache entre execuções + carga de sessões irmãs no host. A mediana (92,171 s)
-   segue o protocolo do harness §4. Para comparações futuras mais estreitas,
-   considerar cold-cache opcional (§4, requer root).
-5. **Limitações herdadas do harness**: placeholders simulados em ext4 (stub +
-   sidecar, §2.1 — validação definitiva só em NTFS/Windows); host virtualizado
-   ARM de 4 vCPU sob carga compartilhada — números absolutos valem só para
-   comparação relativa antes/depois no mesmo host, não como garantia de produto.
+   does not close with current emission — `files_skipped = 0` because CLI only
+   counts access errors in that counter; the 923,428 unique files discarded by
+   grouping enter no counter. Pending card for contract
+   alignment (T06/T16); does not affect gate or other metrics.
+4. **High wall_clock variance** (20–121 s): progressive page cache warmup between
+   runs + sibling session load on host. Median (92.171 s)
+   follows harness §4 protocol. For tighter future comparisons,
+   consider optional cold-cache (§4, requires root).
+5. **Inherited harness limitations**: simulated placeholders on ext4 (stub +
+   sidecar, §2.1 — definitive validation only on NTFS/Windows); 4 vCPU ARM
+   virtualized host under shared load — absolute numbers only valid for
+   relative before/after comparison on same host, not as product guarantee.
 
-## 8. Arquivos da rodada (results/bench/round-01/, versionados na branch)
+## 8. Run Files (results/bench/round-01/, versioned on branch)
 
-| Arquivo | Conteúdo |
+| File | Content |
 |---|---|
-| `runwarmup`, `run1..run5` | stdout JSON íntegro do scanner (12,4 MB cada) |
-| `run*.meta.json` | wall/RSS/CPU/exit por execução (wrapper getrusage) |
-| `gen_shard_0..9.json` | resumo JSON da geração por shard |
-| `generation.log`, `scans.log` | cronologia da geração e das execuções |
-| `count_verification.json` | conferência 1.060.000 == 1.060.000 |
-| `aggregate_output.txt` | saída bruta da agregação (mediana de 5) |
-| `fingerprints.json`, `determinism_check.json` | evidências de determinismo |
-| `conditions.txt` | estado da máquina no início |
-| `run_scan.py`, `generate_1m.sh`, `run_all_scans.sh`, `verify_counts.py`, `aggregate_round01.py`, `inspect_telemetry.py`, `compare_determinism.py`, `fingerprint_runs.py`, `summary_counts.py` | metodologia reproduzível |
+| `runwarmup`, `run1..run5` | complete scanner JSON stdout (12.4 MB each) |
+| `run*.meta.json` | wall/RSS/CPU/exit per run (getrusage wrapper) |
+| `gen_shard_0..9.json` | per-shard generation JSON summary |
+| `generation.log`, `scans.log` | generation and run chronology |
+| `count_verification.json` | 1,060,000 == 1,060,000 verification |
+| `aggregate_output.txt` | raw aggregation output (median of 5) |
+| `fingerprints.json`, `determinism_check.json` | determinism evidence |
+| `conditions.txt` | machine state at start |
+| `run_scan.py`, `generate_1m.sh`, `run_all_scans.sh`, `verify_counts.py`, `aggregate_round01.py`, `inspect_telemetry.py`, `compare_determinism.py`, `fingerprint_runs.py`, `summary_counts.py` | reproducible methodology |
 
-Dataset `/tmp/cd-1m` removido após o registro desta rodada (harness §5 — 76 GB
-não permanecem em disco); é regenerável byte a byte pelos comandos da seção 2.
+Dataset `/tmp/cd-1m` removed after this run's logging (harness §5 — 76 GB
+do not remain on disk); it is byte-for-byte regenerable via section 2 commands.

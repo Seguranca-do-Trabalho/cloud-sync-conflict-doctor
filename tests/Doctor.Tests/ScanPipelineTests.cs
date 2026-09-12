@@ -4,18 +4,18 @@ using System.Text.Json;
 using Doctor.Core;
 
 /// <summary>
-/// T12 (t_d70d59f9) — DET-03 mínimo exigido pelo orquestrador: árvore temporária com
-/// 2 duplicatas + 1 conflito real, 3 execuções do pipeline com enumeradores fake em
-/// ordens físicas distintas (direta, reversa, embaralhada com seed fixa) ⇒ saída
-/// idêntica byte a byte. A árvore usa arquivos > 128 KiB com janelas parciais
-/// idênticas e miolos distintos para que o conflito real EXIJA o Level 3 (full hash)
-/// — a prova cobre L0→L3 inteiro, não só o agrupamento.
+/// T12 (t_d70d59f9) — Minimum DET-03 required by the orchestrator: temporary tree with
+/// 2 identical duplicates + 1 real conflict, 3 pipeline runs with fake enumerators in
+/// distinct physical orders (forward, reverse, shuffled with fixed seed) ⇒
+/// identical byte-for-byte output. The tree uses files > 128 KiB with identical partial
+/// windows and different cores so the real conflict REQUIRES Level 3 (full hash)
+/// — the proof covers L0→L3 entirely, not just the grouping.
 /// </summary>
 public sealed class ScanPipelineTests : IDisposable
 {
     private const int Kib = 1024;
-    private const int ArquivoGrande = 200 * Kib; // > 128 KiB: parcial = janela início+fim
-    private const int Janela = 64 * Kib;
+    private const int LargeFile = 200 * Kib; // > 128 KiB: partial = start+end window
+    private const int Window = 64 * Kib;
 
     private readonly string _root;
 
@@ -34,118 +34,118 @@ public sealed class ScanPipelineTests : IDisposable
         }
         catch (IOException)
         {
-            // limpeza best-effort: tmp do sistema operacional recolhe depois
+            // best-effort cleanup: OS temp will reclaim later
         }
     }
 
     [Fact]
-    public void Scan_TresOrdensDeEnumeracao_SaidaIdenticaByteAByte()
+    public void Scan_ThreeEnumerationOrders_IdenticalByteForByteOutput()
     {
-        // ---- árvore: par idêntico (foto.jpg) + par conflito (orcamento) -----------
-        var conteudoA = ConteudoPadronizado(semente: 0xA0);
-        var parIdêntico1 = CriarArquivo("docs/foto.jpg", conteudoA);
-        var parIdêntico2 = CriarArquivo("docs/backup/foto.jpg", conteudoA);
+        // ---- tree: identical pair (foto.jpg) + conflicting pair (orcamento) -----------
+        var contentA = StandardizedContent(seed: 0xA0);
+        var identicalPair1 = CreateFile("docs/foto.jpg", contentA);
+        var identicalPair2 = CreateFile("docs/backup/foto.jpg", contentA);
 
-        // Conflito real: MESMO size, MESMAS janelas [0,64K)+[fim-64K,fim), miolos
-        // diferentes ⇒ parcial colide (sobrevive ao L2) e o full hash diverge (L3).
-        var conflito1 = CriarArquivo("docs/orcamento.xlsx", ConteudoConflito(miolo: 0x11));
-        var conflito2 = CriarArquivo("docs/orcamento-DESKTOP-ABC123.xlsx", ConteudoConflito(miolo: 0x22));
+        // Real conflict: SAME size, SAME windows [0,64K)+[end-64K,end), different
+        // cores ⇒ partial collision (survives L2) and full hash diverges (L3).
+        var conflict1 = CreateFile("docs/orcamento.xlsx", ConflictContent(core: 0x11));
+        var conflict2 = CreateFile("docs/orcamento-DESKTOP-ABC123.xlsx", ConflictContent(core: 0x22));
 
-        var entradas = new[]
+        var entries = new[]
         {
-            Entrada(parIdêntico1),
-            Entrada(parIdêntico2),
-            Entrada(conflito1),
-            Entrada(conflito2),
+            Entry(identicalPair1),
+            Entry(identicalPair2),
+            Entry(conflict1),
+            Entry(conflict2),
         };
 
-        // ---- três ordens físicas distintas, todas sobre a MESMA árvore ------------
-        var direta = entradas.ToArray();
-        var reversa = entradas.Reverse().ToArray();
-        var embaralhada = Shuffle(entradas, seed: 42);
+        // ---- three distinct physical orders, all on the SAME tree ------------
+        var forward = entries.ToArray();
+        var reverse = entries.Reverse().ToArray();
+        var shuffled = Shuffle(entries, seed: 42);
 
         var hasher = new Blake3Hasher();
-        var bytesDireta = Serializar(RunPipeline(direta, hasher));
-        var bytesReversa = Serializar(RunPipeline(reversa, hasher));
-        var bytesEmbaralhada = Serializar(RunPipeline(embaralhada, hasher));
+        var bytesForward = Serialize(RunPipeline(forward, hasher));
+        var bytesReverse = Serialize(RunPipeline(reverse, hasher));
+        var bytesShuffled = Serialize(RunPipeline(shuffled, hasher));
 
-        Assert.Equal(bytesDireta, bytesReversa);
-        Assert.Equal(bytesDireta, bytesEmbaralhada);
+        Assert.Equal(bytesForward, bytesReverse);
+        Assert.Equal(bytesForward, bytesShuffled);
 
-        // ---- correção do veredito (não só determinismo) ---------------------------
-        var resultado = RunPipeline(direta, hasher);
+        // ---- correctness of the verdict (not just determinism) ---------------------------
+        var result = RunPipeline(forward, hasher);
 
-        Assert.Equal(2, resultado.Groups.Count);
-        Assert.Single(resultado.IdenticalDuplicates);
-        Assert.Single(resultado.RealConflicts);
+        Assert.Equal(2, result.Groups.Count);
+        Assert.Single(result.IdenticalDuplicates);
+        Assert.Single(result.RealConflicts);
 
-        var duplicata = resultado.IdenticalDuplicates[0];
-        Assert.Equal(2, duplicata.Files.Count);
-        Assert.Equal(64, duplicata.Hash.Length); // BLAKE3 hex minúscula (ADR-0005 §1)
-        Assert.Equal(ArquivoGrande, duplicata.SizeBytes);
-        Assert.Equal(parIdêntico2, duplicata.Files[0].Path); // ordem canônica: backup/ < foto
-        Assert.Equal(parIdêntico1, duplicata.Files[1].Path);
+        var duplicate = result.IdenticalDuplicates[0];
+        Assert.Equal(2, duplicate.Files.Count);
+        Assert.Equal(64, duplicate.Hash.Length); // BLAKE3 lowercase hex (ADR-0005 §1)
+        Assert.Equal(LargeFile, duplicate.SizeBytes);
+        Assert.Equal(identicalPair2, duplicate.Files[0].Path); // canonical order: backup/ < foto
+        Assert.Equal(identicalPair1, duplicate.Files[1].Path);
 
-        var conflito = resultado.RealConflicts[0];
-        Assert.Equal("orcamento.xlsx", conflito.NormalizedBaseName);
-        Assert.Equal(2, conflito.Files.Count);
-        Assert.NotEqual(conflito.Files[0].Hash, conflito.Files[1].Hash); // divergência real
-        Assert.Equal(conflito2, conflito.Files[0].Path); // '-' (0x2D) < '.' (0x2E) em bytes
-        Assert.Equal(conflito1, conflito.Files[1].Path);
+        var conflict = result.RealConflicts[0];
+        Assert.Equal("orcamento.xlsx", conflict.NormalizedBaseName);
+        Assert.Equal(2, conflict.Files.Count);
+        Assert.NotEqual(conflict.Files[0].Hash, conflict.Files[1].Hash); // real divergence
+        Assert.Equal(conflict2, conflict.Files[0].Path); // '-' (0x2D) < '.' (0x2E) in bytes
+        Assert.Equal(conflict1, conflict.Files[1].Path);
     }
 
-    // ---- construção da árvore ------------------------------------------------------
+    // ---- tree construction ------------------------------------------------------
 
-    private string CriarArquivo(string relativo, byte[] conteudo)
+    private string CreateFile(string relative, byte[] content)
     {
-        var caminho = Path.Combine(new[] { _root }.Concat(relativo.Split('/')).ToArray());
-        File.WriteAllBytes(caminho, conteudo);
-        return caminho;
+        var path = Path.Combine(new[] { _root }.Concat(relative.Split('/')).ToArray());
+        File.WriteAllBytes(path, content);
+        return path;
     }
 
-    private static FileEntry Entrada(string caminho)
+    private static FileEntry Entry(string path)
     {
-        var info = new FileInfo(caminho);
+        var info = new FileInfo(path);
         return new FileEntry
         {
-            Path = caminho,
+            Path = path,
             Size = info.Length,
             MtimeUtc = info.LastWriteTimeUtc,
             Attributes = FileAttributes.Normal,
             VolumeId = "t12-volume",
-            FileId = caminho,
+            FileId = path,
         };
     }
 
-    private static byte[] ConteudoPadronizado(byte semente)
+    private static byte[] StandardizedContent(byte seed)
     {
-        var bytes = new byte[ArquivoGrande];
+        var bytes = new byte[LargeFile];
         for (var i = 0; i < bytes.Length; i++)
         {
-            bytes[i] = (byte)(semente + (i % 251));
+            bytes[i] = (byte)(seed + (i % 251));
         }
 
         return bytes;
     }
 
-    /// <summary>Cabeça e cauda fixas (colisão parcial garantida); miolo varia por semente.</summary>
-    private static byte[] ConteudoConflito(byte miolo)
+    /// <summary>Fixed head and tail (guaranteed partial collision); core varies by seed.</summary>
+    private static byte[] ConflictContent(byte core)
     {
-        var bytes = new byte[ArquivoGrande];
+        var bytes = new byte[LargeFile];
 
-        for (var i = 0; i < Janela; i++)
+        for (var i = 0; i < Window; i++)
         {
             bytes[i] = (byte)(0xAA + (i % 13));
         }
 
-        for (var i = ArquivoGrande - Janela; i < ArquivoGrande; i++)
+        for (var i = LargeFile - Window; i < LargeFile; i++)
         {
             bytes[i] = (byte)(0xBB + (i % 17));
         }
 
-        for (var i = Janela; i < ArquivoGrande - Janela; i++)
+        for (var i = Window; i < LargeFile - Window; i++)
         {
-            bytes[i] = miolo;
+            bytes[i] = core;
         }
 
         return bytes;
@@ -153,50 +153,50 @@ public sealed class ScanPipelineTests : IDisposable
 
     private static FileEntry[] Shuffle(FileEntry[] original, int seed)
     {
-        var copia = original.ToArray();
+        var copy = original.ToArray();
         var random = new Random(seed);
 
-        for (var i = copia.Length - 1; i > 0; i--)
+        for (var i = copy.Length - 1; i > 0; i--)
         {
             var j = random.Next(i + 1);
-            (copia[i], copia[j]) = (copia[j], copia[i]);
+            (copy[i], copy[j]) = (copy[j], copy[i]);
         }
 
-        return copia;
+        return copy;
     }
 
-    // ---- pipeline + serialização determinística ------------------------------------
+    // ---- pipeline + deterministic serialization ------------------------------------
 
-    private ScanResult RunPipeline(FileEntry[] ordemFisica, IHasher hasher)
+    private ScanResult RunPipeline(FileEntry[] physicalOrder, IHasher hasher)
     {
-        var pipeline = new ScanPipeline(new FakeFileEnumerator(ordemFisica), hasher);
+        var pipeline = new ScanPipeline(new FakeFileEnumerator(physicalOrder), hasher);
         return pipeline.Run(_root);
     }
 
     /// <summary>
-    /// Serialização canônica do resultado para comparação byte a byte: as listas já
-    /// saem em ordem canônica do pipeline; a ordem das propriedades JSON é a ordem de
-    /// declaração dos records (System.Text.Json), fixa e invariante à cultura.
+    /// Canonical serialization of the result for byte-for-byte comparison: the lists
+    /// already come out in the pipeline's canonical order; the JSON property order is
+    /// the record declaration order (System.Text.Json), fixed and culture-invariant.
     /// </summary>
-    private static byte[] Serializar(ScanResult resultado) =>
-        JsonSerializer.SerializeToUtf8Bytes(resultado, new JsonSerializerOptions
+    private static byte[] Serialize(ScanResult result) =>
+        JsonSerializer.SerializeToUtf8Bytes(result, new JsonSerializerOptions
         {
             WriteIndented = false,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         });
 
     /// <summary>
-    /// Enumerador fake (L0): devolve as entradas EXATAMENTE na ordem física pedida —
-    /// direta, reversa ou embaralhada. Não é o OrderedFileEnumerator: a ordenação
-    /// canônica é responsabilidade do pipeline, e é isso que a prova verifica.
+    /// Fake enumerator (L0): returns entries EXACTLY in the requested physical order —
+    /// forward, reverse, or shuffled. It is not the OrderedFileEnumerator: canonical
+    /// ordering is the pipeline's responsibility, and that is what the proof verifies.
     /// </summary>
     private sealed class FakeFileEnumerator : IFileEnumerator
     {
-        private readonly IReadOnlyList<FileEntry> _ordem;
+        private readonly IReadOnlyList<FileEntry> _order;
 
-        public FakeFileEnumerator(IReadOnlyList<FileEntry> ordem) => _ordem = ordem;
+        public FakeFileEnumerator(IReadOnlyList<FileEntry> order) => _order = order;
 
         public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default) =>
-            new(_ordem, Array.Empty<ScanError>(), new ScanTelemetry());
+            new(_order, Array.Empty<ScanError>(), new ScanTelemetry());
     }
 }

@@ -3,14 +3,14 @@ namespace Doctor.Core;
 using System.Runtime.InteropServices;
 
 /// <summary>
-/// File ID em Linux (card T07): inode via P/Invoke direto de <c>lstat(2)</c>.
-/// Escolha documentada — SEM Mono.Posix nem dependência pesada: um único interop
-/// com buffer alocado pelo chamador. O layout do <c>stat</c> usado é o do glibc
-/// Linux x86-64 (dev_t=8B, ino_t=8B, ...); o produto alvo é Windows, e este caminho
-/// existe para desenvolvimento/teste no host Linux (SPEC §5: evitar stat extra —
-/// aqui o lstat só ocorre por arquivo para obter o inode que a enumeração
-/// System.IO.Enumeration não expõe; no Windows nativo, o file id vem da própria
-/// enumeração FindFirstFileEx, sem chamada extra).
+/// Linux file ID (card T07): inode via direct P/Invoke of <c>lstat(2)</c>.
+/// Documented choice — NO Mono.Posix nor heavy dependency: a single interop
+/// with caller-allocated buffer. The <c>stat</c> layout used is the glibc
+/// Linux x86-64 one (dev_t=8B, ino_t=8B, ...); the target product is Windows,
+/// and this path exists for Linux host development/testing (SPEC §5: avoid
+/// extra stat — here lstat occurs only per file to obtain the inode that the
+/// System.IO.Enumeration enumeration does not expose; on native Windows, the
+/// file id comes from the FindFirstFileEx enumeration itself, with no extra call).
 /// </summary>
 public static class LinuxFileId
 {
@@ -19,7 +19,7 @@ public static class LinuxFileId
         return ReadInode(path).ToStringInvariant();
     }
 
-    /// <summary>Retorna (errno, inode). errno 0 = sucesso.</summary>
+    /// <summary>Returns (errno, inode). errno 0 = success.</summary>
     internal static (int Errno, ulong Inode) TryGetInode(string path)
     {
         var st = new Stat();
@@ -33,7 +33,7 @@ public static class LinuxFileId
         if (lstat(path, ref st) != 0)
         {
             throw new IOException(
-                $"lstat falhou para '{path}' (errno {Marshal.GetLastWin32Error()}).");
+                $"lstat failed for '{path}' (errno {Marshal.GetLastWin32Error()}).");
         }
 
         return st.st_ino;
@@ -42,7 +42,7 @@ public static class LinuxFileId
     private static string ToStringInvariant(this ulong value)
         => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    // struct stat do glibc em Linux x86-64 (bits 64): campos relevantes ao inode.
+    // glibc struct stat on Linux x86-64 (64-bit): fields relevant to inode.
     [StructLayout(LayoutKind.Sequential)]
     private struct Stat
     {

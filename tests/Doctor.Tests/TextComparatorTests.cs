@@ -4,19 +4,19 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T23 (t_64c4d4c0) — TextComparator (SPEC §16 Texto; ADR-0011 item 2; contratos.md
+/// T23 (t_64c4d4c0) — TextComparator (SPEC §16 Text; ADR-0011 item 2; contracts.md
 /// IDocumentComparator).
 ///
-/// Normalização antes do diff (decisão do orquestrador): CRLF→LF; BOM (UTF-8/UTF-16)
-/// reconhecido e ignorado — BOM divergente SOZINHO não torna os arquivos diferentes.
-/// Comparação de linha exata pos-normalização, sem trim. Seleção por extensão
-/// case-insensitive: .txt/.log/.ini/.cfg/.conf ⇒ texto; resto ⇒ binário.
+/// Normalization before diff (orchestrator decision): CRLF→LF; BOM (UTF-8/UTF-16)
+/// recognized and ignored — divergent BOM ALONE does not make files different.
+/// Exact line comparison post-normalization, no trim. Selection by extension
+/// case-insensitive: .txt/.log/.ini/.cfg/.conf ⇒ text; rest ⇒ binary.
 /// </summary>
 [Trait("Category", "Comparison")]
 public class TextComparatorTests : IDisposable
 {
     private readonly string _dir;
-    private readonly List<string> _arquivos = new();
+    private readonly List<string> _files = new();
     private int _seq;
 
     public TextComparatorTests()
@@ -26,184 +26,184 @@ public class TextComparatorTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var a in _arquivos)
+        foreach (var f in _files)
         {
-            File.Delete(a);
+            File.Delete(f);
         }
 
         Directory.Delete(_dir);
     }
 
     [Fact]
-    public void Txt01_Identicos_EqualTrue_RegioesVazias()
+    public void Txt01_Identical_EqualTrue_EmptyRegions()
     {
-        var (left, right) = ParTexto("l1\nl2\n", "l1\nl2\n");
+        var (left, right) = TextPair("l1\nl2\n", "l1\nl2\n");
 
-        var resultado = new TextComparator().Compare(left, right, CancellationToken.None);
+        var result = new TextComparator().Compare(left, right, CancellationToken.None);
 
-        Assert.Equal("text", resultado.ComparatorKind);
-        Assert.True(resultado.AreSemanticallyEqual);
-        // Contrato do motor: idênticos ⇒ UMA região Equal cobrindo tudo
-        // (Regions vazia é regra do BinaryFallbackComparator).
-        var regiao = Assert.Single(resultado.Regions);
-        Assert.Equal(RegionKind.Equal, regiao.Kind);
+        Assert.Equal("text", result.ComparatorKind);
+        Assert.True(result.AreSemanticallyEqual);
+        // Engine contract: identical ⇒ ONE Equal region covering everything
+        // (empty Regions is the BinaryFallbackComparator rule).
+        var region = Assert.Single(result.Regions);
+        Assert.Equal(RegionKind.Equal, region.Kind);
     }
 
     [Fact]
-    public void Txt02_DivergenciaUnica_UmaRegiaoChangedEntreEquals()
+    public void Txt02_SingleDivergence_OneChangedRegionBetweenEquals()
     {
-        var (left, right) = ParTexto("a\nb\nc\nd\n", "a\nB\nc\nd\n");
+        var (left, right) = TextPair("a\nb\nc\nd\n", "a\nB\nc\nd\n");
 
-        var resultado = new TextComparator().Compare(left, right, CancellationToken.None);
+        var result = new TextComparator().Compare(left, right, CancellationToken.None);
 
-        Assert.Equal(3, resultado.Regions.Count);
-        Assert.False(resultado.AreSemanticallyEqual);
-        Assert.Equal(RegionKind.Changed, resultado.Regions[1].Kind);
-        Assert.Equal((1, 1, 1, 1), (resultado.Regions[1].LeftStart, resultado.Regions[1].LeftCount, resultado.Regions[1].RightStart, resultado.Regions[1].RightCount));
+        Assert.Equal(3, result.Regions.Count);
+        Assert.False(result.AreSemanticallyEqual);
+        Assert.Equal(RegionKind.Changed, result.Regions[1].Kind);
+        Assert.Equal((1, 1, 1, 1), (result.Regions[1].LeftStart, result.Regions[1].LeftCount, result.Regions[1].RightStart, result.Regions[1].RightCount));
     }
 
     [Fact]
-    public void Txt03_CrlfDiferenteSoNoFimDeLinha_SaoIguais()
+    public void Txt03_CrlfDifferOnlyAtEndOfLine_AreEqual()
     {
-        // Mesmo conteúdo lógico: left com LF, right com CRLF. Normalização CRLF→LF
-        // precede o diff ⇒ iguais.
-        var (left, right) = ParBytes(
+        // Same logical content: left with LF, right with CRLF. CRLF→LF normalization
+        // precedes diff ⇒ equal.
+        var (left, right) = BytesPair(
             Encoding.UTF8.GetBytes("l1\nl2\n"),
             Encoding.UTF8.GetBytes("l1\r\nl2\r\n"));
 
-        var resultado = new TextComparator().Compare(left, right, CancellationToken.None);
+        var result = new TextComparator().Compare(left, right, CancellationToken.None);
 
-        Assert.True(resultado.AreSemanticallyEqual);
-        var regiao = Assert.Single(resultado.Regions);
-        Assert.Equal(RegionKind.Equal, regiao.Kind);
+        Assert.True(result.AreSemanticallyEqual);
+        var region = Assert.Single(result.Regions);
+        Assert.Equal(RegionKind.Equal, region.Kind);
     }
 
     [Fact]
-    public void Txt04_BomDivergenteSozinho_NaoTornaDiferente()
+    public void Txt04_DivergentBomAlone_DoesNotMakeDifferent()
     {
-        // Contrato XML-doc: BOM UTF-8 reconhecido e ignorado — presença/ausência de
-        // BOM sozinha NÃO produz região.
-        var comBom = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.UTF8.GetBytes("x\ny\n")).ToArray();
-        var semBom = Encoding.UTF8.GetBytes("x\ny\n");
-        var (left, right) = ParBytes(comBom, semBom);
+        // XML-doc contract: UTF-8 BOM recognized and ignored — presence/absence of
+        // BOM alone does NOT produce a region.
+        var withBom = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(Encoding.UTF8.GetBytes("x\ny\n")).ToArray();
+        var withoutBom = Encoding.UTF8.GetBytes("x\ny\n");
+        var (left, right) = BytesPair(withBom, withoutBom);
 
-        var resultado = new TextComparator().Compare(left, right, CancellationToken.None);
+        var result = new TextComparator().Compare(left, right, CancellationToken.None);
 
-        Assert.True(resultado.AreSemanticallyEqual);
-        var regiao = Assert.Single(resultado.Regions);
-        Assert.Equal(RegionKind.Equal, regiao.Kind);
+        Assert.True(result.AreSemanticallyEqual);
+        var region = Assert.Single(result.Regions);
+        Assert.Equal(RegionKind.Equal, region.Kind);
     }
 
     [Fact]
-    public void Txt05_ArquivoVazio_ContraUmaLinha_Added()
+    public void Txt05_EmptyFile_VsOneLine_Added()
     {
-        var (left, right) = ParTexto("", "unica\n");
+        var (left, right) = TextPair("", "single\n");
 
-        var resultado = new TextComparator().Compare(left, right, CancellationToken.None);
+        var result = new TextComparator().Compare(left, right, CancellationToken.None);
 
-        Assert.False(resultado.AreSemanticallyEqual);
-        var regiao = Assert.Single(resultado.Regions);
-        Assert.Equal(RegionKind.Added, regiao.Kind);
-        Assert.Equal((0, 0, 0, 1), (regiao.LeftStart, regiao.LeftCount, regiao.RightStart, regiao.RightCount));
+        Assert.False(result.AreSemanticallyEqual);
+        var region = Assert.Single(result.Regions);
+        Assert.Equal(RegionKind.Added, region.Kind);
+        Assert.Equal((0, 0, 0, 1), (region.LeftStart, region.LeftCount, region.RightStart, region.RightCount));
     }
 
     [Fact]
-    public void Txt06_SemTrim_EspacoFinalEDiferenca()
+    public void Txt06_NoTrim_TrailingSpaceIsDifference()
     {
-        // Comparação de linha exata pos-normalizacao: SEM trim.
-        var (left, right) = ParTexto("valor \n", "valor\n");
+        // Exact line comparison post-normalization: NO trim.
+        var (left, right) = TextPair("value \n", "value\n");
 
-        var resultado = new TextComparator().Compare(left, right, CancellationToken.None);
+        var result = new TextComparator().Compare(left, right, CancellationToken.None);
 
-        Assert.False(resultado.AreSemanticallyEqual);
-        Assert.Equal(RegionKind.Changed, Assert.Single(resultado.Regions).Kind);
+        Assert.False(result.AreSemanticallyEqual);
+        Assert.Equal(RegionKind.Changed, Assert.Single(result.Regions).Kind);
     }
 
     [Fact]
-    public void Txt07_Placeholder_ExcecaoAntesDeQualquerAbertura()
+    public void Txt07_Placeholder_ExceptionBeforeAnyOpen()
     {
-        // Gate herdado (ADR-0011 item 4): o caminho NEM EXISTE em disco — qualquer
-        // tentativa de abertura produziria FileNotFoundException. A prova de
-        // "zero bytes lidos / zero aberturas" é receber PlaceholderReadException.
-        var fantasma = Path.Combine(_dir, "nao-existe.txt");
-        var existente = Path.Combine(_dir, "real.txt");
-        File.WriteAllBytes(existente, Encoding.UTF8.GetBytes("conteudo\n"));
-        _arquivos.Add(existente);
+        // Inherited gate (ADR-0011 item 4): the path DOES NOT EXIST on disk — any
+        // open attempt would produce FileNotFoundException. The proof of
+        // "zero bytes read / zero opens" is receiving PlaceholderReadException.
+        var phantom = Path.Combine(_dir, "nonexistent.txt");
+        var existing = Path.Combine(_dir, "real.txt");
+        File.WriteAllBytes(existing, Encoding.UTF8.GetBytes("content\n"));
+        _files.Add(existing);
 
         var ex = Assert.Throws<PlaceholderReadException>(() => new TextComparator().Compare(
-            Entrada(fantasma, 10, placeholder: true),
-            Entrada(existente, new FileInfo(existente).Length),
+            Entry(phantom, 10, placeholder: true),
+            Entry(existing, new FileInfo(existing).Length),
             CancellationToken.None));
-        Assert.Equal(fantasma, ex.EntryPath);
+        Assert.Equal(phantom, ex.EntryPath);
 
-        // Placeholder no lado right também bloqueia antes da leitura do left.
+        // Placeholder on the right side also blocks before reading the left.
         var ex2 = Assert.Throws<PlaceholderReadException>(() => new TextComparator().Compare(
-            Entrada(existente, new FileInfo(existente).Length),
-            Entrada(fantasma, 10, placeholder: true),
+            Entry(existing, new FileInfo(existing).Length),
+            Entry(phantom, 10, placeholder: true),
             CancellationToken.None));
-        Assert.Equal(fantasma, ex2.EntryPath);
+        Assert.Equal(phantom, ex2.EntryPath);
     }
 
     [Fact]
-    public void Txt08_BomUtf16ReconhecEIgnoado_ContraUtf8_Iguais()
+    public void Txt08_BomUtf16RecognizedAndIgnored_VsUtf8_Equal()
     {
-        // BOM UTF-16 LE reconhecido pelo decoder e ignorado como diferença:
-        // mesmo conteúdo lógico em codificações distintas ⇒ iguais.
-        const string conteudo = "alpha\nbeta\n";
-        var utf16Le = Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(conteudo)).ToArray();
-        var utf8Bom = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(conteudo)).ToArray();
-        var (left, right) = ParBytes(utf16Le, utf8Bom);
+        // UTF-16 LE BOM recognized by the decoder and ignored as a difference:
+        // same logical content in different encodings ⇒ equal.
+        const string content = "alpha\nbeta\n";
+        var utf16Le = Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(content)).ToArray();
+        var utf8Bom = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(content)).ToArray();
+        var (left, right) = BytesPair(utf16Le, utf8Bom);
 
-        var resultado = new TextComparator().Compare(left, right, CancellationToken.None);
+        var result = new TextComparator().Compare(left, right, CancellationToken.None);
 
-        Assert.True(resultado.AreSemanticallyEqual);
+        Assert.True(result.AreSemanticallyEqual);
     }
 
     [Fact]
-    public void Txt09_MesmaEntradaDuasExecucoes_ResultadoIdentico()
+    public void Txt09_SameInputTwoExecutions_IdenticalResult()
     {
-        var (left, right) = ParTexto("a\nb\nc\n", "a\nX\nc\nd\n");
+        var (left, right) = TextPair("a\nb\nc\n", "a\nX\nc\nd\n");
 
         var cmp = new TextComparator();
-        var primeira = cmp.Compare(left, right, CancellationToken.None);
-        var segunda = cmp.Compare(left, right, CancellationToken.None);
+        var first = cmp.Compare(left, right, CancellationToken.None);
+        var second = cmp.Compare(left, right, CancellationToken.None);
 
-        // ComparisonResult carrega IReadOnlyList (igualdade por referência) —
-        // determinismo se afirma campo a campo e região a região.
-        Assert.Equal(primeira.ComparatorKind, segunda.ComparatorKind);
-        Assert.Equal(primeira.AreSemanticallyEqual, segunda.AreSemanticallyEqual);
-        Assert.Equal(primeira.Regions.Count, segunda.Regions.Count);
-        for (int i = 0; i < primeira.Regions.Count; i++)
+        // ComparisonResult carries IReadOnlyList (reference equality) —
+        // determinism is asserted field by field and region by region.
+        Assert.Equal(first.ComparatorKind, second.ComparatorKind);
+        Assert.Equal(first.AreSemanticallyEqual, second.AreSemanticallyEqual);
+        Assert.Equal(first.Regions.Count, second.Regions.Count);
+        for (int i = 0; i < first.Regions.Count; i++)
         {
-            Assert.Equal(primeira.Regions[i], segunda.Regions[i]);
+            Assert.Equal(first.Regions[i], second.Regions[i]);
         }
     }
 
-    /// <summary>Par de arquivos .txt com conteúdo UTF-8 sem BOM.</summary>
-    private (FileEntry Left, FileEntry Right) ParTexto(string conteudoLeft, string conteudoRight) =>
-        ParBytes(Encoding.UTF8.GetBytes(conteudoLeft), Encoding.UTF8.GetBytes(conteudoRight));
+    /// <summary>Pair of .txt files with UTF-8 content without BOM.</summary>
+    private (FileEntry Left, FileEntry Right) TextPair(string contentLeft, string contentRight) =>
+        BytesPair(Encoding.UTF8.GetBytes(contentLeft), Encoding.UTF8.GetBytes(contentRight));
 
-    /// <summary>Grava um par de arquivos .txt com bytes crus e devolve as entradas L0.</summary>
-    private (FileEntry Left, FileEntry Right) ParBytes(byte[] bytesLeft, byte[] bytesRight)
+    /// <summary>Writes a pair of .txt files with raw bytes and returns L0 entries.</summary>
+    private (FileEntry Left, FileEntry Right) BytesPair(byte[] bytesLeft, byte[] bytesRight)
     {
         var pl = Path.Combine(_dir, $"L{_seq}.txt");
         var pr = Path.Combine(_dir, $"R{_seq}.txt");
         _seq++;
         File.WriteAllBytes(pl, bytesLeft);
         File.WriteAllBytes(pr, bytesRight);
-        _arquivos.Add(pl);
-        _arquivos.Add(pr);
-        return (Entrada(pl, bytesLeft.LongLength), Entrada(pr, bytesRight.LongLength));
+        _files.Add(pl);
+        _files.Add(pr);
+        return (Entry(pl, bytesLeft.LongLength), Entry(pr, bytesRight.LongLength));
     }
 
-    /// <summary>Entrada L0 mínima para comparação (não-placeholder).</summary>
-    internal static FileEntry Entrada(string path, long size, bool placeholder = false) => new()
+    /// <summary>Minimal L0 entry for comparison (non-placeholder).</summary>
+    internal static FileEntry Entry(string path, long size, bool placeholder = false) => new()
     {
         Path = path,
         Size = size,
         MtimeUtc = DateTimeOffset.UnixEpoch,
         Attributes = FileAttributes.Normal,
-        VolumeId = "vol-teste",
+        VolumeId = "vol-test",
         FileId = path,
         IsPlaceholder = placeholder,
     };

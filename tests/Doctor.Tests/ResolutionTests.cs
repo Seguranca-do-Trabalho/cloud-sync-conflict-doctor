@@ -3,210 +3,210 @@ namespace Doctor.Tests;
 using Doctor.Core;
 
 /// <summary>
-/// T14 (t_83b9d360) — motor de resolução (SPEC §17): ResolutionPlan determinístico por
-/// grupo do ScanPipeline, estratégias KeepNewest/KeepLargest/KeepMachine/KeepManual.
-/// NENHUMA operação de arquivo: só o PLANO (vencedor + sacrificados). Desempate
-/// obrigatório mtime → size → path byte-wise (ADR-0003), nunca first-seen.
-/// Entradas sintéticas sem filesystem real: FileEntry é metadado imutável (Level 0).
+/// T14 (t_83b9d360) — resolution engine (SPEC §17): deterministic ResolutionPlan per
+/// ScanPipeline group, strategies KeepNewest/KeepLargest/KeepMachine/KeepManual.
+/// NO file operations: only the PLAN (winner + sacrifices). Mandatory tie-break
+/// mtime → size → path byte-wise (ADR-0003), never first-seen.
+/// Synthetic entries without real filesystem: FileEntry is immutable metadata (Level 0).
 /// </summary>
 public sealed class ResolutionTests
 {
-    private static FileEntry Entrada(string caminho, long size, string mtimeIso) => new()
+    private static FileEntry Entry(string path, long size, string mtimeIso) => new()
     {
-        Path = caminho,
+        Path = path,
         Size = size,
         MtimeUtc = DateTimeOffset.Parse(mtimeIso, styles: System.Globalization.DateTimeStyles.AssumeUniversal),
         Attributes = FileAttributes.Normal,
         VolumeId = "t14-volume",
-        FileId = caminho,
+        FileId = path,
     };
 
     // ---------------------------------------------------------------- KeepNewest
 
     [Fact]
-    public void KeepNewest_MtimesDistintos_VenceMaisRecente_SacrificadosEmOrdemCanonica()
+    public void KeepNewest_DistinctMtimes_MostRecentWins_SacrificesInCanonicalOrder()
     {
-        var grupo = new ConflictGroup("relatorio", 100,
+        var group = new ConflictGroup("report", 100,
         [
-            Entrada("/root/relatorio.txt", 100, "2026-08-20T10:00:00Z"),
-            Entrada("/root/relatorio (1).txt", 100, "2026-08-22T12:00:00Z"), // mais recente
-            Entrada("/root/relatorio-DESKTOP-ABC123.txt", 100, "2026-08-21T11:00:00Z"),
+            Entry("/root/report.txt", 100, "2026-08-20T10:00:00Z"),
+            Entry("/root/report (1).txt", 100, "2026-08-22T12:00:00Z"), // most recent
+            Entry("/root/report-DESKTOP-ABC123.txt", 100, "2026-08-21T11:00:00Z"),
         ]);
 
-        var plano = Resolution.Resolve(grupo, new KeepNewest());
+        var plan = Resolution.Resolve(group, new KeepNewest());
 
-        Assert.Equal("/root/relatorio (1).txt", plano.Winner.Path);
+        Assert.Equal("/root/report (1).txt", plan.Winner.Path);
         Assert.Equal(
-            new[] { "/root/relatorio-DESKTOP-ABC123.txt", "/root/relatorio.txt" },
-            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
+            new[] { "/root/report-DESKTOP-ABC123.txt", "/root/report.txt" },
+            plan.Sacrifices.Select(s => s.Entry.Path).ToArray());
     }
 
     // ---------------------------------------------------------------- KeepLargest
 
     [Fact]
-    public void KeepLargest_SizesDistintos_VenceMaior_MotivoAuditavel()
+    public void KeepLargest_DistinctSizes_LargerWins_AuditableReason()
     {
-        var grupo = new ConflictGroup("planilha", 0,
+        var group = new ConflictGroup("spreadsheet", 0,
         [
-            Entrada("/root/planilha.xlsx", 300, "2026-08-20T10:00:00Z"),
-            Entrada("/root/planilha (1).xlsx", 500, "2026-08-19T09:00:00Z"), // maior
-            Entrada("/root/planilha~.xlsx", 400, "2026-08-21T08:00:00Z"),
+            Entry("/root/spreadsheet.xlsx", 300, "2026-08-20T10:00:00Z"),
+            Entry("/root/spreadsheet (1).xlsx", 500, "2026-08-19T09:00:00Z"), // larger
+            Entry("/root/spreadsheet~.xlsx", 400, "2026-08-21T08:00:00Z"),
         ]);
 
-        var plano = Resolution.Resolve(grupo, new KeepLargest());
+        var plan = Resolution.Resolve(group, new KeepLargest());
 
-        Assert.Equal("/root/planilha (1).xlsx", plano.Winner.Path);
-        Assert.Equal(2, plano.Sacrifices.Count);
-        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-largest", s.Reason));
+        Assert.Equal("/root/spreadsheet (1).xlsx", plan.Winner.Path);
+        Assert.Equal(2, plan.Sacrifices.Count);
+        Assert.All(plan.Sacrifices, s => Assert.Equal("keep-largest", s.Reason));
     }
 
     // ---------------------------------------------------------------- KeepMachine
 
     [Fact]
-    public void KeepMachine_MarcaDesktopNoNome_VenceVersaoDaMaquinaPedida()
+    public void KeepMachine_DesktopMarkedInName_RequestedMachineVersionWins()
     {
-        var grupo = new ConflictGroup("contrato", 0,
+        var group = new ConflictGroup("contract", 0,
         [
-            Entrada("/root/contrato-DESKTOP-ABC123.txt", 100, "2026-08-22T12:00:00Z"),
-            Entrada("/root/contrato-DESKTOP-XYZ789.txt", 100, "2026-08-20T10:00:00Z"),
-            Entrada("/root/contrato (1).txt", 100, "2026-08-21T11:00:00Z"), // sem marca
+            Entry("/root/contract-DESKTOP-ABC123.txt", 100, "2026-08-22T12:00:00Z"),
+            Entry("/root/contract-DESKTOP-XYZ789.txt", 100, "2026-08-20T10:00:00Z"),
+            Entry("/root/contract (1).txt", 100, "2026-08-21T11:00:00Z"), // no mark
         ]);
 
-        var plano = Resolution.Resolve(grupo, new KeepMachine("XYZ789"));
+        var plan = Resolution.Resolve(group, new KeepMachine("XYZ789"));
 
-        Assert.Equal("/root/contrato-DESKTOP-XYZ789.txt", plano.Winner.Path);
+        Assert.Equal("/root/contract-DESKTOP-XYZ789.txt", plan.Winner.Path);
         Assert.Equal(
-            new[] { "/root/contrato (1).txt", "/root/contrato-DESKTOP-ABC123.txt" },
-            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
-        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-machine:XYZ789", s.Reason));
+            new[] { "/root/contract (1).txt", "/root/contract-DESKTOP-ABC123.txt" },
+            plan.Sacrifices.Select(s => s.Entry.Path).ToArray());
+        Assert.All(plan.Sacrifices, s => Assert.Equal("keep-machine:XYZ789", s.Reason));
     }
 
     // ---------------------------------------------------------------- KeepManual
 
     [Fact]
-    public void KeepManual_EscolhaDentroDoGrupo_VenceEscolhaDoUsuario()
+    public void KeepManual_ChoiceWithinGroup_UserChoiceWins()
     {
-        var grupo = new ConflictGroup("apostila", 0,
+        var group = new ConflictGroup("handbook", 0,
         [
-            Entrada("/root/apostila.pdf", 100, "2026-08-22T12:00:00Z"), // mais recente
-            Entrada("/root/apostila (1).pdf", 100, "2026-08-20T10:00:00Z"),
+            Entry("/root/handbook.pdf", 100, "2026-08-22T12:00:00Z"), // most recent
+            Entry("/root/handbook (1).pdf", 100, "2026-08-20T10:00:00Z"),
         ]);
 
-        var plano = Resolution.Resolve(grupo, new KeepManual("/root/apostila (1).pdf"));
+        var plan = Resolution.Resolve(group, new KeepManual("/root/handbook (1).pdf"));
 
-        Assert.Equal("/root/apostila (1).pdf", plano.Winner.Path);
+        Assert.Equal("/root/handbook (1).pdf", plan.Winner.Path);
         Assert.Equal(
-            new[] { "/root/apostila.pdf" },
-            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
-        Assert.All(plano.Sacrifices, s => Assert.Equal("keep-manual", s.Reason));
+            new[] { "/root/handbook.pdf" },
+            plan.Sacrifices.Select(s => s.Entry.Path).ToArray());
+        Assert.All(plan.Sacrifices, s => Assert.Equal("keep-manual", s.Reason));
     }
 
     [Fact]
-    public void KeepManual_EscolhaForaDoGrupo_FalhaFechada()
+    public void KeepManual_ChoiceOutsideGroup_FailClosed()
     {
-        var grupo = new ConflictGroup("apostila", 0,
+        var group = new ConflictGroup("handbook", 0,
         [
-            Entrada("/root/apostila.pdf", 100, "2026-08-22T12:00:00Z"),
-            Entrada("/root/apostila (1).pdf", 100, "2026-08-20T10:00:00Z"),
+            Entry("/root/handbook.pdf", 100, "2026-08-22T12:00:00Z"),
+            Entry("/root/handbook (1).pdf", 100, "2026-08-20T10:00:00Z"),
         ]);
 
         Assert.Throws<InvalidOperationException>(
-            () => Resolution.Resolve(grupo, new KeepManual("/outra/arquivo.pdf")));
+            () => Resolution.Resolve(group, new KeepManual("/other/file.pdf")));
     }
 
-    // ---------------------------------------------------------------- Empates
+    // ---------------------------------------------------------------- Ties
 
     [Fact]
-    public void EmpateTriplo_MtimesIdenticos_DesempataPorSizeDepoisPathByteWise()
+    public void TripleTie_IdenticalMtimes_TieBrokenBySizeThenPathByteWise()
     {
-        // mtimes IDÊNTICOS: decisão nunca pode ser first-seen (SPEC §17; ADR-0003).
-        var mtimeComum = "2026-08-22T12:00:00Z";
-        var grupo = new ConflictGroup("inventario", 0,
+        // IDENTICAL mtimes: decision can never be first-seen (SPEC §17; ADR-0003).
+        var commonMtime = "2026-08-22T12:00:00Z";
+        var group = new ConflictGroup("inventory", 0,
         [
-            Entrada("/root/inventario-B.txt", 200, mtimeComum),
-            Entrada("/root/inventario-A.txt", 300, mtimeComum), // vence: maior size
-            Entrada("/root/inventario-C.txt", 100, mtimeComum),
+            Entry("/root/inventory-B.txt", 200, commonMtime),
+            Entry("/root/inventory-A.txt", 300, commonMtime), // wins: larger size
+            Entry("/root/inventory-C.txt", 100, commonMtime),
         ]);
 
-        var plano = Resolution.Resolve(grupo, new KeepNewest());
+        var plan = Resolution.Resolve(group, new KeepNewest());
 
-        Assert.Equal("/root/inventario-A.txt", plano.Winner.Path);
+        Assert.Equal("/root/inventory-A.txt", plan.Winner.Path);
         Assert.Equal(
-            new[] { "/root/inventario-B.txt", "/root/inventario-C.txt" },
-            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
+            new[] { "/root/inventory-B.txt", "/root/inventory-C.txt" },
+            plan.Sacrifices.Select(s => s.Entry.Path).ToArray());
     }
 
     [Fact]
-    public void EmpateAbsoluto_MtimeSizeIguais_VenceMenorCaminhoByteWise()
+    public void AbsoluteTie_SameMtimeAndSize_SmallerPathByteWiseWins()
     {
-        var mtimeComum = "2026-08-22T12:00:00Z";
-        long sizeComum = 300;
-        var grupo = new ConflictGroup("inventario", 0,
+        var commonMtime = "2026-08-22T12:00:00Z";
+        long commonSize = 300;
+        var group = new ConflictGroup("inventory", 0,
         [
-            Entrada("/root/inventario-b.txt", sizeComum, mtimeComum),
-            Entrada("/root/inventario-a.txt", sizeComum, mtimeComum),
+            Entry("/root/inventory-b.txt", commonSize, commonMtime),
+            Entry("/root/inventory-a.txt", commonSize, commonMtime),
         ]);
 
-        var plano = Resolution.Resolve(grupo, new KeepLargest());
+        var plan = Resolution.Resolve(group, new KeepLargest());
 
-        // path CRESCENTE byte-wise: "a" < "b" em Ordinal.
-        Assert.Equal("/root/inventario-a.txt", plano.Winner.Path);
+        // ASCENDING path byte-wise: "a" < "b" in Ordinal.
+        Assert.Equal("/root/inventory-a.txt", plan.Winner.Path);
         Assert.Equal(
-            new[] { "/root/inventario-b.txt" },
-            plano.Sacrifices.Select(s => s.Entry.Path).ToArray());
+            new[] { "/root/inventory-b.txt" },
+            plan.Sacrifices.Select(s => s.Entry.Path).ToArray());
     }
 
-    // ---------------------------------------------------------------- Falha fechada
+    // ---------------------------------------------------------------- Fail-closed
 
     [Fact]
-    public void KeepMachine_MaquinaAusenteDoGrupo_FalhaFechada()
+    public void KeepMachine_MachineAbsentFromGroup_FailClosed()
     {
-        var grupo = new ConflictGroup("contrato", 0,
+        var group = new ConflictGroup("contract", 0,
         [
-            Entrada("/root/contrato-DESKTOP-ABC123.txt", 100, "2026-08-22T12:00:00Z"),
-            Entrada("/root/contrato (1).txt", 100, "2026-08-20T10:00:00Z"),
+            Entry("/root/contract-DESKTOP-ABC123.txt", 100, "2026-08-22T12:00:00Z"),
+            Entry("/root/contract (1).txt", 100, "2026-08-20T10:00:00Z"),
         ]);
 
         Assert.Throws<InvalidOperationException>(
-            () => Resolution.Resolve(grupo, new KeepMachine("ZZZ999")));
+            () => Resolution.Resolve(group, new KeepMachine("ZZZ999")));
     }
 
     [Fact]
-    public void GrupoCorrompido_ComUmSoMembro_FalhaFechadaSemPlano()
+    public void CorruptedGroup_SingleMember_FailClosedNoPlan()
     {
-        // ConflictGroup exige >=2 membros; entrada violando o contrato nunca gera
-        // plano plausível — lança (SPEC §2.1 falha conservadora).
-        var grupo = new ConflictGroup("solitario", 0,
+        // ConflictGroup requires >=2 members; entry violating the contract never generates
+        // a plausible plan — throws (SPEC §2.1 conservative failure).
+        var group = new ConflictGroup("lonely", 0,
         [
-            Entrada("/root/solitario.txt", 100, "2026-08-22T12:00:00Z"),
+            Entry("/root/lonely.txt", 100, "2026-08-22T12:00:00Z"),
         ]);
 
         Assert.Throws<InvalidOperationException>(
-            () => Resolution.Resolve(grupo, new KeepNewest()));
+            () => Resolution.Resolve(group, new KeepNewest()));
     }
 
-    // ---------------------------------------------------------------- Determinismo
+    // ---------------------------------------------------------------- Determinism
 
     [Fact]
-    public void PlanoIndependenteDaOrdemFisicaDeEntrada_NuncaFirstSeen()
+    public void PlanIndependentOfPhysicalInputOrder_NeverFirstSeen()
     {
-        var mtimeComum = "2026-08-22T12:00:00Z";
-        FileEntry[] membros =
+        var commonMtime = "2026-08-22T12:00:00Z";
+        FileEntry[] members =
         [
-            Entrada("/root/nota-B.txt", 200, mtimeComum),
-            Entrada("/root/nota-A.txt", 200, mtimeComum), // vence por path (empate total com B)
-            Entrada("/root/nota-C.txt", 100, "2026-08-21T11:00:00Z"),
-            Entrada("/root/nota-D.txt", 300, "2026-08-20T10:00:00Z"),
+            Entry("/root/note-B.txt", 200, commonMtime),
+            Entry("/root/note-A.txt", 200, commonMtime), // wins by path (absolute tie with B)
+            Entry("/root/note-C.txt", 100, "2026-08-21T11:00:00Z"),
+            Entry("/root/note-D.txt", 300, "2026-08-20T10:00:00Z"),
         ];
 
-        var direta = Resolution.Resolve(new ConflictGroup("nota", 0, membros), new KeepNewest());
-        var reversa = Resolution.Resolve(
-            new ConflictGroup("nota", 0, membros.Reverse().ToArray()), new KeepNewest());
+        var forward = Resolution.Resolve(new ConflictGroup("note", 0, members), new KeepNewest());
+        var reverse = Resolution.Resolve(
+            new ConflictGroup("note", 0, members.Reverse().ToArray()), new KeepNewest());
 
-        Assert.Equal(direta.Winner.Path, reversa.Winner.Path);
+        Assert.Equal(forward.Winner.Path, reverse.Winner.Path);
         Assert.Equal(
-            direta.Sacrifices.Select(s => s.Entry.Path).ToArray(),
-            reversa.Sacrifices.Select(s => s.Entry.Path).ToArray());
-        Assert.Equal("/root/nota-A.txt", direta.Winner.Path);
+            forward.Sacrifices.Select(s => s.Entry.Path).ToArray(),
+            reverse.Sacrifices.Select(s => s.Entry.Path).ToArray());
+        Assert.Equal("/root/note-A.txt", forward.Winner.Path);
     }
 }

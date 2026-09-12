@@ -3,52 +3,52 @@ namespace Doctor.Core;
 using System.Buffers;
 
 /// <summary>
-/// Exceção do gate de placeholder (ADR-0005 §6; contratos.md IHasher): lançada quando
-/// qualquer tentativa de leitura de conteúdo mira uma <see cref="FileEntry"/> marcada
-/// como placeholder (SPEC §6 — NÃO TOCAR). Invariante automatizada: nenhum byte de
-/// placeholder é lido — o gate precede qualquer abertura/leitura.
+/// Placeholder gate exception (ADR-0005 §6; contracts.md IHasher): thrown when
+/// any content reading attempt targets a <see cref="FileEntry"/> marked as
+/// placeholder (SPEC §6 — DO NOT TOUCH). Automated invariant: no placeholder
+/// bytes are ever read — the gate precedes any opening/reading.
 /// </summary>
-// PlaceholderReadException: fonte unica em PlaceholderGate.cs.
+// PlaceholderReadException: single source in PlaceholderGate.cs.
 
-/// <summary>Contrato de hashing (docs/contratos.md — fonte única de tipos).</summary>
-// IHasher e IStreamSource: fonte unica em Hashing.cs (contratos.md).
+/// <summary>Hashing contract (docs/contracts.md — single source of types).</summary>
+// IHasher and IStreamSource: single source in Hashing.cs (contracts.md).
 
 /// <summary>
-/// Hasher BLAKE3 do produto — receita v1 EXATA do ADR-0005 (hash_version = 1 fixa
-/// algoritmo, tamanho de janela e ordem de concatenação):
+/// Product BLAKE3 hasher — exact v1 recipe from ADR-0005 (hash_version = 1 fixes
+/// algorithm, window size and concatenation order):
 ///
-///   • size ≤ 128 KiB (131072 B): leitura sequencial única do arquivo inteiro em um
-///     único hasher BLAKE3.
-///   • size &gt; 128 KiB: UMA única abertura; alimenta o hasher com [0, 64 KiB) e depois
-///     [size − 64 KiB, size), nesta ordem. Os mesmos bytes nunca são lidos duas vezes
-///     para o mesmo hash.
-///   • size == 0: hash de zero bytes sem NENHUMA leitura.
-///   • Saída hexadecimal minúscula de 32 bytes (64 caracteres).
+///   • size ≤ 128 KiB (131072 B): single sequential read of the entire file in one
+///     BLAKE3 hasher.
+///   • size &gt; 128 KiB: a single opening; feeds the hasher with [0, 64 KiB) and then
+///     [size − 64 KiB, size), in that order. The same bytes are never read twice
+///     for the same hash.
+///   • size == 0: zero-byte hash with NO reading.
+///   • Lowercase hexadecimal output of 32 bytes (64 characters).
 ///
-/// Determinismo (contratos.md): o hash depende só do conteúdo; leitura paralela nunca
-/// altera o resultado. A revalidação TOCTOU pós-leitura pertence ao chamador
-/// (HashingPipeline, ADR-0005 §7); o cache consome os mesmos valores (EPIC 04).
+/// Determinism (contracts.md): the hash depends only on content; parallel reading never
+/// changes the result. TOCTOU post-read revalidation belongs to the caller
+/// (HashingPipeline, ADR-0005 §7); the cache consumes the same values (EPIC 04).
 /// </summary>
 public sealed class Blake3Hasher : IHasher
 {
-    /// <summary>Limite v1: até este tamanho (inclusive) o hash parcial cobre o arquivo inteiro.</summary>
+    /// <summary>v1 limit: up to this size (inclusive) the partial hash covers the entire file.</summary>
     public const int WholeFileLimitBytes = 128 * 1024;
 
-    /// <summary>Janela v1: primeiros e últimos bytes de cada arquivo grande.</summary>
+    /// <summary>v1 window: first and last bytes of each large file.</summary>
     public const int WindowBytes = 64 * 1024;
 
     private const int CopyBufferSize = 256 * 1024;
 
     /// <summary>
-    /// Hash BLAKE3 canônico de zero bytes (arquivo vazio, ADR-0005 §5). Constante
-    /// estável e documentada: nenhuma leitura deve acontecer para produzi-la.
+    /// Canonical BLAKE3 hash of zero bytes (empty file, ADR-0005 §5). Stable and
+    /// documented constant: no reading should happen to produce it.
     /// </summary>
     public static readonly string EmptyFileHash =
         Convert.ToHexString(Blake3.Hasher.Hash(Array.Empty<byte>()).AsSpan()).ToLowerInvariant();
 
     private readonly Func<FileEntry, Stream> _openRead;
 
-    /// <summary>Injeta um opener customizado (testes com stream espiã); produção usa File.OpenRead.</summary>
+    /// <summary>Injects a custom opener (tests with spy stream); production uses File.OpenRead.</summary>
     public Blake3Hasher(Func<FileEntry, Stream>? openReadOverride = null) =>
         _openRead = openReadOverride ?? (static entry => File.OpenRead(entry.Path));
 
@@ -69,13 +69,13 @@ public sealed class Blake3Hasher : IHasher
     }
 
     /// <summary>
-    /// Hash completo BLAKE3 por streaming (ADR-0005 §4; contratos.md IStreamSource):
-    /// abre o arquivo EXCLUSIVAMENTE pela fonte única de conteúdo e alimenta um
-    /// <see cref="Blake3.StreamingHasher"/> com buffers de 256 KiB emprestados do
-    /// <see cref="ArrayPool{T}"/> — o arquivo NUNCA é carregado inteiro em memória,
-    /// independentemente do tamanho. Mesmo gate de placeholder de
-    /// <see cref="IHasher.FullHash"/>: recusa antes de qualquer abertura/leitura.
-    /// Saída hexadecimal minúscula; determinística byte a byte.
+    /// Full BLAKE3 hash by streaming (ADR-0005 §4; contracts.md IStreamSource):
+    /// opens the file EXCLUSIVELY through the single content source and feeds a
+    /// <see cref="Blake3.StreamingHasher"/> with 256 KiB buffers borrowed from
+    /// <see cref="ArrayPool{T}"/> — the file is NEVER loaded entirely into memory,
+    /// regardless of size. Same placeholder gate as
+    /// <see cref="IHasher.FullHash"/>: refuses before any opening/reading.
+    /// Lowercase hexadecimal output; byte-by-byte deterministic.
     /// </summary>
     public static string FullHashBlake3(IStreamSource streams, FileEntry entry, CancellationToken ct)
     {
@@ -107,14 +107,14 @@ public sealed class Blake3Hasher : IHasher
     {
         if (entry.IsPlaceholder)
         {
-            // Recusa ANTES de qualquer abertura/leitura — zero bytes de placeholder lidos.
+            // Refuses BEFORE any opening/reading — zero placeholder bytes read.
             throw new PlaceholderReadException(entry.Path);
         }
     }
 
     /// <summary>
-    /// Núcleo da receita sobre stream já aberto pelo chamador. Interno para as streams
-    /// espiãs dos testes provarem segmento a segmento o padrão início+fim (HSH-01).
+    /// Recipe core over stream already opened by the caller. Internal so spy streams
+    /// in tests can prove segment-by-segment the start+end pattern (HSH-01).
     /// </summary>
     internal static string ComputeHash(Stream stream, long declaredSize, bool partial, CancellationToken ct)
     {
@@ -122,19 +122,19 @@ public sealed class Blake3Hasher : IHasher
 
         if (declaredSize == 0)
         {
-            // ADR-0005 §5: hash de zero bytes sem nenhuma leitura.
+            // ADR-0005 §5: zero-byte hash with no reading.
             return ToHex(hasher.Finalize());
         }
 
         if (!partial || declaredSize <= WholeFileLimitBytes)
         {
-            // Leitura sequencial única integral (parcial de arquivos pequenos e completo).
+            // Single integral sequential read (partial for small files and complete).
             PumpSequential(stream, hasher, ct);
         }
         else
         {
-            // Janela [0, 64 KiB) e depois [size − 64 KiB, size), nesta ordem, na MESMA
-            // abertura e no MESMO hasher — sem releitura de bytes (ADR-0005 §3).
+            // Window [0, 64 KiB) and then [size − 64 KiB, size), in that order, in the SAME
+            // opening and the SAME hasher — no re-reading of bytes (ADR-0005 §3).
             PumpWindow(stream, hasher, startOffset: 0, length: WindowBytes);
             PumpWindow(stream, hasher, startOffset: declaredSize - WindowBytes, length: WindowBytes);
         }
@@ -142,7 +142,7 @@ public sealed class Blake3Hasher : IHasher
         return ToHex(hasher.Finalize());
     }
 
-    /// <summary>Copia exatamente <paramref name="length"/> bytes do offset dado, validando EOF inesperado.</summary>
+    /// <summary>Copies exactly <paramref name="length"/> bytes from the given offset, validating unexpected EOF.</summary>
     private static void PumpWindow(Stream stream, Blake3.Hasher hasher, long startOffset, int length)
     {
         stream.Seek(startOffset, SeekOrigin.Begin);
@@ -158,8 +158,8 @@ public sealed class Blake3Hasher : IHasher
                 if (read <= 0)
                 {
                     throw new EndOfStreamException(
-                        $"EOF inesperado em offset {startOffset + (length - remaining)}: " +
-                        "arquivo menor que o size declarado no Level 0 (TOCTOU).");
+                        $"unexpected EOF at offset {startOffset + (length - remaining)}: " +
+                        "file smaller than the size declared at Level 0 (TOCTOU).");
                 }
 
                 hasher.Update(rented.AsSpan(0, read));
@@ -191,5 +191,5 @@ public sealed class Blake3Hasher : IHasher
     }
 
     private static string ToHex(Blake3.Hash hash) =>
-        Convert.ToHexString(hash.AsSpan()).ToLowerInvariant(); // hex minúscula (ADR-0005 §1)
+        Convert.ToHexString(hash.AsSpan()).ToLowerInvariant(); // lowercase hex (ADR-0005 §1)
 }

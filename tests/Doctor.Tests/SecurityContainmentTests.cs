@@ -5,46 +5,46 @@ using Doctor.Core;
 using Xunit;
 
 /// <summary>
-/// S11-6a (card t_218a0218) — SEG-01 e SEG-08 da matriz GATE 5
-/// (docs/security-audit-gate5.md §2; adendos T-12a/T-12b §4.1):
+/// S11-6a (card t_218a0218) — SEG-01 and SEG-08 from GATE 5 matrix
+/// (docs/security-audit-gate5.md §2; addenda T-12a/T-12b §4.1):
 ///
 /// SEG-01 — <see cref="Security_PathTraversal_HostileName_ContainedInRoot"/>
-/// (threat-model T-01, regra R2): contenção byte-a-byte pelo prefixo canônico da
-/// raiz ANTES de cada move/restore. Árvore com nome trailing dot/space (vetor \\?\),
-/// nome RLO U+202E e homóglifo cirílico passa por quarentena E restore; manifesto
-/// forjado com original_path fora da raiz é RECUSADO sem tocar nada; nenhum caminho
-/// fora da raiz é tocado na operação inteira.
+/// (threat-model T-01, rule R2): byte-by-byte containment by the canonical root prefix
+/// BEFORE each move/restore. Tree with trailing dot/space name (vector \\?\),
+/// RLO U+202E name and Cyrillic homoglyph go through quarantine AND restore; forged
+/// manifest with original_path outside root is REJECTED without touching anything; no path
+/// outside root is touched in the entire operation.
 ///
 /// SEG-08 — <see cref="Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack"/>
-/// (threat-model T-04, regras R4/R5; contrato R5): hook injeta troca de conteúdo
-/// ENTRE o hash pré-move e o move; afirma rollback executado, fonte de volta na
-/// origem, operação FALHA (nada declarado sucesso) e evidência auditable
-/// hash_pre_move != hash_post_move no manifesto parcial.
+/// (threat-model T-04, rules R4/R5; contract R5): hook injects content swap
+/// BETWEEN the pre-move hash and the move; asserts rollback executed, source back at
+/// original, operation FAILS (nothing declared success) and auditable evidence
+/// hash_pre_move != hash_post_move in the partial manifest.
 /// </summary>
 public sealed class SecurityContainmentTests : IDisposable
 {
-    private static readonly DateTimeOffset TimestampCongelado =
+    private static readonly DateTimeOffset FrozenTimestamp =
         new(2026, 8, 23, 12, 0, 0, TimeSpan.Zero);
 
-    private static readonly DateTime EntradaFixaMtime =
+    private static readonly DateTime FixedEntryMtime =
         new(2026, 8, 20, 10, 30, 0, DateTimeKind.Utc);
 
     private readonly string _root;
 
-    /// <summary>Diretório isca FORA da raiz: qualquer fuga de contenção toca estes bytes.</summary>
-    private readonly string _foraDaRaiz;
+    /// <summary>Honeypot directory OUTSIDE root: any containment escape touches these bytes.</summary>
+    private readonly string _outsideRoot;
 
     public SecurityContainmentTests()
     {
         _root = Path.Combine(Path.GetTempPath(), $"s116a-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_root);
-        _foraDaRaiz = Path.Combine(Path.GetTempPath(), $"s116a-fora-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(_foraDaRaiz);
+        _outsideRoot = Path.Combine(Path.GetTempPath(), $"s116a-outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_outsideRoot);
     }
 
     public void Dispose()
     {
-        foreach (var dir in new[] { _root, _foraDaRaiz })
+        foreach (var dir in new[] { _root, _outsideRoot })
         {
             try
             {
@@ -52,216 +52,216 @@ public sealed class SecurityContainmentTests : IDisposable
             }
             catch (IOException)
             {
-                // limpeza best-effort: tmp do SO recolhe depois
+                // best-effort cleanup: OS temp reclaims later
             }
         }
     }
 
     // ------------------------------------------------------------------
-    // SEG-01 (T-12a / R2): contenção byte-a-byte sob nomes hostis
+    // SEG-01 (T-12a / R2): byte-by-byte containment under hostile names
     // ------------------------------------------------------------------
     [Fact]
     public void Security_PathTraversal_HostileName_ContainedInRoot()
     {
-        // Vetores do T-01 criáveis no filesystem POSIX: trailing dot/space (o Win32
-        // sem \\?\ resolve como OUTRO arquivo), RLO U+202E (nome exibido engana) e
-        // homóglifo cirílico ('а' U+0430 ≠ 'a' latino).
-        var trailingDotSpace = CriarArquivo("evil.txt. ", Conteudo(0xE1));
-        var rlo = CriarArquivo("\u202Eexe.pdf", Conteudo(0xE2));
-        var homoglifo = CriarArquivo("\u0430rquivo.txt", Conteudo(0xE3));
-        var nomesHostis = new[] { trailingDotSpace, rlo, homoglifo };
+        // T-01 vectors creatable on POSIX filesystem: trailing dot/space (Win32
+        // without \\?\ resolves as DIFFERENT file), RLO U+202E (display name deceives) and
+        // Cyrillic homoglyph ('а' U+0430 ≠ 'a' latin).
+        var trailingDotSpace = CreateFile("evil.txt. ", Content(0xE1));
+        var rlo = CreateFile("\u202Eexe.pdf", Content(0xE2));
+        var homoglyph = CreateFile("\u0430rquivo.txt", Content(0xE3));
+        var hostileNames = new[] { trailingDotSpace, rlo, homoglyph };
 
-        // Isca fora da raiz: deve permanecer intoca durante TODA a operação.
-        var isca = Path.Combine(_foraDaRaiz, "isca.txt");
-        File.WriteAllBytes(isca, [0xCA, 0xFE]);
-        var iscaBytes = File.ReadAllBytes(isca);
-        var iscaMtime = File.GetLastWriteTimeUtc(isca);
+        // Honeypot outside root: must remain untouched during the ENTIRE operation.
+        var honeypot = Path.Combine(_outsideRoot, "honeypot.txt");
+        File.WriteAllBytes(honeypot, [0xCA, 0xFE]);
+        var honeypotBytes = File.ReadAllBytes(honeypot);
+        var honeypotMtime = File.GetLastWriteTimeUtc(honeypot);
 
         var svc = new QuarantineService();
 
-        // ---- ato 1: quarentena + restore executam pelos caminhos hostis ------------
-        var resultado = svc.Move(
-            nomesHostis.Select(c => new QuarantineItem(Entrada(c), "IDENTICAL_DUPLICATE", "KEEP_NEWEST")).ToArray(),
-            PlanoPadrao());
-        Assert.Equal(3, resultado.MovedPaths.Count);
+        // ---- act 1: quarantine + restore execute through hostile paths ------------
+        var result = svc.Move(
+            hostileNames.Select(c => new QuarantineItem(Entry(c), "IDENTICAL_DUPLICATE", "KEEP_NEWEST")).ToArray(),
+            DefaultPlan());
+        Assert.Equal(3, result.MovedPaths.Count);
 
-        var restauracao = svc.Restore(resultado.OperationId, _root);
-        Assert.Equal(3, restauracao.RestoredPaths.Count);
+        var restoration = svc.Restore(result.OperationId, _root);
+        Assert.Equal(3, restoration.RestoredPaths.Count);
 
-        // contenção byte-a-byte: todo caminho tocado começa pelo prefixo canônico
-        // da raiz (comparação Ordinal sobre forma plena, separador final garantido).
-        var prefixoRaiz = ComSeparadorFinal(Path.GetFullPath(_root));
+        // byte-by-byte containment: every touched path starts with the canonical root prefix
+        // (Ordinal comparison on full form, trailing separator guaranteed).
+        var rootPrefix = WithTrailingSeparator(Path.GetFullPath(_root));
         Assert.All(
-            restauracao.RestoredPaths.Concat(resultado.MovedPaths),
+            restoration.RestoredPaths.Concat(result.MovedPaths),
             c => Assert.True(
-                Path.GetFullPath(c).StartsWith(prefixoRaiz, StringComparison.Ordinal),
-                $"caminho tocado fora da raiz canônica: {c}"));
+                Path.GetFullPath(c).StartsWith(rootPrefix, StringComparison.Ordinal),
+                $"touched path outside canonical root: {c}"));
 
-        // nenhum caminho fora da raiz foi tocado: isca única, bytes e mtime intactos
-        Assert.Equal(new[] { isca }, Directory.GetFiles(_foraDaRaiz, "*", SearchOption.AllDirectories));
-        Assert.Equal(iscaBytes, File.ReadAllBytes(isca));
-        Assert.Equal(iscaMtime, File.GetLastWriteTimeUtc(isca));
+        // no path outside root was touched: honeypot intact, bytes and mtime unchanged
+        Assert.Equal(new[] { honeypot }, Directory.GetFiles(_outsideRoot, "*", SearchOption.AllDirectories));
+        Assert.Equal(honeypotBytes, File.ReadAllBytes(honeypot));
+        Assert.Equal(honeypotMtime, File.GetLastWriteTimeUtc(honeypot));
 
-        // nomes hostis preservados EXATAMENTE (T-01 mitigação (c): sem correção silenciosa)
-        Assert.All(nomesHostis, c => Assert.True(File.Exists(c), $"hostil não restaurado: {c}"));
-        using var json = JsonDocument.Parse(File.ReadAllBytes(resultado.ManifestPath));
-        var caminhosNoManifesto = json.RootElement.GetProperty("items")
+        // hostile names preserved EXACTLY (T-01 mitigation (c): no silent correction)
+        Assert.All(hostileNames, c => Assert.True(File.Exists(c), $"hostile not restored: {c}"));
+        using var json = JsonDocument.Parse(File.ReadAllBytes(result.ManifestPath));
+        var pathsInManifest = json.RootElement.GetProperty("items")
             .EnumerateArray()
             .Select(i => i.GetProperty("original_path").GetString())
             .ToArray();
         Assert.Equal(
-            nomesHostis.OrderBy(p => p, StringComparer.Ordinal).ToArray(),
-            caminhosNoManifesto);
+            hostileNames.OrderBy(p => p, StringComparer.Ordinal).ToArray(),
+            pathsInManifest);
 
-        // ---- ato 2: manifesto FORJADO com original_path fora da raiz é recusado ----
-        // A quarentena é metadado da própria ferramenta, mas o restore não confia em
-        // nada: destino fora do prefixo canônico ⇒ falha fechada ANTES de qualquer toque.
-        var vitima = CriarArquivo("docs/vitima.txt", Conteudo(0xE4));
-        var operacaoIsca = svc.Move(
-            [new QuarantineItem(Entrada(vitima), "REAL_CONFLICT", "KEEP_NEWEST")],
-            PlanoPadrao());
+        // ---- act 2: forged manifest with original_path outside root is rejected ----
+        // Quarantine is tool metadata itself, but restore trusts nothing:
+        // destination outside canonical prefix ⇒ fail-closed BEFORE any touch.
+        var victim = CreateFile("docs/victim.txt", Content(0xE4));
+        var honeypotOp = svc.Move(
+            [new QuarantineItem(Entry(victim), "REAL_CONFLICT", "KEEP_NEWEST")],
+            DefaultPlan());
 
-        var destinoForjado = Path.Combine(_foraDaRaiz, "fuga.txt");
-        ReescreverOriginalPath(operacaoIsca.ManifestPath, destinoForjado);
+        var forgedDestination = Path.Combine(_outsideRoot, "escape.txt");
+        RewriteOriginalPath(honeypotOp.ManifestPath, forgedDestination);
 
         Assert.Throws<Doctor.Core.QuarantineContainmentException>(
-            () => svc.Restore(operacaoIsca.OperationId, _root));
+            () => svc.Restore(honeypotOp.OperationId, _root));
 
-        // fail-closed: NADA escrito fora da raiz, payload permanece na quarentena
-        Assert.False(File.Exists(destinoForjado), "restore forjado escreveu fora da raiz");
-        Assert.True(File.Exists(PayloadUnico(operacaoIsca)), "payload sumiu sem rollback de leitura");
-        Assert.Equal(new[] { isca }, Directory.GetFiles(_foraDaRaiz, "*", SearchOption.AllDirectories));
+        // fail-closed: NOTHING written outside root, payload remains in quarantine
+        Assert.False(File.Exists(forgedDestination), "forged restore wrote outside root");
+        Assert.True(File.Exists(SinglePayload(honeypotOp)), "payload disappeared without read rollback");
+        Assert.Equal(new[] { honeypot }, Directory.GetFiles(_outsideRoot, "*", SearchOption.AllDirectories));
     }
 
     // ------------------------------------------------------------------
-    // SEG-08 (T-12b / R5): troca de conteúdo na janela hash→move ⇒ rollback
+    // SEG-08 (T-12b / R5): content swap in hash→move window ⇒ rollback
     // ------------------------------------------------------------------
     [Fact]
     public void Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack()
     {
-        var conteudoBom = Conteudo(0xB0);
-        var conteudoMau = Conteudo(0xD1);
-        var hashBom = Convert.ToHexString(Blake3.Hasher.Hash(conteudoBom).AsSpan()).ToLowerInvariant();
-        var hashMau = Convert.ToHexString(Blake3.Hasher.Hash(conteudoMau).AsSpan()).ToLowerInvariant();
-        Assert.NotEqual(hashBom, hashMau);
+        var goodContent = Content(0xB0);
+        var badContent = Content(0xD1);
+        var goodHash = Convert.ToHexString(Blake3.Hasher.Hash(goodContent).AsSpan()).ToLowerInvariant();
+        var badHash = Convert.ToHexString(Blake3.Hasher.Hash(badContent).AsSpan()).ToLowerInvariant();
+        Assert.NotEqual(goodHash, badHash);
 
-        var caminho = CriarArquivo("docs/relatorio.docx", conteudoBom);
-        var entrada = Entrada(caminho); // snapshot L0 capturado sobre o conteúdo BOM
+        var path = CreateFile("docs/report.docx", goodContent);
+        var entry = Entry(path); // L0 snapshot captured over GOOD content
 
-        // Hook da JANELA T-04: o hash pré-move lê via openReadOverride (cadeia do
-        // gate — conteúdo bom); o moveOverride troca o conteúdo no caminho ANTES do
-        // File.Move. A troca acontece UMA única vez — exatamente entre o hash
-        // pré-move e o move; o rollback passa pelo mesmo _move sem retrigar.
-        var trocou = false;
+        // T-04 WINDOW hook: the pre-move hash reads via openReadOverride (chain of
+        // the gate — good content); the moveOverride swaps content at the path BEFORE
+        // File.Move. The swap happens ONCE only — exactly between the pre-move hash
+        // and the move; the rollback goes through the same _move without re-triggering.
+        var swapped = false;
         var svc = new QuarantineService(
-            openReadOverride: path => path == caminho
-                ? new MemoryStream(conteudoBom)
-                : File.OpenRead(path),
-            moveOverride: (origem, destino) =>
+            openReadOverride: p => p == path
+                ? new MemoryStream(goodContent)
+                : File.OpenRead(p),
+            moveOverride: (source, destination) =>
             {
-                if (!trocou)
+                if (!swapped)
                 {
-                    trocou = true;
-                    Assert.Equal(caminho, origem);
-                    File.WriteAllBytes(caminho, conteudoMau); // troca na janela
+                    swapped = true;
+                    Assert.Equal(path, source);
+                    File.WriteAllBytes(path, badContent); // swap in the window
                 }
 
-                File.Move(origem, destino);
+                File.Move(source, destination);
             });
 
-        var excecao = Assert.Throws<QuarantineRollbackException>(() => svc.Move(
-            [new QuarantineItem(entrada, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
-            PlanoPadrao()));
+        var exception = Assert.Throws<QuarantineRollbackException>(() => svc.Move(
+            [new QuarantineItem(entry, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
+            DefaultPlan()));
 
-        Assert.Equal(caminho, excecao.OriginalPath);
+        Assert.Equal(path, exception.OriginalPath);
 
-        // rollback executado: a fonte existe DE VOLTA na origem (sem rollback o
-        // arquivo teria ficado na quarentena); os bytes presentes são exatamente os
-        // que foram movidos e devolvidos — prova do vaivém completo.
-        Assert.True(File.Exists(caminho));
-        Assert.Equal(conteudoMau, File.ReadAllBytes(caminho));
+        // rollback executed: source exists BACK at origin (without rollback the
+        // file would have stayed in quarantine); the bytes present are exactly those
+        // that were moved and returned — proof of complete round-trip.
+        Assert.True(File.Exists(path));
+        Assert.Equal(badContent, File.ReadAllBytes(path));
 
-        // nada declarado sucesso: nenhum diretório definitivo <op_id> foi publicado
-        var raizQuarentena = Path.Combine(_root, "ConflictDoctor", "quarantine");
-        string[] publicados = Directory.Exists(raizQuarentena)
-            ? Directory.GetDirectories(raizQuarentena)
+        // nothing declared success: no definitive <op_id> directory was published
+        var quarantineRoot = Path.Combine(_root, "ConflictDoctor", "quarantine");
+        string[] published = Directory.Exists(quarantineRoot)
+            ? Directory.GetDirectories(quarantineRoot)
                 .Where(d => !Path.GetFileName(d).StartsWith("staging-", StringComparison.Ordinal))
                 .ToArray()
             : [];
-        Assert.Empty(publicados);
+        Assert.Empty(published);
 
-        // evidência auditável no manifesto parcial: status FALHA +
-        // hash_pre_move ≠ hash_post_move registrados (contrato R5)
-        using var json = JsonDocument.Parse(File.ReadAllBytes(excecao.PartialManifestPath));
+        // auditable evidence in partial manifest: status FAILED +
+        // hash_pre_move ≠ hash_post_move recorded (contract R5)
+        using var json = JsonDocument.Parse(File.ReadAllBytes(exception.PartialManifestPath));
         Assert.Equal("failed", json.RootElement.GetProperty("status").GetString());
         var item = json.RootElement.GetProperty("items")[0];
-        Assert.Equal(caminho, item.GetProperty("original_path").GetString());
-        Assert.Equal(hashBom, item.GetProperty("hash_pre_move").GetString());
-        Assert.Equal(hashMau, item.GetProperty("hash_post_move").GetString());
+        Assert.Equal(path, item.GetProperty("original_path").GetString());
+        Assert.Equal(goodHash, item.GetProperty("hash_pre_move").GetString());
+        Assert.Equal(badHash, item.GetProperty("hash_post_move").GetString());
         Assert.NotEqual(
             item.GetProperty("hash_pre_move").GetString(),
             item.GetProperty("hash_post_move").GetString());
 
-        // a isca externa continua intoca
-        Assert.Empty(Directory.GetFiles(_foraDaRaiz, "*", SearchOption.AllDirectories));
+        // external honeypot remains untouched
+        Assert.Empty(Directory.GetFiles(_outsideRoot, "*", SearchOption.AllDirectories));
     }
 
     // ==================================================================
-    // infraestrutura do teste
+    // test infrastructure
     // ==================================================================
 
-    private QuarantinePlan PlanoPadrao() => new(_root, TimestampCongelado);
+    private QuarantinePlan DefaultPlan() => new(_root, FrozenTimestamp);
 
-    private static string ComSeparadorFinal(string diretorio) =>
-        diretorio.EndsWith(Path.DirectorySeparatorChar)
-            ? diretorio
-            : diretorio + Path.DirectorySeparatorChar;
+    private static string WithTrailingSeparator(string directory) =>
+        directory.EndsWith(Path.DirectorySeparatorChar)
+            ? directory
+            : directory + Path.DirectorySeparatorChar;
 
-    private static byte[] Conteudo(byte semente) =>
-        Enumerable.Range(0, 2048).Select(i => (byte)(semente + (i % 89))).ToArray();
+    private static byte[] Content(byte seed) =>
+        Enumerable.Range(0, 2048).Select(i => (byte)(seed + (i % 89))).ToArray();
 
-    private string CriarArquivo(string caminhoRelativo, byte[] conteudo)
+    private string CreateFile(string relativePath, byte[] content)
     {
-        var absoluto = Path.Combine(_root, caminhoRelativo);
-        Directory.CreateDirectory(Path.GetDirectoryName(absoluto)!);
-        File.WriteAllBytes(absoluto, conteudo);
-        File.SetLastWriteTimeUtc(absoluto, EntradaFixaMtime);
-        return absoluto;
+        var absolute = Path.Combine(_root, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolute)!);
+        File.WriteAllBytes(absolute, content);
+        File.SetLastWriteTimeUtc(absolute, FixedEntryMtime);
+        return absolute;
     }
 
-    private FileEntry Entrada(string caminho)
+    private FileEntry Entry(string path)
     {
-        var info = new FileInfo(caminho);
+        var info = new FileInfo(path);
         return new FileEntry
         {
-            Path = caminho,
+            Path = path,
             Size = info.Length,
             MtimeUtc = new DateTimeOffset(info.LastWriteTimeUtc),
             Attributes = FileAttributes.Normal,
             VolumeId = "s116a-volume",
-            FileId = caminho,
+            FileId = path,
         };
     }
 
-    private static void ReescreverOriginalPath(string manifestPath, string novoDestino)
+    private static void RewriteOriginalPath(string manifestPath, string newDestination)
     {
-        // Forja o manifesto trocando APENAS o original_path do primeiro item
-        // (simula o vetor do T-01: consumidor não pode confiar no metadado).
+        // Forges the manifest swapping ONLY the original_path of the first item
+        // (simulates T-01 vector: consumer cannot trust metadata).
         using var doc = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
-        var raiz = doc.RootElement;
+        var root = doc.RootElement;
 
-        var manifesto = new Dictionary<string, object?>();
-        foreach (var prop in raiz.EnumerateObject())
+        var manifest = new Dictionary<string, object?>();
+        foreach (var prop in root.EnumerateObject())
         {
             if (prop.Name != "items")
             {
-                manifesto[prop.Name] = prop.Value.Clone();
+                manifest[prop.Name] = prop.Value.Clone();
             }
         }
 
-        var itens = new List<Dictionary<string, object?>>();
-        var primeiro = true;
-        foreach (var item in raiz.GetProperty("items").EnumerateArray())
+        var items = new List<Dictionary<string, object?>>();
+        var first = true;
+        foreach (var item in root.GetProperty("items").EnumerateArray())
         {
             var dict = new Dictionary<string, object?>();
             foreach (var prop in item.EnumerateObject())
@@ -269,28 +269,28 @@ public sealed class SecurityContainmentTests : IDisposable
                 dict[prop.Name] = prop.Value.Clone();
             }
 
-            if (primeiro)
+            if (first)
             {
-                dict["original_path"] = novoDestino;
-                primeiro = false;
+                dict["original_path"] = newDestination;
+                first = false;
             }
 
-            itens.Add(dict);
+            items.Add(dict);
         }
 
-        manifesto["items"] = itens;
+        manifest["items"] = items;
         File.WriteAllBytes(
             manifestPath,
-            JsonSerializer.SerializeToUtf8Bytes(manifesto));
+            JsonSerializer.SerializeToUtf8Bytes(manifest));
     }
 
-    private static string PayloadUnico(QuarantineOperationResult movimento)
+    private static string SinglePayload(QuarantineOperationResult move)
     {
-        using var json = JsonDocument.Parse(File.ReadAllBytes(movimento.ManifestPath));
-        var relativo = json.RootElement.GetProperty("items")[0]
+        using var json = JsonDocument.Parse(File.ReadAllBytes(move.ManifestPath));
+        var relative = json.RootElement.GetProperty("items")[0]
             .GetProperty("quarantine_path").GetString()!;
         return Path.Combine(
-            movimento.QuarantineDirectory,
-            relativo.Replace('/', Path.DirectorySeparatorChar));
+            move.QuarantineDirectory,
+            relative.Replace('/', Path.DirectorySeparatorChar));
     }
 }

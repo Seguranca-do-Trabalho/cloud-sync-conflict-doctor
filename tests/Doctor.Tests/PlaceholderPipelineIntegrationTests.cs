@@ -4,39 +4,39 @@ using System.Security.Cryptography;
 using Doctor.Core;
 
 /// <summary>
-/// T09 (t_349dc2c0) — PLH-02 (docs/test-strategy.md §3.2): árvore FX-PLACEHOLDER em
-/// tmp com placeholders simulados via sidecar `.placeholder-meta.json` (convenção
-/// T04). Scan completo; placeholder_bytes_read == 0; conteúdo dos placeholders intacto
-/// byte a byte (sha256 antes == depois); Placeholders[] coerente com a enumeração.
+/// T09 (t_349dc2c0) — PLH-02 (docs/test-strategy.md §3.2): FX-PLACEHOLDER tree in
+/// tmp with simulated placeholders via `.placeholder-meta.json` sidecar (T04 convention).
+/// Complete scan; placeholder_bytes_read == 0; placeholder content intact
+/// byte-for-byte (sha256 before == after); Placeholders[] consistent with enumeration.
 /// </summary>
 public class PlaceholderPipelineIntegrationTests : IDisposable
 {
-    private readonly string _raiz;
+    private readonly string _root;
 
     public PlaceholderPipelineIntegrationTests()
     {
-        _raiz = Path.Combine(Path.GetTempPath(), "cdt09-fx-" + Guid.NewGuid().ToString("N"));
-        _ = Directory.CreateDirectory(_raiz);
+        _root = Path.Combine(Path.GetTempPath(), "cdt09-fx-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(_root);
     }
 
     public void Dispose()
     {
         try
         {
-            Directory.Delete(_raiz, recursive: true);
+            Directory.Delete(_root, recursive: true);
         }
         catch (IOException)
         {
         }
     }
 
-    /// <summary>Convenção T04: sidecar JSON marca o arquivo como placeholder simulado
-    /// com os atributos que só existem no Windows. O arquivo em si permanece um arquivo
-    /// regular do FS — o scan NUNCA deve abri-lo.</summary>
-    private static void MarcarComoPlaceholder(string caminhoArquivo, string motivo)
+    /// <summary>T04 convention: JSON sidecar marks the file as a simulated placeholder
+    /// with attributes that only exist on Windows. The file itself remains a regular
+    /// FS file — the scan must NEVER open it.</summary>
+    private static void MarkAsPlaceholder(string filePath, string reason)
     {
-        var sidecar = caminhoArquivo + ".placeholder-meta.json";
-        File.WriteAllText(sidecar, $"{{\"kind\":\"{motivo}\"}}");
+        var sidecar = filePath + ".placeholder-meta.json";
+        File.WriteAllText(sidecar, $"{{\"kind\":\"{reason}\"}}");
     }
 
     private static string Sha256(string path)
@@ -47,127 +47,127 @@ public class PlaceholderPipelineIntegrationTests : IDisposable
     }
 
     [Fact]
-    public void ArvoreMista_ScanCompleta_ZeroBytesDePlaceholder_ConteudoIntacto()
+    public void MixedTree_CompleteScan_ZeroPlaceholderBytes_ContentIntact()
     {
-        // ---- FX-PLACEHOLDER: normais + 4 motivos da SPEC §21 via sidecar + reparse real
-        var docs = Path.Combine(_raiz, "docs");
-        var morto = Path.Combine(_raiz, "arquivo morto");
+        // ---- FX-PLACEHOLDER: normals + 4 SPEC §21 reasons via sidecar + real reparse
+        var docs = Path.Combine(_root, "docs");
+        var dead = Path.Combine(_root, "dead file");
         _ = Directory.CreateDirectory(docs);
-        _ = Directory.CreateDirectory(morto);
+        _ = Directory.CreateDirectory(dead);
 
         var normalA = Path.Combine(docs, "normal-a.txt");
-        var normalB = Path.Combine(docs, "normal-b.txt"); // duplicata idêntica de normal-a
-        var unico = Path.Combine(_raiz, "unico.dat");
-        var offline = Path.Combine(morto, "relatorio antigo.docx");
-        var roo = Path.Combine(docs, "contrato.pdf");
-        var roda = Path.Combine(docs, "video-aula.mp4");
+        var normalB = Path.Combine(docs, "normal-b.txt"); // identical duplicate of normal-a
+        var unique = Path.Combine(_root, "unique.dat");
+        var offline = Path.Combine(dead, "old report.docx");
+        var roo = Path.Combine(docs, "contract.pdf");
+        var roda = Path.Combine(docs, "video-lesson.mp4");
 
-        var conteudoNormal = "conteudo normal compartilhado pelas duas copias"u8.ToArray();
-        File.WriteAllBytes(normalA, conteudoNormal);
-        File.WriteAllBytes(normalB, conteudoNormal);
-        File.WriteAllBytes(unico, "arquivo sem par"u8.ToArray());
+        var normalContent = "normal content shared by both copies"u8.ToArray();
+        File.WriteAllBytes(normalA, normalContent);
+        File.WriteAllBytes(normalB, normalContent);
+        File.WriteAllBytes(unique, "file without pair"u8.ToArray());
 
-        var offlineBytes = new byte[96 * 1024]; // >0 para o teste provar zero leitura
+        var offlineBytes = new byte[96 * 1024]; // >0 so test proves zero reads
         RandomNumberGenerator.Fill(offlineBytes);
         File.WriteAllBytes(offline, offlineBytes);
         File.WriteAllBytes(roo, new byte[32 * 1024]);
         File.WriteAllBytes(roda, new byte[160 * 1024]);
-        MarcarComoPlaceholder(offline, "offline");
-        MarcarComoPlaceholder(roo, "recall_on_open");
-        MarcarComoPlaceholder(roda, "recall_on_data_access");
+        MarkAsPlaceholder(offline, "offline");
+        MarkAsPlaceholder(roo, "recall_on_open");
+        MarkAsPlaceholder(roda, "recall_on_data_access");
 
-        // Reparse REAL (symlink de arquivo) — marcado pelo FS, sem sidecar.
-        File.CreateSymbolicLink(Path.Combine(_raiz, "atalho.txt"), normalA);
+        // REAL reparse (file symlink) — marked by FS, no sidecar.
+        File.CreateSymbolicLink(Path.Combine(_root, "shortcut.txt"), normalA);
 
-        // Hashes ANTES do scan (prova de não-destruição byte a byte).
-        var hashOfflineAntes = Sha256(offline);
-        var hashRooAntes = Sha256(roo);
-        var hashRodaAntes = Sha256(roda);
+        // Hashes BEFORE scan (proof of no byte-for-byte destruction).
+        var offlineHashBefore = Sha256(offline);
+        var rooHashBefore = Sha256(roo);
+        var rodaHashBefore = Sha256(roda);
 
-        // ---- SCAN (pipeline de enumeradores: físico → ordenado → convenção T04)
-        var resultado = new SidecarPlaceholderEnumerator(
+        // ---- SCAN (enumerator pipeline: physical → ordered → T04 convention)
+        var result = new SidecarPlaceholderEnumerator(
                 new OrderedFileEnumerator(new CrossPlatformEnumerator()))
-            .Enumerate(_raiz, CancellationToken.None);
+            .Enumerate(_root, CancellationToken.None);
 
-        var arquivos = resultado.Files;
-        var porCaminho = arquivos.ToDictionary(f => f.Path, f => f);
+        var files = result.Files;
+        var byPath = files.ToDictionary(f => f.Path, f => f);
 
-        // Sidecar marca os três; symlink é marcado pela origem.
-        Assert.True(porCaminho[offline].IsPlaceholder);
-        Assert.True(porCaminho[roo].IsPlaceholder);
-        Assert.True(porCaminho[roda].IsPlaceholder);
-        Assert.True(porCaminho[Path.Combine(_raiz, "atalho.txt")].IsPlaceholder);
+        // Sidecar marks the three; symlink is marked by origin.
+        Assert.True(byPath[offline].IsPlaceholder);
+        Assert.True(byPath[roo].IsPlaceholder);
+        Assert.True(byPath[roda].IsPlaceholder);
+        Assert.True(byPath[Path.Combine(_root, "shortcut.txt")].IsPlaceholder);
 
-        // Normais continuam normais.
-        Assert.False(porCaminho[normalA].IsPlaceholder);
-        Assert.False(porCaminho[unico].IsPlaceholder);
+        // Normals remain normal.
+        Assert.False(byPath[normalA].IsPlaceholder);
+        Assert.False(byPath[unique].IsPlaceholder);
 
-        // ---- Conteúdo dos placeholders intacto byte a byte
-        Assert.Equal(hashOfflineAntes, Sha256(offline));
-        Assert.Equal(hashRooAntes, Sha256(roo));
-        Assert.Equal(hashRodaAntes, Sha256(roda));
+        // ---- Placeholder content intact byte-for-byte
+        Assert.Equal(offlineHashBefore, Sha256(offline));
+        Assert.Equal(rooHashBefore, Sha256(roo));
+        Assert.Equal(rodaHashBefore, Sha256(roda));
 
-        // ---- Telemetria: contagem e invariante absoluta (SPEC §21)
-        Assert.Equal(arquivos.Count, resultado.Telemetry.FilesEnumerated);
-        Assert.Equal(4, resultado.Telemetry.FilesPlaceholder);
-        Assert.Equal(0, resultado.Telemetry.PlaceholderBytesRead);
+        // ---- Telemetry: count and absolute invariant (SPEC §21)
+        Assert.Equal(files.Count, result.Telemetry.FilesEnumerated);
+        Assert.Equal(4, result.Telemetry.FilesPlaceholder);
+        Assert.Equal(0, result.Telemetry.PlaceholderBytesRead);
 
-        // ---- Placeholders[] conforme schema v1 §6.3 (ordem por bytes de caminho)
-        var registros = PlaceholderReport.Records(arquivos);
-        Assert.Equal(4, registros.Count);
+        // ---- Placeholders[] per schema v1 §6.3 (order by path bytes)
+        var records = PlaceholderReport.Records(files);
+        Assert.Equal(4, records.Count);
         Assert.Equal(
-            registros.Select(r => r.Path).ToArray(),
-            registros.Select(r => r.Path).OrderBy(p => p, StringComparer.Ordinal).ToArray());
-        Assert.Equal("reparse_point", registros.Single(r => r.Path.EndsWith("atalho.txt", StringComparison.Ordinal)).Kinds.Single());
-        Assert.Equal("offline", registros.Single(r => r.Path == offline).Kinds.Single());
-        Assert.Equal("recall_on_open", registros.Single(r => r.Path == roo).Kinds.Single());
-        Assert.Equal("recall_on_data_access", registros.Single(r => r.Path == roda).Kinds.Single());
+            records.Select(r => r.Path).ToArray(),
+            records.Select(r => r.Path).OrderBy(p => p, StringComparer.Ordinal).ToArray());
+        Assert.Equal("reparse_point", records.Single(r => r.Path.EndsWith("shortcut.txt", StringComparison.Ordinal)).Kinds.Single());
+        Assert.Equal("offline", records.Single(r => r.Path == offline).Kinds.Single());
+        Assert.Equal("recall_on_open", records.Single(r => r.Path == roo).Kinds.Single());
+        Assert.Equal("recall_on_data_access", records.Single(r => r.Path == roda).Kinds.Single());
 
-        // ---- Gate no hasher: nenhum placeholder chega ao conteúdo (PLH-01 na prática).
-        // Qualquer chamada sobre placeholder explode; normais hasham normalmente.
-        var fonte = new CountingStreamSource();
-        foreach (var f in arquivos.Where(f => !f.IsPlaceholder))
+        // ---- Gate on hasher: no placeholder reaches content (PLH-01 in practice).
+        // Any call on placeholder explodes; normals hash normally.
+        var source = new CountingStreamSource();
+        foreach (var f in files.Where(f => !f.IsPlaceholder))
         {
-            fonte.Register(f.Path, File.ReadAllBytes(f.Path));
+            source.Register(f.Path, File.ReadAllBytes(f.Path));
         }
 
-        var hasher = new PlaceholderGuardedHasher(CountingHasher.Using(fonte));
+        var hasher = new PlaceholderGuardedHasher(CountingHasher.Using(source));
 
-        foreach (var placeholder in arquivos.Where(f => f.IsPlaceholder))
+        foreach (var placeholder in files.Where(f => f.IsPlaceholder))
         {
             Assert.Throws<PlaceholderReadException>(() => hasher.PartialHash(placeholder));
             Assert.Throws<PlaceholderReadException>(() => hasher.FullHash(placeholder));
         }
 
-        _ = hasher.PartialHash(porCaminho[normalA]); // normais passam pelo gate
+        _ = hasher.PartialHash(byPath[normalA]); // normals pass through gate
 
-        // Nenhum stream foi aberto sobre qualquer placeholder (dupla evidência PLH-01).
-        foreach (var placeholder in arquivos.Where(f => f.IsPlaceholder))
+        // No stream was opened on any placeholder (double PLH-01 evidence).
+        foreach (var placeholder in files.Where(f => f.IsPlaceholder))
         {
-            Assert.Equal(0, fonte.OpenCount(placeholder.Path));
-            Assert.Equal(0, fonte.BytesRead(placeholder.Path));
+            Assert.Equal(0, source.OpenCount(placeholder.Path));
+            Assert.Equal(0, source.BytesRead(placeholder.Path));
         }
     }
 
     [Fact]
-    public void ScanDeArvoreSoComPlaceholders_NaoLeNada_EListaTodos()
+    public void ScanOfTreeWithOnlyPlaceholders_ReadsNothing_ListsAll()
     {
-        var p1 = Path.Combine(_raiz, "so-offline.bin");
-        var p2 = Path.Combine(_raiz, "so-roda.bin");
+        var p1 = Path.Combine(_root, "only-offline.bin");
+        var p2 = Path.Combine(_root, "only-roda.bin");
         File.WriteAllBytes(p1, new byte[4096]);
         File.WriteAllBytes(p2, new byte[8192]);
-        MarcarComoPlaceholder(p1, "offline");
-        MarcarComoPlaceholder(p2, "recall_on_data_access");
+        MarkAsPlaceholder(p1, "offline");
+        MarkAsPlaceholder(p2, "recall_on_data_access");
 
-        var resultado = new SidecarPlaceholderEnumerator(
+        var result = new SidecarPlaceholderEnumerator(
                 new OrderedFileEnumerator(new CrossPlatformEnumerator()))
-            .Enumerate(_raiz, CancellationToken.None);
+            .Enumerate(_root, CancellationToken.None);
 
-        Assert.Equal(2, resultado.Telemetry.FilesEnumerated); // sidecars não contam
-        Assert.Equal(2, resultado.Telemetry.FilesPlaceholder);
-        Assert.Equal(0, resultado.Telemetry.FilesSkipped);
-        Assert.Equal(0, resultado.Telemetry.FilesPartialHashed);
-        Assert.Equal(0, resultado.Telemetry.PlaceholderBytesRead);
-        Assert.Equal(2, PlaceholderReport.Records(resultado.Files).Count);
+        Assert.Equal(2, result.Telemetry.FilesEnumerated); // sidecars don't count
+        Assert.Equal(2, result.Telemetry.FilesPlaceholder);
+        Assert.Equal(0, result.Telemetry.FilesSkipped);
+        Assert.Equal(0, result.Telemetry.FilesPartialHashed);
+        Assert.Equal(0, result.Telemetry.PlaceholderBytesRead);
+        Assert.Equal(2, PlaceholderReport.Records(result.Files).Count);
     }
 }

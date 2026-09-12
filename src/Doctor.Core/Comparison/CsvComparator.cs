@@ -1,28 +1,28 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Comparador de CSV (SPEC §16 CSV; ADR-0011 item 2; contratos.md
-/// IDocumentComparator; decisões do orquestrador no card T24/t_f37457ba). Parsing
-/// subconjunto RFC4180: campos entre aspas duplas, aspa escapada ""; delimitador
-/// detectado por contagem na PRIMEIRA linha não-vazia de cada arquivo entre
-/// ',' ';' '\t'; delimitadores DIFERENTES entre os arquivos ⇒ diferença
-/// estrutural: TODAS as linhas em regiões <see cref="RegionKind.Changed"/>. Sem
-/// inferência de header. Sem reordenação de linhas — ordem é significado.
+/// CSV comparator (SPEC §16 CSV; ADR-0011 item 2; contracts.md
+/// IDocumentComparator; orchestrator decisions in card T24/t_f37457ba). Subset
+/// RFC4180 parsing: double-quoted fields, escaped quote ""; delimiter
+/// detected by counting in the FIRST non-empty line of each file among
+/// ',' ';' '\t'; DIFFERENT delimiters between files ⇒ structural difference:
+/// ALL lines in <see cref="RegionKind.Changed"/> regions. No
+/// header inference. No line reordering — order is meaning.
 ///
-/// Alinhamento por <see cref="LcsDiff"/> sobre a LINHA CRUA normalizada; par
-/// <see cref="RegionKind.Changed"/> ⇒ comparação célula a célula: células iguais
-/// pós-parse ⇒ região VOLTA a <see cref="RegionKind.Equal"/> (aspas redundantes
-/// não são diferença semântica); número de células diferente ou alguma célula
-/// divergente ⇒ permanece <see cref="RegionKind.Changed"/> na linha inteira
-/// (nunca região sub-linha). Determinismo byte-a-byte herdado do motor; sem
-/// campo de tempo.
+/// Alignment by <see cref="LcsDiff"/> over the NORMALIZED raw line; Changed pair
+/// ⇒ cell-by-cell comparison: cells equal
+/// post-parse ⇒ region reverts to <see cref="RegionKind.Equal"/> (redundant quotes
+/// are not a semantic difference); different cell count or any divergent
+/// cell ⇒ remains <see cref="RegionKind.Changed"/> for the entire line
+/// (never sub-line region). Byte-by-byte determinism inherited from the engine; no
+/// time field.
 ///
-/// Gate herdado (ADR-0011 item 4): placeholder ⇒ <see cref="PlaceholderReadException"/>
-/// ANTES de qualquer abertura — zero bytes lidos de placeholder.
+/// Inherited gate (ADR-0011 item 4): placeholder ⇒ <see cref="PlaceholderReadException"/>
+/// BEFORE any opening — zero placeholder bytes read.
 /// </summary>
 public sealed class CsvComparator : IDocumentComparator
 {
-    private static readonly char[] DelimitadoresCandidatos = { ',', ';', '\t' };
+    private static readonly char[] CandidateDelimiters = { ',', ';', '\t' };
 
     /// <inheritdoc cref="IDocumentComparator.Compare"/>
     public ComparisonResult Compare(FileEntry left, FileEntry right, CancellationToken ct)
@@ -30,30 +30,30 @@ public sealed class CsvComparator : IDocumentComparator
         GatePlaceholder(left);
         GatePlaceholder(right);
 
-        var linhasLeft = LerLinhasNormalizadas(left.Path);
-        var linhasRight = LerLinhasNormalizadas(right.Path);
-        char delimLeft = DetectarDelimitador(linhasLeft);
-        char delimRight = DetectarDelimitador(linhasRight);
+        var leftLines = ReadNormalizedLines(left.Path);
+        var rightLines = ReadNormalizedLines(right.Path);
+        char delimLeft = DetectDelimiter(leftLines);
+        char delimRight = DetectDelimiter(rightLines);
 
-        List<DiffRegion> regioes;
+        List<DiffRegion> regions;
         if (delimLeft != delimRight)
         {
-            // Diferença estrutural: nenhuma linha pode casar — todos os documentos
-            // inteiros viram UMA região Changed.
-            regioes =
-                linhasLeft.Count + linhasRight.Count > 0
-                    ? [new DiffRegion(RegionKind.Changed, 0, linhasLeft.Count, 0, linhasRight.Count)]
+            // Structural difference: no line can match — entire documents
+            // become a single Changed region.
+            regions =
+                leftLines.Count + rightLines.Count > 0
+                    ? [new DiffRegion(RegionKind.Changed, 0, leftLines.Count, 0, rightLines.Count)]
                     : [];
         }
         else
         {
-            var cruas = LcsDiff.Diff(linhasLeft, linhasRight);
-            regioes = RefinarParesChanged(cruas, linhasLeft, linhasRight, delimLeft);
+            var raw = LcsDiff.Diff(leftLines, rightLines);
+            regions = RefineChangedPairs(raw, leftLines, rightLines, delimLeft);
         }
 
-        bool iguais = regioes.Count == 0
-            || regioes.All(r => r.Kind == RegionKind.Equal);
-        return new ComparisonResult("csv", iguais, regioes);
+        bool equal = regions.Count == 0
+            || regions.All(r => r.Kind == RegionKind.Equal);
+        return new ComparisonResult("csv", equal, regions);
     }
 
     private static void GatePlaceholder(FileEntry entry)
@@ -65,202 +65,202 @@ public sealed class CsvComparator : IDocumentComparator
     }
 
     /// <summary>
-    /// Para cada par Changed cru, compara as células pós-parse 1:1: se TODAS as
-    /// linhas pareadas têm as mesmas células, a região volta a Equal (aspas e
-    /// delimitadores são sintaxe); caso contrário, segue Changed na linha
-    /// inteira. Regiões Added/Removed/Equal passam intactas.
+    /// For each raw Changed pair, compares post-parse cells 1:1: if ALL
+    /// paired lines have the same cells, the region reverts to Equal (quotes and
+    /// delimiters are syntax); otherwise, stays Changed for the entire
+    /// line. Added/Removed/Equal regions pass through untouched.
     /// </summary>
-    private static List<DiffRegion> RefinarParesChanged(
-        List<DiffRegion> regioes,
-        List<string> linhasLeft,
-        List<string> linhasRight,
-        char delimitador)
+    private static List<DiffRegion> RefineChangedPairs(
+        List<DiffRegion> regions,
+        List<string> leftLines,
+        List<string> rightLines,
+        char delimiter)
     {
-        var saida = new List<DiffRegion>(regioes.Count);
-        foreach (var regiao in regioes)
+        var output = new List<DiffRegion>(regions.Count);
+        foreach (var region in regions)
         {
-            if (regiao.Kind != RegionKind.Changed)
+            if (region.Kind != RegionKind.Changed)
             {
-                saida.Add(regiao);
+                output.Add(region);
                 continue;
             }
 
-            bool paresEquivalentes = true;
-            int n = Math.Min(regiao.LeftCount, regiao.RightCount);
-            for (int k = 0; k < n && paresEquivalentes; k++)
+            bool pairsEquivalent = true;
+            int n = Math.Min(region.LeftCount, region.RightCount);
+            for (int k = 0; k < n && pairsEquivalent; k++)
             {
-                var celulasL = DividirEmCelulas(linhasLeft[regiao.LeftStart + k], delimitador);
-                var celulasR = DividirEmCelulas(linhasRight[regiao.RightStart + k], delimitador);
-                if (celulasL.Count != celulasR.Count)
+                var cellsL = SplitIntoCells(leftLines[region.LeftStart + k], delimiter);
+                var cellsR = SplitIntoCells(rightLines[region.RightStart + k], delimiter);
+                if (cellsL.Count != cellsR.Count)
                 {
-                    paresEquivalentes = false;
+                    pairsEquivalent = false;
                     break;
                 }
 
-                for (int c = 0; c < celulasL.Count; c++)
+                for (int c = 0; c < cellsL.Count; c++)
                 {
-                    if (!string.Equals(celulasL[c], celulasR[c], StringComparison.Ordinal))
+                    if (!string.Equals(cellsL[c], cellsR[c], StringComparison.Ordinal))
                     {
-                        paresEquivalentes = false;
+                        pairsEquivalent = false;
                         break;
                     }
                 }
             }
 
-            saida.Add(paresEquivalentes && n > 0
-                ? new DiffRegion(RegionKind.Equal, regiao.LeftStart, regiao.LeftCount, regiao.RightStart, regiao.RightCount)
-                : regiao);
+            output.Add(pairsEquivalent && n > 0
+                ? new DiffRegion(RegionKind.Equal, region.LeftStart, region.LeftCount, region.RightStart, region.RightCount)
+                : region);
         }
 
-        return saida;
+        return output;
     }
 
     /// <summary>
-    /// Conta ocorrências de cada candidato na primeira linha NÃO-VAZIA e escolhe o
-    /// mais frequente; empate resolvido pela ordem fixa ',' ';' '\t'; nenhum
-    /// presente ou arquivo sem linha não-vazia ⇒ ','. Linha vazia no início não
-    /// derruba a contagem para zero.
+    /// Counts occurrences of each candidate in the first NON-EMPTY line and picks the
+    /// most frequent; ties resolved by fixed order ',' ';' '\t'; none
+    /// present or file with no non-empty line ⇒ ','. Empty line at the start does not
+    /// drop the count to zero.
     /// </summary>
-    private static char DetectarDelimitador(List<string> linhas)
+    private static char DetectDelimiter(List<string> lines)
     {
-        foreach (var linha in linhas)
+        foreach (var line in lines)
         {
-            if (linha.Length == 0)
+            if (line.Length == 0)
             {
                 continue;
             }
 
-            char melhor = DelimitadoresCandidatos[0];
-            int melhorContagem = -1;
-            foreach (var candidato in DelimitadoresCandidatos)
+            char best = CandidateDelimiters[0];
+            int bestCount = -1;
+            foreach (var candidate in CandidateDelimiters)
             {
-                int contagem = ContarOcorrenciasForaDeAspas(linha, candidato);
-                if (contagem > melhorContagem)
+                int count = CountOccurrencesOutsideQuotes(line, candidate);
+                if (count > bestCount)
                 {
-                    melhor = candidato;
-                    melhorContagem = contagem;
+                    best = candidate;
+                    bestCount = count;
                 }
             }
 
-            return melhor;
+            return best;
         }
 
         return ',';
     }
 
-    /// <summary>Número de ocorrências de <paramref name="c"/> fora de campos citados.</summary>
-    private static int ContarOcorrenciasForaDeAspas(string linha, char c)
+    /// <summary>Number of occurrences of <paramref name="c"/> outside quoted fields.</summary>
+    private static int CountOccurrencesOutsideQuotes(string line, char c)
     {
-        int contagem = 0;
-        bool dentro = false;
-        for (int i = 0; i < linha.Length; i++)
+        int count = 0;
+        bool inside = false;
+        for (int i = 0; i < line.Length; i++)
         {
-            char ch = linha[i];
+            char ch = line[i];
             if (ch == '"')
             {
-                if (dentro && i + 1 < linha.Length && linha[i + 1] == '"')
+                if (inside && i + 1 < line.Length && line[i + 1] == '"')
                 {
-                    i++; // "" é aspa escapada dentro de campo citado
+                    i++; // "" is escaped quote inside quoted field
                 }
                 else
                 {
-                    dentro = !dentro;
+                    inside = !inside;
                 }
             }
-            else if (ch == c && !dentro)
+            else if (ch == c && !inside)
             {
-                contagem++;
+                count++;
             }
         }
 
-        return contagem;
+        return count;
     }
 
     /// <summary>
-    /// Divide uma linha crua em células (subconjunto RFC4180): fora de aspas o
-    /// delimitador separa campos; dentro de campo citado o delimitador é literal
-    /// e "" vira aspa simples. Aspas externas são removidas.
+    /// Splits a raw line into cells (RFC4180 subset): outside quotes the
+    /// delimiter separates fields; inside a quoted field the delimiter is literal
+    /// and "" becomes a single quote. Outer quotes are removed.
     /// </summary>
-    private static List<string> DividirEmCelulas(string linha, char delimitador)
+    private static List<string> SplitIntoCells(string line, char delimiter)
     {
-        var celulas = new List<string>();
-        var atual = new System.Text.StringBuilder();
-        bool dentro = false;
-        bool campoCitado = false;
-        for (int i = 0; i < linha.Length; i++)
+        var cells = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inside = false;
+        bool quotedField = false;
+        for (int i = 0; i < line.Length; i++)
         {
-            char ch = linha[i];
+            char ch = line[i];
             if (ch == '"')
             {
-                if (!dentro && atual.Length == 0 && !campoCitado)
+                if (!inside && current.Length == 0 && !quotedField)
                 {
-                    // abre campo citado no início do campo
-                    dentro = true;
-                    campoCitado = true;
+                    // opens quoted field at field start
+                    inside = true;
+                    quotedField = true;
                 }
-                else if (dentro && i + 1 < linha.Length && linha[i + 1] == '"')
+                else if (inside && i + 1 < line.Length && line[i + 1] == '"')
                 {
-                    atual.Append('"');
+                    current.Append('"');
                     i++; // "" → "
                 }
-                else if (dentro)
+                else if (inside)
                 {
-                    dentro = false; // fecha campo citado
+                    inside = false; // closes quoted field
                 }
                 else
                 {
-                    atual.Append('"'); // aspa literal fora de campo citado
+                    current.Append('"'); // literal quote outside quoted field
                 }
             }
-            else if (ch == delimitador && !dentro)
+            else if (ch == delimiter && !inside)
             {
-                celulas.Add(atual.ToString());
-                atual.Clear();
-                campoCitado = false;
+                cells.Add(current.ToString());
+                current.Clear();
+                quotedField = false;
             }
             else
             {
-                atual.Append(ch);
+                current.Append(ch);
             }
         }
 
-        celulas.Add(atual.ToString());
-        return celulas;
+        cells.Add(current.ToString());
+        return cells;
     }
 
-    /// <summary>Lê o arquivo como UTF-8, remove BOM se presente e divide em linhas com fim LF (sem trim).</summary>
-    private static List<string> LerLinhasNormalizadas(string path)
+    /// <summary>Reads the file as UTF-8, removes BOM if present and splits into LF-ended lines (no trim).</summary>
+    private static List<string> ReadNormalizedLines(string path)
     {
         using var reader = new StreamReader(path);
-        var texto = reader.ReadToEnd();
-        if (texto.Length > 0 && texto[0] == '\uFEFF')
+        var text = reader.ReadToEnd();
+        if (text.Length > 0 && text[0] == '\uFEFF')
         {
-            texto = texto[1..];
+            text = text[1..];
         }
 
-        texto = texto.Replace("\r\n", "\n", StringComparison.Ordinal);
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        if (texto.Length == 0)
+        if (text.Length == 0)
         {
             return [];
         }
 
-        var linhas = new List<string>();
-        int inicio = 0;
-        for (int i = 0; i < texto.Length; i++)
+        var lines = new List<string>();
+        int start = 0;
+        for (int i = 0; i < text.Length; i++)
         {
-            if (texto[i] == '\n')
+            if (text[i] == '\n')
             {
-                linhas.Add(texto[inicio..i]);
-                inicio = i + 1;
+                lines.Add(text[start..i]);
+                start = i + 1;
             }
         }
 
-        if (inicio < texto.Length)
+        if (start < text.Length)
         {
-            linhas.Add(texto[inicio..]);
+            lines.Add(text[start..]);
         }
 
-        return linhas;
+        return lines;
     }
 }

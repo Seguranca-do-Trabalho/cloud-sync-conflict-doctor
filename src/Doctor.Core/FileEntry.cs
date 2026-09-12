@@ -1,12 +1,12 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Metadados coletados no Level 0 (SPEC §5). Imutável após criação.
-/// Contrato: docs/contratos.md. VolumeId/FileId alimentam a chave lógica do cache (SPEC §12).
+/// Metadata collected at Level 0 (SPEC §5). Immutable after creation.
+/// Contract: docs/contracts.md. VolumeId/FileId feed the cache logical key (SPEC §12).
 /// </summary>
 public sealed record FileEntry
 {
-    /// <summary>Caminho completo normalizado.</summary>
+    /// <summary>Full normalized path.</summary>
     public required string Path { get; init; }
 
     public required long Size { get; init; }
@@ -15,38 +15,38 @@ public sealed record FileEntry
 
     public required System.IO.FileAttributes Attributes { get; init; }
 
-    /// <summary>Identificador estável do volume (fonte do par (volume_id, file_id) do cache).</summary>
+    /// <summary>Stable volume identifier (source of the (volume_id, file_id) pair in the cache).</summary>
     public required string VolumeId { get; init; }
 
-    /// <summary>NTFS file ID / inode equivalente — nunca o caminho (SPEC §12).</summary>
+    /// <summary>NTFS file ID / equivalent inode — never the path (SPEC §12).</summary>
     public required string FileId { get; init; }
 
-    /// <summary>Verdadeiro se NUNCA se pode abrir o conteúdo (SPEC §6). Marcado pelo enumerador ordenado.</summary>
+    /// <summary>True if the content can NEVER be opened (SPEC §6). Marked by the ordered enumerator.</summary>
     public bool IsPlaceholder { get; init; }
 
-    /// <summary>Motivo da marcação de placeholder; null quando não é placeholder.</summary>
+    /// <summary>Reason for the placeholder marking; null when not a placeholder.</summary>
     public PlaceholderKind? PlaceholderKind { get; init; }
 
     /// <summary>
-    /// Verdadeiro se a entrada carrega reparse point (junction, symlink, mount point —
-    /// análogo POSIX incluído). Marcada pelo enumerador ordenado via <see cref="ReparsePolicy"/>;
-    /// marcação da origem (enumerador físico) é autoridade máxima e nunca é apagada.
+    /// True if the entry carries a reparse point (junction, symlink, mount point —
+    /// POSIX analogue included). Marked by the ordered enumerator via <see cref="ReparsePolicy"/>;
+    /// origin marking (physical enumerator) is the highest authority and is never erased.
     /// </summary>
     public bool IsReparsePoint { get; init; }
 
     /// <summary>
-    /// Marcador estrutural de caracteres de controle bidi no caminho (D5 do card
-    /// S11-1; T-01/R12). O NOME nunca é mutado para "consertar" nada: a flag expõe
-    /// o risco e a renderização/escape cabe ao EPIC 10 (R12). Derivada SEMPRE do
-    /// próprio <see cref="Path"/> via <see cref="PathCanonical.HasBidiControlChars"/> —
-    /// propriedade calculada, impossível dessincronizar do nome.
+    /// Structural marker for bidi control characters in the path (D5 of card
+    /// S11-1; T-01/R12). The NAME is never mutated to "fix" anything: the flag exposes
+    /// the risk and the rendering/escaping is left to EPIC 10 (R12). Always derived from
+    /// the <see cref="Path"/> itself via <see cref="PathCanonical.HasBidiControlChars"/> —
+    /// computed property, impossible to desynchronize from the name.
     /// </summary>
     public bool HasBidiControlChars => PathCanonical.HasBidiControlChars(Path);
 
     /// <summary>
-    /// Status de estabilidade do arquivo (threat-model T-05, regra R4).
-    /// Stable = metadados conferidos; Unstable = divergência detectada,
-    /// excluído de decisões de igualdade e do cache.
+    /// File stability status (threat-model T-05, rule R4).
+    /// Stable = metadata verified before and after read; Unstable = divergence detected,
+    /// excluded from equality decisions and from the cache.
     /// </summary>
     public FileStatus Status { get; init; } = FileStatus.Stable;
 }

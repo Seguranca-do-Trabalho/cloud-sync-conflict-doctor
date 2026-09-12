@@ -4,11 +4,11 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T23 (t_f706caaa) — WindowsNativeEnumerator: testes de equivalência, estabilidade
-/// de FileId/VolumeId, placeholder detection e reparse point handling.
+/// T23 (t_f706caaa) — WindowsNativeEnumerator: equivalence tests, FileId/VolumeId
+/// stability, placeholder detection and reparse point handling.
 ///
-/// Todos os testes são marcados com Trait("OS", "Windows") para execução apenas
-/// em runners Windows do CI. No Linux, serão pulados.
+/// All tests are marked with Trait("OS", "Windows") to run only on Windows CI runners.
+/// On Linux they will be skipped.
 /// </summary>
 [Trait("OS", "Windows")]
 public class WindowsNativeEnumeratorTests : IDisposable
@@ -33,182 +33,182 @@ public class WindowsNativeEnumeratorTests : IDisposable
     }
 
     [Fact]
-    public void Enumerate_EquivalenciaComCrossPlatform_MesmosCaminhosEmOrdemOrdinal()
+    public void Enumerate_EquivalenceWithCrossPlatform_SamePathsInOrdinalOrder()
     {
 #if !WINDOWS
-        // Teste marcado com Trait("OS", "Windows") - não compila no Linux.
+        // Test marked with Trait("OS", "Windows") - does not compile on Linux.
         return;
 #endif
 
-        CriarArvoreFixture();
+        CreateTreeFixture();
 
         var enumeratorWindows = new OrderedFileEnumerator(new WindowsNativeEnumerator());
         var enumeratorXplat = new OrderedFileEnumerator(new CrossPlatformEnumerator());
 
-        var resultadoWindows = enumeratorWindows.Enumerate(_root, CancellationToken.None);
-        var resultadoXplat = enumeratorXplat.Enumerate(_root, CancellationToken.None);
+        var windowsResult = enumeratorWindows.Enumerate(_root, CancellationToken.None);
+        var xplatResult = enumeratorXplat.Enumerate(_root, CancellationToken.None);
 
-        Assert.Equal(resultadoXplat.Files.Count, resultadoWindows.Files.Count);
+        Assert.Equal(xplatResult.Files.Count, windowsResult.Files.Count);
 
-        var caminhosWindows = resultadoWindows.Files.Select(f => f.Path).ToArray();
-        var caminhosXplat = resultadoXplat.Files.Select(f => f.Path).ToArray();
+        var windowsPaths = windowsResult.Files.Select(f => f.Path).ToArray();
+        var xplatPaths = xplatResult.Files.Select(f => f.Path).ToArray();
 
-        Assert.Equal(caminhosXplat.OrderBy(p => p, StringComparer.Ordinal),
-                     caminhosWindows.OrderBy(p => p, StringComparer.Ordinal));
+        Assert.Equal(xplatPaths.OrderBy(p => p, StringComparer.Ordinal),
+                     windowsPaths.OrderBy(p => p, StringComparer.Ordinal));
     }
 
     [Fact]
-    public void Enumerate_FileIdNaoVazio_EstableEntreVarreduras()
+    public void Enumerate_FileIdNotEmpty_StableBetweenScans()
     {
 #if !WINDOWS
-        // Teste marcado com Trait("OS", "Windows") - não compila no Linux.
+        // Test marked with Trait("OS", "Windows") - does not compile on Linux.
         return;
 #endif
 
-        CriarArvoreFixture();
+        CreateTreeFixture();
 
         var enumerator = new WindowsNativeEnumerator();
 
-        var primeiro = enumerator.Enumerate(_root, CancellationToken.None);
-        var segundo = enumerator.Enumerate(_root, CancellationToken.None);
+        var first = enumerator.Enumerate(_root, CancellationToken.None);
+        var second = enumerator.Enumerate(_root, CancellationToken.None);
 
-        Assert.True(primeiro.Files.Count > 0, "Deve haver arquivos na árvore");
+        Assert.True(first.Files.Count > 0, "There must be files in the tree");
 
-        Assert.All(primeiro.Files, f =>
+        Assert.All(first.Files, f =>
         {
-            Assert.False(string.IsNullOrEmpty(f.FileId), $"FileId vazio para {f.Path}");
-            Assert.False(string.IsNullOrEmpty(f.VolumeId), $"VolumeId vazio para {f.Path}");
+            Assert.False(string.IsNullOrEmpty(f.FileId), $"FileId empty for {f.Path}");
+            Assert.False(string.IsNullOrEmpty(f.VolumeId), $"VolumeId empty for {f.Path}");
         });
 
-        for (var i = 0; i < primeiro.Files.Count; i++)
+        for (var i = 0; i < first.Files.Count; i++)
         {
-            Assert.Equal(primeiro.Files[i].FileId, segundo.Files[i].FileId);
-            Assert.Equal(primeiro.Files[i].VolumeId, segundo.Files[i].VolumeId);
+            Assert.Equal(first.Files[i].FileId, second.Files[i].FileId);
+            Assert.Equal(first.Files[i].VolumeId, second.Files[i].VolumeId);
         }
     }
 
     [Fact]
-    public void Enumerate_PlaceholderMarcado_SemAbrirConteudo()
+    public void Enumerate_PlaceholderMarked_WithoutOpeningContent()
     {
 #if WINDOWS
-        var caminhoArquivo = Path.Combine(_root, "offline.txt");
-        File.WriteAllText(caminhoArquivo, "conteúdo offline");
+        var filePath = Path.Combine(_root, "offline.txt");
+        File.WriteAllText(filePath, "offline content");
 
-        var winPath = caminhoArquivo.Replace('/', '\\');
+        var winPath = filePath.Replace('/', '\\');
         NativeMethods.SetFileAttributesW(winPath, (uint)FileAttributes.Offline);
 
         try
         {
-            var resultado = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
+            var result = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
 
-            var entrada = Assert.Single(resultado.Files);
-            Assert.True(entrada.IsPlaceholder);
-            Assert.Equal(PlaceholderKind.Offline, entrada.PlaceholderKind);
+            var entry = Assert.Single(result.Files);
+            Assert.True(entry.IsPlaceholder);
+            Assert.Equal(PlaceholderKind.Offline, entry.PlaceholderKind);
         }
         finally
         {
             NativeMethods.SetFileAttributesW(winPath, (uint)FileAttributes.Normal);
         }
 #else
-        // Teste marcado com Trait("OS", "Windows") - não compila no Linux.
+        // Test marked with Trait("OS", "Windows") - does not compile on Linux.
         return;
 #endif
     }
 
     [Fact]
-    public void Enumerate_ReparseDirectory_FolhaRegistradaEMarcada()
+    public void Enumerate_ReparseDirectory_LeafRegisteredAndMarked()
     {
 #if WINDOWS
-        var alvo = Path.Combine(_root, "alvo");
-        Directory.CreateDirectory(alvo);
-        File.WriteAllText(Path.Combine(alvo, "dentro.txt"), "x");
+        var target = Path.Combine(_root, "target");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "inside.txt"), "x");
 
-        var juncao = Path.Combine(_root, "juncao");
-        NativeMethods.CreateSymbolicLinkW(juncao, alvo, true);
+        var junction = Path.Combine(_root, "junction");
+        NativeMethods.CreateSymbolicLinkW(junction, target, true);
 
         try
         {
-            var resultado = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
+            var result = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
 
-            var erro = Assert.Single(resultado.Errors, e => e.Path.Contains("juncao", StringComparison.Ordinal));
-            Assert.Contains("reparse point", erro.Message, StringComparison.OrdinalIgnoreCase);
+            var error = Assert.Single(result.Errors, e => e.Path.Contains("junction", StringComparison.Ordinal));
+            Assert.Contains("reparse point", error.Message, StringComparison.OrdinalIgnoreCase);
 
-            // O que precisa ser garantido e que NADA seja alcancado ATRAVES da
-            // juncao. A versao anterior exigia que "dentro.txt" nao aparecesse
-            // em lugar nenhum — asercao incorreta, porque o alvo da juncao fica
-            // DENTRO da raiz varrida (_root/alvo/dentro.txt) e deve mesmo ser
-            // enumerado pelo caminho direto. O teste nunca rodou (o corpo estava
-            // sob `#if !WINDOWS return;` com o simbolo WINDOWS jamais definido),
-            // entao o engano passou despercebido.
+            // What needs to be guaranteed is that NOTHING is reached THROUGH the
+            // junction. The previous version required that "inside.txt" not appear
+            // anywhere — incorrect assertion, because the junction target is
+            // INSIDE the scanned root (_root/target/inside.txt) and should indeed be
+            // enumerated via the direct path. The test never ran (the body was
+            // under `#if !WINDOWS return;` with the WINDOWS symbol never defined),
+            // so the mistake went unnoticed.
             Assert.DoesNotContain(
-                resultado.Files,
-                f => f.Path.Contains("juncao", StringComparison.Ordinal));
+                result.Files,
+                f => f.Path.Contains("junction", StringComparison.Ordinal));
 
-            // ...e o alvo legitimo continua sendo enumerado pelo caminho real.
+            // ...and the legitimate target continues to be enumerated via the real path.
             Assert.Contains(
-                resultado.Files,
-                f => f.Path.EndsWith(Path.Combine("alvo", "dentro.txt"), StringComparison.Ordinal));
+                result.Files,
+                f => f.Path.EndsWith(Path.Combine("target", "inside.txt"), StringComparison.Ordinal));
         }
         finally
         {
-            NativeMethods.DeleteFileW(juncao);
+            NativeMethods.DeleteFileW(junction);
         }
 #else
-        // Teste marcado com Trait("OS", "Windows") - não compila no Linux.
+        // Test marked with Trait("OS", "Windows") - does not compile on Linux.
         return;
 #endif
     }
 
     [Fact]
-    public void Enumerate_SymlinkDeArquivo_MarcadoReparsePoint()
+    public void Enumerate_FileSymlink_MarkedReparsePoint()
     {
 #if WINDOWS
-        var alvo = Path.Combine(_root, "real.txt");
-        File.WriteAllText(alvo, "conteúdo");
+        var target = Path.Combine(_root, "real.txt");
+        File.WriteAllText(target, "content");
 
-        var link = Path.Combine(_root, "atalho.txt");
-        NativeMethods.CreateSymbolicLinkW(link, alvo, false);
+        var link = Path.Combine(_root, "shortcut.txt");
+        NativeMethods.CreateSymbolicLinkW(link, target, false);
 
         try
         {
-            var resultado = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
+            var result = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
 
-            var entrada = Assert.Single(resultado.Files, f => f.Path.Contains("atalho.txt", StringComparison.Ordinal));
-            Assert.True(entrada.IsReparsePoint);
-            Assert.True(entrada.IsPlaceholder);
-            Assert.Equal(PlaceholderKind.ReparsePoint, entrada.PlaceholderKind);
+            var entry = Assert.Single(result.Files, f => f.Path.Contains("shortcut.txt", StringComparison.Ordinal));
+            Assert.True(entry.IsReparsePoint);
+            Assert.True(entry.IsPlaceholder);
+            Assert.Equal(PlaceholderKind.ReparsePoint, entry.PlaceholderKind);
         }
         finally
         {
             NativeMethods.DeleteFileW(link);
         }
 #else
-        // Teste marcado com Trait("OS", "Windows") - não compila no Linux.
+        // Test marked with Trait("OS", "Windows") - does not compile on Linux.
         return;
 #endif
     }
 
     [Fact]
-    public void Enumerate_TelemetriaCoerente()
+    public void Enumerate_TelemetryConsistent()
     {
 #if !WINDOWS
-        // Teste marcado com Trait("OS", "Windows") - não compila no Linux.
+        // Test marked with Trait("OS", "Windows") - does not compile on Linux.
         return;
 #endif
 
-        CriarArvoreFixture();
+        CreateTreeFixture();
 
-        var resultado = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
+        var result = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
 
-        Assert.Equal(resultado.Files.Count, resultado.Telemetry.FilesEnumerated);
-        Assert.Equal(resultado.Files.Count(f => f.IsPlaceholder), resultado.Telemetry.FilesPlaceholder);
+        Assert.Equal(result.Files.Count, result.Telemetry.FilesEnumerated);
+        Assert.Equal(result.Files.Count(f => f.IsPlaceholder), result.Telemetry.FilesPlaceholder);
     }
 
     [Fact]
-    public void Enumerate_OrdemDeterministica()
+    public void Enumerate_DeterministicOrder()
     {
 #if !WINDOWS
-        // Teste marcado com Trait("OS", "Windows") - não compila no Linux.
+        // Test marked with Trait("OS", "Windows") - does not compile on Linux.
         return;
 #endif
 
@@ -216,18 +216,18 @@ public class WindowsNativeEnumeratorTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "a.txt"), "a");
         File.WriteAllText(Path.Combine(_root, "m.txt"), "m");
 
-        var resultado1 = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
-        var resultado2 = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
+        var result1 = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
+        var result2 = new WindowsNativeEnumerator().Enumerate(_root, CancellationToken.None);
 
-        var paths1 = resultado1.Files.Select(f => f.Path).ToArray();
-        var paths2 = resultado2.Files.Select(f => f.Path).ToArray();
+        var paths1 = result1.Files.Select(f => f.Path).ToArray();
+        var paths2 = result2.Files.Select(f => f.Path).ToArray();
 
         Assert.Equal(paths1, paths2);
         Assert.Equal(new[] { "a.txt", "m.txt", "z.txt" }.Select(p => Path.Combine(_root, p)),
                      paths1.OrderBy(p => p, StringComparer.Ordinal));
     }
 
-    private void CriarArvoreFixture()
+    private void CreateTreeFixture()
     {
         File.WriteAllText(Path.Combine(_root, "a.txt"), "a");
         File.WriteAllText(Path.Combine(_root, "B.txt"), "B");
@@ -236,7 +236,7 @@ public class WindowsNativeEnumeratorTests : IDisposable
     }
 }
 
-// Helpers P/Invoke para testes.
+// P/Invoke helpers for tests.
 #if WINDOWS
 internal static class NativeMethods
 {

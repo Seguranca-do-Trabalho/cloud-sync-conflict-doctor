@@ -6,16 +6,16 @@
         <FluentTheme />
 
         <!-- ============================================================
-             Sistema de segurança visual (G2 — t_87f625aa; §37, ADR-0009).
-             Vocabulário único de botões para TODAS as telas:
-               primary    — ação segura recomendada (azul);
-               destructive— move conteúdo do usuário para a quarentena
-                            (vermelho; nunca remoção definitiva — ADR-0002);
-               secondary  — navegação/repensar (neutro).
-             A affordance de destruir NUNCA é compartilhada com comparar/navegar.
+             Visual security system (G2 — t_87f625aa; §37, ADR-0009).
+             Single button vocabulary for ALL screens:
+               primary    — safe recommended action (blue);
+               destructive— moves user content to quarantine
+                            (red; never permanent removal — ADR-0002);
+               secondary  — navigation/reconsider (neutral).
+             The destructive affordance is NEVER shared with compare/navigate.
              ============================================================ -->
 
-        <!-- Botão primário: ação segura e recomendada (azul). -->
+        <!-- Primary button: safe and recommended action (blue). -->
         <Style Selector="Button.primary">
             <Setter Property="Background" Value="#1F6FEB" />
             <Setter Property="Foreground" Value="White" />
@@ -23,8 +23,8 @@
             <Setter Property="Padding" Value="16,8" />
         </Style>
 
-        <!-- Botão destrutivo: move conteúdo do usuário para a quarentena (vermelho).
-             Nunca representa remoção definitiva — apenas movimentação auditável. -->
+        <!-- Destructive button: moves user content to quarantine (red).
+             Never represents permanent removal — only auditable movement. -->
         <Style Selector="Button.destructive">
             <Setter Property="Background" Value="#C93C37" />
             <Setter Property="Foreground" Value="White" />
@@ -32,14 +32,14 @@
             <Setter Property="Padding" Value="16,8" />
         </Style>
 
-        <!-- Botão secundário: navegação e reconsideração (neutro, sem destaque). -->
+        <!-- Secondary button: navigation and reconsideration (neutral, unhighlighted). -->
         <Style Selector="Button.secondary">
             <Setter Property="Background" Value="#E9ECEF" />
             <Setter Property="Foreground" Value="#212529" />
             <Setter Property="Padding" Value="16,8" />
         </Style>
 
-        <!-- Tipografia comum das telas. -->
+        <!-- Common typography for screens. -->
         <Style Selector="TextBlock.titulo">
             <Setter Property="FontSize" Value="22" />
             <Setter Property="FontWeight" Value="Bold" />

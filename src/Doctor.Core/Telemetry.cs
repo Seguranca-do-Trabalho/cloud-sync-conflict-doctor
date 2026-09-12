@@ -3,61 +3,62 @@ using System.Text;
 namespace Doctor.Core;
 
 /// <summary>
-/// Contrato de telemetria interna do scanner (SPEC §10) — a métrica principal do
-/// produto é a quantidade de bytes que NÃO precisaram ser lidos.
+/// Internal scanner telemetry contract (SPEC §10) — the product's main metric
+/// is the number of bytes that DID NOT need to be read.
 ///
-/// Campos na ordem EXATA fixada pelo orquestrador (card T06): os oito contadores da
-/// SPEC §10 em snake_case, seguidos do gate placeholder_bytes_read exigido por
-/// docs/benchmark-harness.md §6 (rodada reprova se != 0). A emissão JSON determinística
-/// segue esta ordem; alterá-la é mudança de contrato e exige registro em ADR novo.
+/// Fields in the EXACT order fixed by the orchestrator (card T06): the eight SPEC §10
+/// counters in snake_case, followed by the placeholder_bytes_read gate required by
+/// docs/benchmark-harness.md §6 (run is rejected if != 0). Deterministic JSON emission
+/// follows this order; changing it is a contract change and requires registration in a
+/// new ADR.
 ///
-/// Semântica normativa:
+/// Normative semantics:
 ///   files_enumerated       = files_placeholder + files_skipped + files_partial_hashed
 ///   files_full_hashed     &lt;= files_partial_hashed
 ///   bytes_read             = bytes_read_partial + bytes_read_full
-///   placeholder_bytes_read = 0 sempre (valor != 0 é violação de segurança, não dado)
+///   placeholder_bytes_read = 0 always (value != 0 is a security violation, not data)
 /// </summary>
 public sealed record ScanTelemetry
 {
-    /// <summary>Total de entradas de arquivo vistas no Level 0 (diretórios não contam). Inclui placeholders.</summary>
+    /// <summary>Total file entries seen at Level 0 (directories don't count). Includes placeholders.</summary>
     public long FilesEnumerated { get; init; }
 
-    /// <summary>Entradas não-placeholder que não tiveram NENHUM byte lido.</summary>
+    /// <summary>Non-placeholder entries that had ZERO bytes read.</summary>
     public long FilesSkipped { get; init; }
 
-    /// <summary>Entradas classificadas como placeholder e excluídas de todo acesso a conteúdo.</summary>
+    /// <summary>Entries classified as placeholder and excluded from all content access.</summary>
     public long FilesPlaceholder { get; init; }
 
     /// <summary>
-    /// Entradas excluídas da enumeração por estarem sob a subárvore reservada
-    /// &lt;raiz&gt;/ConflictDoctor/ (quarentena §18/SPEC; adendo T-15, SEG-12): política
-    /// estrutural da fronteira canônica Level 0, não erro — nunca entra em Errors nem
-    /// em qualquer contador de arquivos (R10; idempotência §20 entre rescans).
+    /// Entries excluded from enumeration for being under the reserved subtree
+    /// &lt;root&gt;/ConflictDoctor/ (quarantine §18/SPEC; T-15 addendum, SEG-12): structural
+    /// policy of the Level 0 canonical boundary, not an error — never enters Errors nor
+    /// any file counter (R10; idempotency §20 across rescans).
     /// </summary>
     public long FilesExcludedConflictDoctor { get; init; }
 
-    /// <summary>Entradas não-placeholder que receberam hash parcial (janela inicial + janela final).</summary>
+    /// <summary>Non-placeholder entries that received partial hash (start window + end window).</summary>
     public long FilesPartialHashed { get; init; }
 
-    /// <summary>Entradas que sobreviveram ao hash parcial e receberam BLAKE3 completo. Subconjunto de FilesPartialHashed.</summary>
+    /// <summary>Entries that survived partial hash and received full BLAKE3. Subset of FilesPartialHashed.</summary>
     public long FilesFullHashed { get; init; }
 
-    /// <summary>Soma dos bytes efetivamente lidos: BytesReadPartial + BytesReadFull.</summary>
+    /// <summary>Sum of bytes actually read: BytesReadPartial + BytesReadFull.</summary>
     public long BytesRead => checked(BytesReadPartial + BytesReadFull);
 
-    /// <summary>Bytes lidos no passe de hash parcial (arquivos ≤ 128 KiB são lidos integralmente nesta conta).</summary>
+    /// <summary>Bytes read in the partial hash pass (files ≤ 128 KiB are read in full in this count).</summary>
     public long BytesReadPartial { get; init; }
 
-    /// <summary>Bytes lidos no passe de hash completo.</summary>
+    /// <summary>Bytes read in the full hash pass.</summary>
     public long BytesReadFull { get; init; }
 
-    /// <summary>Gate absoluto (benchmark-harness.md §6): bytes lidos de placeholders. SEMPRE 0; valor != 0 reprova a rodada.</summary>
+    /// <summary>Absolute gate (benchmark-harness.md §6): bytes read from placeholders. ALWAYS 0; value != 0 rejects the run.</summary>
     public long PlaceholderBytesRead { get; init; }
 
     /// <summary>
-    /// Agrega os contadores de outro snapshot neste (ex.: shards de uma mesma rodada).
-    /// Soma todos os contadores; bytes_read permanece derivado das parcelas e o gate
-    /// placeholder_bytes_read só permanece zero se for zero em AMBOS os operandos.
+    /// Aggregates counters from another snapshot into this one (e.g.: shards of the same run).
+    /// Sums all counters; bytes_read remains derived from the parts and the
+    /// placeholder_bytes_read gate only remains zero if zero in BOTH operands.
     /// </summary>
     public ScanTelemetry Merge(ScanTelemetry other)
     {

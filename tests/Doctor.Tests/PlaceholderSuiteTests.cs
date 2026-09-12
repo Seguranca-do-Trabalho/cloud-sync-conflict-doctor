@@ -3,20 +3,20 @@ namespace Doctor.Tests;
 using Doctor.Core;
 
 /// <summary>
-/// T22 (t_807d2357) — SUÍTE PLACEHOLDER ENFORCEMENT (PLH-01..PLH-04).
-/// Prova, por espiões de abertura (mocks de IStreamSource que contam aberturas),
-/// que o pipeline NUNCA lê placeholder: nem durante o scan, nem por mutação pós-gate.
-/// Complementa PlaceholderGateTests/PlaceholderPipelineIntegrationTests com as quatro
-/// garantias contratuais do card. NÃO é código de produto.
+/// T22 (t_807d2357) — PLACEHOLDER ENFORCEMENT SUITE (PLH-01..PLH-04).
+/// Proves, through open spies (IStreamSource mocks that count opens),
+/// that the pipeline NEVER reads placeholders: neither during scan, nor by post-gate mutation.
+/// Complements PlaceholderGateTests/PlaceholderPipelineIntegrationTests with the four
+/// contractual guarantees of the card. NOT production code.
 ///
-/// PLH-01 — nenhum File.Open em placeholder durante scan;
-/// PLH-02 — PlaceholderReadException lançado ANTES de qualquer I/O;
-/// PLH-03 — PlaceholderViolationException se telemetria chega com bytes != 0;
-/// PLH-04 — mutação pós-gate falha (teste negativo estrutural).
+/// PLH-01 — no File.Open on placeholder during scan;
+/// PLH-02 — PlaceholderReadException thrown BEFORE any I/O;
+/// PLH-03 — PlaceholderViolationException if telemetry arrives with bytes != 0;
+/// PLH-04 — post-gate mutation fails (structural negative test).
 /// </summary>
 public class PlaceholderSuiteTests
 {
-    private static FileEntry Entrada(
+    private static FileEntry Entry(
         string path,
         long size,
         FileAttributes? attrs = null,
@@ -35,22 +35,22 @@ public class PlaceholderSuiteTests
             PlaceholderKind = kind,
         };
 
-    private static EnumerationResult Resultado(
+    private static EnumerationResult Result(
         IReadOnlyList<FileEntry> files,
-        ScanTelemetry? telemetria = null)
-        => new(files, Array.Empty<ScanError>(), telemetria ?? new ScanTelemetry());
+        ScanTelemetry? telemetry = null)
+        => new(files, Array.Empty<ScanError>(), telemetry ?? new ScanTelemetry());
 
     /// <summary>
-    /// PLH-01 — Durante o scan completo (L0→L3) de árvore mista (conteúdo normal +
-    /// placeholders registrados na fonte), a contagem de aberturas sobre cada
-    /// placeholder é ZERO. A fonte espiã tem conteúdo disponível para os placeholders:
-    /// se qualquer caminho do produto abrir stream sobre eles, o teste fica vermelho
-    /// (SPEC §6 "NÃO TOCAR"; gate placeholder_bytes_read == 0).
+    /// PLH-01 — During a complete scan (L0→L3) of a mixed tree (normal content +
+    /// placeholders registered in the source), the open count on each
+    /// placeholder is ZERO. The spy source has content available for placeholders:
+    /// if any product path opens a stream on them, the test turns red
+    /// (SPEC §6 "DO NOT TOUCH"; gate placeholder_bytes_read == 0).
     /// </summary>
     [Fact]
-    public void Plh01_ScanArvoreMista_NenhumaAberturaDeStreamSobrePlaceholders()
+    public void Plh01_ScanMixedTree_NoStreamOpensOnPlaceholders()
     {
-        var fonte = new CountingStreamSource();
+        var source = new CountingStreamSource();
         var placeholders = new[]
         {
             ("tree/p.offline", PlaceholderKind.Offline, FileAttributes.Offline),
@@ -60,132 +60,132 @@ public class PlaceholderSuiteTests
         };
         foreach (var (path, _, _) in placeholders)
         {
-            fonte.Register(path, new byte[2048]);
+            source.Register(path, new byte[2048]);
         }
 
-        // Par de conteúdo idêntico, nome e tamanho iguais ⇒ colide no L1 e sobrevive ao L2/L3.
-        fonte.Register("tree/a/Relatorio.bin", new byte[] { 1, 2, 3 });
-        fonte.Register("tree/b/Relatorio.bin", new byte[] { 1, 2, 3 });
+        // Identical content pair, same name and size ⇒ collides at L1 and survives L2/L3.
+        source.Register("tree/a/Report.bin", new byte[] { 1, 2, 3 });
+        source.Register("tree/b/Report.bin", new byte[] { 1, 2, 3 });
 
         var entries = new List<FileEntry>();
         var placeholderIds = new[] { "p_offline", "p_recall", "p_data", "p_reparse" };
         foreach (var i in Enumerable.Range(0, placeholders.Length))
         {
             var (path, kind, attrs) = placeholders[i];
-            // Marcação L0 ausenta OU presente não muda nada: o duplo gate cobre ambos.
-            var marcado = path != "tree/p.recall";
-            entries.Add(Entrada(path, 2048, attrs, marcado, marcado ? kind : null, placeholderIds[i]));
+            // Missing L0 marking OR present marking changes nothing: the double gate covers both.
+            var marked = path != "tree/p.recall";
+            entries.Add(Entry(path, 2048, attrs, marked, marked ? kind : null, placeholderIds[i]));
         }
 
-        entries.Add(Entrada("tree/a/Relatorio.bin", 3, fileId: "fa"));
-        entries.Add(Entrada("tree/b/Relatorio.bin", 3, fileId: "fb"));
+        entries.Add(Entry("tree/a/Report.bin", 3, fileId: "fa"));
+        entries.Add(Entry("tree/b/Report.bin", 3, fileId: "fb"));
 
-        var hasher = CountingHasher.Using(new PlaceholderGate(fonte));
-        var pipeline = new ScanPipeline(new FakeEnumerator(Resultado(entries)), hasher, new PlaceholderGate(fonte));
+        var hasher = CountingHasher.Using(new PlaceholderGate(source));
+        var pipeline = new ScanPipeline(new FakeEnumerator(Result(entries)), hasher, new PlaceholderGate(source));
 
-        var resultado = pipeline.Run("tree");
+        var result = pipeline.Run("tree");
 
-        // Scan saiu íntegro: duplicata idêntica detectada, nenhum conflito falso.
-        Assert.Single(resultado.IdenticalDuplicates);
-        Assert.Empty(resultado.RealConflicts);
+        // Scan came out intact: identical duplicate detected, no false conflicts.
+        Assert.Single(result.IdenticalDuplicates);
+        Assert.Empty(result.RealConflicts);
 
-        // A prova central: zero aberturas sobre CADA placeholder, nos quatro kinds.
+        // Core proof: zero opens on EACH placeholder, across the four kinds.
         foreach (var (path, _, _) in placeholders)
         {
-            Assert.Equal(0, fonte.OpenCount(path));
-            Assert.Equal(0, fonte.BytesRead(path));
+            Assert.Equal(0, source.OpenCount(path));
+            Assert.Equal(0, source.BytesRead(path));
         }
 
-        // E o conteúdo legítimo foi lido normalmente (o scan realmente passou pelo L3).
-        Assert.True(fonte.OpenCount("tree/a/Relatorio.bin") >= 1);
-        Assert.True(fonte.OpenCount("tree/b/Relatorio.bin") >= 1);
+        // And legitimate content was read normally (scan actually went through L3).
+        Assert.True(source.OpenCount("tree/a/Report.bin") >= 1);
+        Assert.True(source.OpenCount("tree/b/Report.bin") >= 1);
     }
 
     /// <summary>
-    /// PLH-02 — PlaceholderReadException sai ANTES de qualquer I/O: o hasher espião
-    /// atravessa o gate e a fonte espiã conta aberturas; ao tentar hashear placeholder
-    /// (flag L0 e, em separado, só com bits crus — duplo gate), nenhuma abertura é
-    /// registrada ANTES da exceção (ordem gate→I/O provada pela contagem == 0).
+    /// PLH-02 — PlaceholderReadException fires BEFORE any I/O: the spy hasher
+    /// passes through the gate and the spy source counts opens; when attempting to hash a placeholder
+    /// (L0 flag and, separately, only with raw bits — double gate), no open is
+    /// recorded BEFORE the exception (gate→I/O order proven by count == 0).
     /// </summary>
     [Fact]
-    public void Plh02_HashSobrePlaceholder_LancaAntesDeQualquerIo()
+    public void Plh02_HashOnPlaceholder_ThrowsBeforeAnyIo()
     {
-        var fonte = new CountingStreamSource();
-        fonte.Register("tree/p.offline", new byte[1024]);
+        var source = new CountingStreamSource();
+        source.Register("tree/p.offline", new byte[1024]);
 
-        // Caso 1: flag L0 marcada.
-        var marcado = Entrada("tree/p.offline", 1024, FileAttributes.Offline, true, PlaceholderKind.Offline);
-        var hasherMarcado = new PlaceholderGuardedHasher(CountingHasher.Using(fonte));
+        // Case 1: L0 flag marked.
+        var marked = Entry("tree/p.offline", 1024, FileAttributes.Offline, true, PlaceholderKind.Offline);
+        var hasherMarked = new PlaceholderGuardedHasher(CountingHasher.Using(source));
 
-        var ex = Assert.Throws<PlaceholderReadException>(() => hasherMarcado.FullHash(marcado));
+        var ex = Assert.Throws<PlaceholderReadException>(() => hasherMarked.FullHash(marked));
 
         Assert.Equal("tree/p.offline", ex.EntryPath);
-        Assert.Equal(0, fonte.OpenCount("tree/p.offline"));
-        Assert.Equal(0, fonte.BytesRead("tree/p.offline"));
+        Assert.Equal(0, source.OpenCount("tree/p.offline"));
+        Assert.Equal(0, source.BytesRead("tree/p.offline"));
 
-        // Caso 2: marcação ausente, bits crus revelam placeholder (marcação stale nunca passa).
-        var disfarçada = Entrada("tree/p.offline", 1024, FileAttributes.Offline);
-        var hasherDisfarçada = new PlaceholderGuardedHasher(CountingHasher.Using(fonte));
+        // Case 2: marking absent, raw bits reveal placeholder (stale marking never passes).
+        var disguised = Entry("tree/p.offline", 1024, FileAttributes.Offline);
+        var hasherDisguised = new PlaceholderGuardedHasher(CountingHasher.Using(source));
 
-        Assert.Throws<PlaceholderReadException>(() => hasherDisfarçada.PartialHash(disfarçada));
+        Assert.Throws<PlaceholderReadException>(() => hasherDisguised.PartialHash(disguised));
 
-        Assert.Equal(0, fonte.OpenCount("tree/p.offline"));
-        Assert.Equal(0, fonte.BytesRead("tree/p.offline"));
+        Assert.Equal(0, source.OpenCount("tree/p.offline"));
+        Assert.Equal(0, source.BytesRead("tree/p.offline"));
 
-        // Controle positivo: arquivo normal DELEGA à fonte e abre exatamente 1 vez.
-        fonte.Register("tree/ok.bin", new byte[] { 9 });
-        hasherMarcado.FullHash(Entrada("tree/ok.bin", 1));
-        Assert.Equal(1, fonte.OpenCount("tree/ok.bin"));
+        // Positive control: normal file DELEGATES to source and opens exactly once.
+        source.Register("tree/ok.bin", new byte[] { 9 });
+        hasherMarked.FullHash(Entry("tree/ok.bin", 1));
+        Assert.Equal(1, source.OpenCount("tree/ok.bin"));
     }
 
     /// <summary>
-    /// PLH-03 — Telemetria que chega ao gate com placeholder_bytes_read != 0 é violação
-    /// de segurança, não dado: PlaceholderViolationException SEM caminho, o gate nunca
-    /// "lava" o contador e a saída (quando existe) mantém o valor zerado por construção.
+    /// PLH-03 — Telemetry that arrives at the gate with placeholder_bytes_read != 0 is a security
+    /// violation, not data: PlaceholderViolationException WITHOUT path, the gate never
+    /// "washes" the counter and the output (when present) keeps the value zeroed by construction.
     /// </summary>
     [Fact]
-    public void Plh03_TelemetriaComBytesDePlaceholder_LancaViolacaoENuncaELavada()
+    public void Plh03_TelemetryWithPlaceholderBytes_ThrowsViolationAndNeverWashed()
     {
-        var fonte = new CountingStreamSource();
+        var source = new CountingStreamSource();
 
-        foreach (var suja in new[]
+        foreach (var dirty in new[]
                  {
                      new ScanTelemetry { PlaceholderBytesRead = 1 },
                      new ScanTelemetry { PlaceholderBytesRead = 4096 },
-                     new ScanTelemetry { PlaceholderBytesRead = -3 }, // nem negativo passa
+                     new ScanTelemetry { PlaceholderBytesRead = -3 }, // not even negative passes
                  })
         {
             var ex = Assert.Throws<PlaceholderViolationException>(
-                () => new PlaceholderGate(fonte).Enforce(Resultado(Array.Empty<FileEntry>(), suja)));
+                () => new PlaceholderGate(source).Enforce(Result(Array.Empty<FileEntry>(), dirty)));
 
-            Assert.Null(ex.EntryPath); // violação de telemetria não carrega caminho
+            Assert.Null(ex.EntryPath); // telemetry violation does not carry path
         }
 
-        // Controle: telemetria limpa atravessa e sai com placeholder_bytes_read == 0.
-        var limpa = new PlaceholderGate(fonte).Enforce(Resultado(Array.Empty<FileEntry>(), new ScanTelemetry()));
-        Assert.Equal(0, limpa.Telemetry.PlaceholderBytesRead);
+        // Control: clean telemetry passes through and exits with placeholder_bytes_read == 0.
+        var clean = new PlaceholderGate(source).Enforce(Result(Array.Empty<FileEntry>(), new ScanTelemetry()));
+        Assert.Equal(0, clean.Telemetry.PlaceholderBytesRead);
     }
 
     /// <summary>
-    /// PLH-04 — Mutação pós-gate falha: remover/burlar o gate deixa a violação visível.
-    /// Estrutura em três provas:
-    /// (a) sem gate, a abertura de placeholder "consegue" ler — exatamente o estado que
-    ///     os espiões denunciam (contagem > 0 ⇒ qualquer suíte com estes testes fica vermelha);
-    /// (b) o gate real recusa a mesma abertura com PlaceholderViolationException ANTES de
-    ///     tocar a fonte (contagem permanece 0);
-    /// (c) invariante final do relatório: placeholder_bytes_read == 0 após Enforce.
+    /// PLH-04 — Post-gate mutation fails: removing/bypassing the gate makes the violation visible.
+    /// Structured in three proofs:
+    /// (a) without gate, the placeholder open "succeeds" in reading — exactly the state that
+    ///     the spies report (count > 0 ⇒ any suite with these tests turns red);
+    /// (b) the real gate refuses the same open with PlaceholderViolationException BEFORE
+    ///     touching the source (count stays 0);
+    /// (c) final report invariant: placeholder_bytes_read == 0 after Enforce.
     /// </summary>
     [Fact]
-    public void Plh04_MutacaoPosGate_Falha_EhDetectadaPelosEspioes()
+    public void Plh04_PostGateMutation_Fails_DetectedBySpies()
     {
         const string path = "tree/p.offline";
 
-        // (a) Mutante simulado: código pós-gate sem proteção abre e lê o placeholder.
-        var fonteMutante = new CountingStreamSource();
-        fonteMutante.Register(path, new byte[512]);
-        var placeholder = Entrada(path, 512, FileAttributes.Offline, true, PlaceholderKind.Offline);
+        // (a) Simulated mutant: post-gate code without protection opens and reads the placeholder.
+        var mutantSource = new CountingStreamSource();
+        mutantSource.Register(path, new byte[512]);
+        var placeholder = Entry(path, 512, FileAttributes.Offline, true, PlaceholderKind.Offline);
 
-        using (var s = fonteMutante.OpenRead(placeholder))
+        using (var s = mutantSource.OpenRead(placeholder))
         {
             var buffer = new byte[256];
             while (s.Read(buffer, 0, buffer.Length) > 0)
@@ -193,38 +193,38 @@ public class PlaceholderSuiteTests
             }
         }
 
-        Assert.True(fonteMutante.OpenCount(path) > 0, "mutação deve conseguir abrir (senão o teste não prova nada)");
-        Assert.True(fonteMutante.BytesRead(path) > 0);
+        Assert.True(mutantSource.OpenCount(path) > 0, "mutation must succeed in opening (otherwise test proves nothing)");
+        Assert.True(mutantSource.BytesRead(path) > 0);
 
-        // (b) Produto real: o mesmo acesso, agora sob o gate, falha ANTES da fonte.
-        var fonteProduto = new CountingStreamSource();
-        fonteProduto.Register(path, new byte[512]);
-        var gate = new PlaceholderGate(fonteProduto);
+        // (b) Real product: same access, now under gate, fails BEFORE the source.
+        var productSource = new CountingStreamSource();
+        productSource.Register(path, new byte[512]);
+        var gate = new PlaceholderGate(productSource);
 
         Assert.Throws<PlaceholderViolationException>(() => gate.OpenRead(placeholder));
-        Assert.Equal(0, fonteProduto.OpenCount(path));
-        Assert.Equal(0, fonteProduto.BytesRead(path));
+        Assert.Equal(0, productSource.OpenCount(path));
+        Assert.Equal(0, productSource.BytesRead(path));
 
-        // (c) Invariante estrutural pós-gate: telemetria derivada trava o contador em zero.
-        var enumeration = Resultado(new[]
+        // (c) Structural post-gate invariant: derived telemetry locks counter at zero.
+        var enumeration = Result(new[]
         {
             placeholder,
-            Entrada("tree/a.bin", 1),
+            Entry("tree/a.bin", 1),
         });
-        var parcial = new PlaceholderGate(new CountingStreamSource()).Enforce(enumeration);
+        var partial = new PlaceholderGate(new CountingStreamSource()).Enforce(enumeration);
 
-        Assert.Single(parcial.Placeholders);
-        Assert.Single(parcial.Files);
-        Assert.Equal(0, parcial.Telemetry.PlaceholderBytesRead);
+        Assert.Single(partial.Placeholders);
+        Assert.Single(partial.Files);
+        Assert.Equal(0, partial.Telemetry.PlaceholderBytesRead);
     }
 
-    /// <summary>Dupla L0 fake para o pipeline (só devolve o resultado pronto).</summary>
+    /// <summary>Fake L0 for the pipeline (just returns the ready result).</summary>
     private sealed class FakeEnumerator : IFileEnumerator
     {
-        private readonly EnumerationResult _resultado;
+        private readonly EnumerationResult _result;
 
-        public FakeEnumerator(EnumerationResult resultado) => _resultado = resultado;
+        public FakeEnumerator(EnumerationResult result) => _result = result;
 
-        public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default) => _resultado;
+        public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default) => _result;
     }
 }

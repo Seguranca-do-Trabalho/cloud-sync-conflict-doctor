@@ -3,38 +3,38 @@ namespace Doctor.Tests;
 using Doctor.Core;
 
 /// <summary>
-/// T18 (t_c894ff83) — S11-2: política de reparse no enumerador ordenado (SPEC §6,
-/// threat-model T-02, ADR-0004 regra 4). Defesa em profundidade ACIMA do enumerador
-/// físico: <see cref="OrderedFileEnumerator"/> aplica <see cref="ReparsePolicy"/> —
-/// (1) marca toda entrada com <see cref="FileEntry.IsReparsePoint"/>;
-/// (2) rejeita caminhos que voltam ao mesmo inode (guarda de visitados por
-///     (VolumeId, FileId) — mitigação obrigatória do T-02);
-/// (3) recusa entradas além do teto de profundidade (<see cref="ReparsePolicy.MaxDepth"/> = 16),
-///     registrando cada rejeição em <see cref="EnumerationResult.Errors"/> — sem falha silenciosa
-///     (contratos.md R10).
+/// T18 (t_c894ff83) — S11-2: reparse policy in ordered enumerator (SPEC §6,
+/// threat-model T-02, ADR-0004 rule 4). Defense in depth ABOVE physical
+/// enumerator: <see cref="OrderedFileEnumerator"/> applies <see cref="ReparsePolicy"/> —
+/// (1) marks every entry with <see cref="FileEntry.IsReparsePoint"/>;
+/// (2) rejects paths that return to the same inode (visited guard by
+///     (VolumeId, FileId) — mandatory mitigation for T-02);
+/// (3) rejects entries beyond max depth ceiling (<see cref="ReparsePolicy.MaxDepth"/> = 16),
+///     recording each rejection in <see cref="EnumerationResult.Errors"/> — no silent failure
+///     (contracts.md R10).
 /// </summary>
 public class ReparsePolicyTests : IDisposable
 {
-    private readonly string _raiz;
+    private readonly string _root;
 
     public ReparsePolicyTests()
     {
-        _raiz = Path.Combine(Path.GetTempPath(), "cdt18-reparse-" + Guid.NewGuid().ToString("N"));
-        _ = Directory.CreateDirectory(_raiz);
+        _root = Path.Combine(Path.GetTempPath(), "cdt18-reparse-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(_root);
     }
 
     public void Dispose()
     {
         try
         {
-            Directory.Delete(_raiz, recursive: true);
+            Directory.Delete(_root, recursive: true);
         }
         catch (IOException)
         {
         }
     }
 
-    /// <summary>Físico simulado: entrega entradas em ordem arbitrária e conta leituras de conteúdo.</summary>
+    /// <summary>Simulated physical enumerator: yields entries in arbitrary order and counts content reads.</summary>
     private sealed class FakePhysicalEnumerator : IFileEnumerator
     {
         private readonly FileEntry[] _physical;
@@ -42,7 +42,7 @@ public class ReparsePolicyTests : IDisposable
         public EnumerationResult Enumerate(string rootPath, CancellationToken ct = default)
             => new(_physical.ToArray(), Array.Empty<ScanError>(), new ScanTelemetry());
 
-        /// <summary>Representa leitura de conteúdo — a enumeração NUNCA pode chamar.</summary>
+        /// <summary>Represents content reading — enumeration must NEVER call this.</summary>
         public int ReadBytesCallCount { get; private set; }
         public byte[] ReadBytes(FileEntry entry) { ReadBytesCallCount++; return Array.Empty<byte>(); }
     }
@@ -64,25 +64,25 @@ public class ReparsePolicyTests : IDisposable
         };
 
     // ------------------------------------------------------------------
-    // 8 casos de REPARSE
+    // 8 REPARSE test cases
     // ------------------------------------------------------------------
 
     [Fact]
-    public void Reparse01_ArquivoComBitReparse_SaiMarcadoIsReparsePoint()
+    public void Reparse01_FileWithReparseBit_MarkedIsReparsePoint()
     {
         var fake = new FakePhysicalEnumerator(
             Entry("/root/link.dat", attrs: FileAttributes.ReparsePoint));
 
         var result = new OrderedFileEnumerator(fake).Enumerate("/root", CancellationToken.None);
 
-        var entrada = Assert.Single(result.Files);
-        Assert.True(entrada.IsReparsePoint);
-        Assert.True(entrada.IsPlaceholder);
-        Assert.Equal(PlaceholderKind.ReparsePoint, entrada.PlaceholderKind);
+        var entry = Assert.Single(result.Files);
+        Assert.True(entry.IsReparsePoint);
+        Assert.True(entry.IsPlaceholder);
+        Assert.Equal(PlaceholderKind.ReparsePoint, entry.PlaceholderKind);
     }
 
     [Fact]
-    public void Reparse02_ArquivoNormal_NaoEMarcadoReparse()
+    public void Reparse02_NormalFile_NotMarkedReparse()
     {
         var fake = new FakePhysicalEnumerator(
             Entry("/root/normal.txt"),
@@ -92,16 +92,16 @@ public class ReparsePolicyTests : IDisposable
 
         Assert.All(result.Files, e => Assert.False(e.IsReparsePoint));
         var offline = result.Files.Single(f => f.Path.EndsWith("offline.docx", StringComparison.Ordinal));
-        Assert.True(offline.IsPlaceholder);   // offline segue placeholder...
-        Assert.False(offline.IsReparsePoint); // ...mas NÃO é reparse
+        Assert.True(offline.IsPlaceholder);   // offline remains placeholder...
+        Assert.False(offline.IsReparsePoint); // ...but is NOT reparse
     }
 
     [Fact]
-    public void Reparse03_MarcaDaOrigem_NuncaEApagadaPelaProjecao()
+    public void Reparse03_OriginMark_NeverClearedByProjection()
     {
-        // Entrada que JÁ chega marcada IsReparsePoint=true do enumerador físico
-        // (autoridade da origem, mesma regra da falha fechada de PlaceholderPolicy).
-        var original = Entry("/root/vinculo.txt") with { IsReparsePoint = true };
+        // Entry that ALREADY arrives marked IsReparsePoint=true from physical enumerator
+        // (origin authority, same rule as PlaceholderPolicy fail-closed).
+        var original = Entry("/root/link.txt") with { IsReparsePoint = true };
         var fake = new FakePhysicalEnumerator(original);
 
         var result = new OrderedFileEnumerator(fake).Enumerate("/root", CancellationToken.None);
@@ -110,62 +110,61 @@ public class ReparsePolicyTests : IDisposable
     }
 
     [Fact]
-    public void Reparse04_IntegracaoSymlinkDeArquivo_EntraMarcadoNaListaOrdenada()
+    public void Reparse04_FileSymlinkIntegration_IncludedMarkedInOrderedList()
     {
-        File.WriteAllText(Path.Combine(_raiz, "real.txt"), "conteudo");
-        File.CreateSymbolicLink(Path.Combine(_raiz, "atalho.txt"), Path.Combine(_raiz, "real.txt"));
+        File.WriteAllText(Path.Combine(_root, "real.txt"), "content");
+        File.CreateSymbolicLink(Path.Combine(_root, "shortcut.txt"), Path.Combine(_root, "real.txt"));
 
         var result = new OrderedFileEnumerator(new CrossPlatformEnumerator())
-            .Enumerate(_raiz, CancellationToken.None);
+            .Enumerate(_root, CancellationToken.None);
 
-        var atalho = Assert.Single(result.Files, f => f.Path.EndsWith("atalho.txt", StringComparison.Ordinal));
-        Assert.True(atalho.IsReparsePoint);
-        Assert.Equal(PlaceholderKind.ReparsePoint, atalho.PlaceholderKind);
+        var shortcut = Assert.Single(result.Files, f => f.Path.EndsWith("shortcut.txt", StringComparison.Ordinal));
+        Assert.True(shortcut.IsReparsePoint);
+        Assert.Equal(PlaceholderKind.ReparsePoint, shortcut.PlaceholderKind);
     }
 
     [Fact]
-    public void Reparse05_IntegracaoJunctionDeDiretorio_EhFolhaEOScanContinua()
+    public void Reparse05_DirectoryJunctionIntegration_IsLeafAndScanContinues()
     {
-        _ = Directory.CreateDirectory(Path.Combine(_raiz, "alvo"));
-        File.WriteAllText(Path.Combine(_raiz, "alvo", "dentro.txt"), "x");
-        File.WriteAllText(Path.Combine(_raiz, "antes.txt"), "a");
-        File.CreateSymbolicLink(Path.Combine(_raiz, "juncao"), Path.Combine(_raiz, "alvo"));
+        _ = Directory.CreateDirectory(Path.Combine(_root, "target"));
+        File.WriteAllText(Path.Combine(_root, "target", "inside.txt"), "x");
+        File.WriteAllText(Path.Combine(_root, "before.txt"), "a");
+        File.CreateSymbolicLink(Path.Combine(_root, "junction"), Path.Combine(_root, "target"));
 
         var result = new OrderedFileEnumerator(new CrossPlatformEnumerator())
-            .Enumerate(_raiz, CancellationToken.None);
+            .Enumerate(_root, CancellationToken.None);
 
-        Assert.Contains(result.Files, f => f.Path.EndsWith("antes.txt", StringComparison.Ordinal));
-        Assert.Contains(result.Files, f => f.Path.EndsWith("dentro.txt", StringComparison.Ordinal));
-        // juncao é folha registrada — nunca silenciosa, nunca atravessada como diretório.
-        Assert.Contains(result.Errors, e => e.Path.EndsWith("juncao", StringComparison.Ordinal));
-        Assert.DoesNotContain(result.Files, f => f.Path.Contains("juncao", StringComparison.Ordinal));
+        Assert.Contains(result.Files, f => f.Path.EndsWith("before.txt", StringComparison.Ordinal));
+        Assert.Contains(result.Files, f => f.Path.EndsWith("inside.txt", StringComparison.Ordinal));
+        // junction is a recorded leaf — never silent, never traversed as directory.
+        Assert.Contains(result.Errors, e => e.Path.EndsWith("junction", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Files, f => f.Path.Contains("junction", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Reparse06_SymlinkParaForaDaRaiz_ConteudoExternoNaoVaza()
+    public void Reparse06_SymlinkOutsideRoot_ExternalContentDoesNotLeak()
     {
-        var fora = Path.Combine(Path.GetTempPath(), "cdt18-fora-" + Guid.NewGuid().ToString("N"));
-        _ = Directory.CreateDirectory(fora);
-        File.WriteAllText(Path.Combine(fora, "segredo.txt"), "fora");
+        var outside = Path.Combine(Path.GetTempPath(), "cdt18-outside-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "secret.txt"), "outside");
         try
         {
-            _ = Directory.CreateDirectory(Path.Combine(_raiz, "sub"));
-            File.CreateSymbolicLink(Path.Combine(_raiz, "sub", "escape"), fora);
+            _ = Directory.CreateDirectory(Path.Combine(_root, "sub"));
+            File.CreateSymbolicLink(Path.Combine(_root, "sub", "escape"), outside);
 
             var result = new OrderedFileEnumerator(new CrossPlatformEnumerator())
-                .Enumerate(_raiz, CancellationToken.None);
+                .Enumerate(_root, CancellationToken.None);
 
-            Assert.DoesNotContain(result.Files, f => f.Path.Contains("segredo", StringComparison.Ordinal));
+            Assert.DoesNotContain(result.Files, f => f.Path.Contains("secret", StringComparison.Ordinal));
             Assert.Contains(result.Errors, e => e.Path.EndsWith("escape", StringComparison.Ordinal));
         }
         finally
         {
-            Directory.Delete(fora, recursive: true);
+            Directory.Delete(outside, recursive: true);
         }
     }
-
     [Fact]
-    public void Reparse07_TelemetriaCoerente_ComEntradasReparse()
+    public void Reparse07_CoherentTelemetry_WithReparseEntries()
     {
         var fake = new FakePhysicalEnumerator(
             Entry("/root/b.dat", attrs: FileAttributes.ReparsePoint),
@@ -181,137 +180,137 @@ public class ReparsePolicyTests : IDisposable
     }
 
     [Fact]
-    public void Reparse08_ReparseNuncaTemConteudoLido()
+    public void Reparse08_ReparseNeverHasContentRead()
     {
         var fake = new FakePhysicalEnumerator(
-            Entry("/root/link.grande", size: 999, attrs: FileAttributes.ReparsePoint),
+            Entry("/root/link.large", size: 999, attrs: FileAttributes.ReparsePoint),
             Entry("/root/normal.txt"));
 
         _ = new OrderedFileEnumerator(fake).Enumerate("/root", CancellationToken.None);
 
-        // Prova central: enumeração Level 0 NUNCA lê conteúdo — nem de reparse.
+        // Core proof: Level 0 enumeration NEVER reads content — not even for reparse.
         Assert.Equal(0, fake.ReadBytesCallCount);
     }
 
     // ------------------------------------------------------------------
-    // 4 casos de LOOP DETECTION / PROFUNDIDADE
+    // 6 test cases for LOOP DETECTION / DEPTH CEILING
     // ------------------------------------------------------------------
 
     [Fact]
-    public void Loop01_MesmoInodeEmCaminhosDiferentes_DuplicataRejeitadaComErro()
+    public void Loop01_SameInodeDifferentPaths_DuplicateRejectedWithError()
     {
         var fake = new FakePhysicalEnumerator(
             Entry("/root/original.txt", fileId: "inode-777"),
-            Entry("/root/loop/copia.txt", fileId: "inode-777")); // volta ao mesmo inode
+            Entry("/root/loop/copy.txt", fileId: "inode-777")); // returns to same inode
 
         var result = new OrderedFileEnumerator(fake).Enumerate("/root", CancellationToken.None);
 
-        // Fica a PRIMEIRA ocorrência na ordem canônica ("/root/loop/..." < "/root/original..."):
-        // decisão determinística, qualquer que seja a ordem física de chegada.
-        var caminhos = result.Files.Select(f => f.Path).ToArray();
-        Assert.Equal(new[] { "/root/loop/copia.txt" }, caminhos);
-        var erro = Assert.Single(result.Errors);
-        Assert.Equal("/root/original.txt", erro.Path);
-        Assert.Contains("mesmo inode", erro.Message, StringComparison.Ordinal);
+        // Retains FIRST occurrence in canonical order ("/root/loop/..." < "/root/original..."):
+        // deterministic decision regardless of physical arrival order.
+        var paths = result.Files.Select(f => f.Path).ToArray();
+        Assert.Equal(new[] { "/root/loop/copy.txt" }, paths);
+        var error = Assert.Single(result.Errors);
+        Assert.Equal("/root/original.txt", error.Path);
+        Assert.Contains("already-visited inode", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Loop02_CicloTriplo_ApenasOriginaisFicam_RejeicaoDeterministica()
+    public void Loop02_TripleCycle_OnlyOriginalsRetained_DeterministicRejection()
     {
-        // a -> b -> a: três caminhos, dois inodes. A duplicata (qualquer que seja
-        // a ordem física de chegada) sempre é a de MAIOR caminho canônico.
-        FileEntry[] fisica =
+        // a -> b -> a: three paths, two inodes. The duplicate (regardless of physical
+        // arrival order) is always the one with the LARGER canonical path.
+        FileEntry[] physical =
         [
-            Entry("/root/b/eco.txt", fileId: "i-2"),
-            Entry("/root/a/alvo.txt", fileId: "i-1"),
-            Entry("/root/a/loop/b/eco.txt", fileId: "i-2"),
+            Entry("/root/b/echo.txt", fileId: "i-2"),
+            Entry("/root/a/target.txt", fileId: "i-1"),
+            Entry("/root/a/loop/b/echo.txt", fileId: "i-2"),
         ];
 
-        var r1 = new OrderedFileEnumerator(new FakePhysicalEnumerator(fisica)).Enumerate("/root", CancellationToken.None);
-        var r2 = new OrderedFileEnumerator(new FakePhysicalEnumerator(fisica.Reverse().ToArray())).Enumerate("/root", CancellationToken.None);
+        var r1 = new OrderedFileEnumerator(new FakePhysicalEnumerator(physical)).Enumerate("/root", CancellationToken.None);
+        var r2 = new OrderedFileEnumerator(new FakePhysicalEnumerator(physical.Reverse().ToArray())).Enumerate("/root", CancellationToken.None);
 
         Assert.Equal(r1.Files, r2.Files);
         Assert.Equal(r1.Errors, r2.Errors);
         Assert.Equal(
-            new[] { "/root/a/alvo.txt", "/root/a/loop/b/eco.txt" },
+            new[] { "/root/a/loop/b/echo.txt", "/root/a/target.txt" },
             r1.Files.Select(f => f.Path).ToArray());
-        Assert.Equal("/root/b/eco.txt", Assert.Single(r1.Errors).Path);
+        Assert.Equal("/root/b/echo.txt", Assert.Single(r1.Errors).Path);
     }
 
     [Fact]
-    public void Loop03_ProfundidadeAcimaDoTeto16_ERejeitada_Exatos16Ficam()
+    public void Loop03_DepthAbove16Ceiling_Rejected_Exact16Retained()
     {
         const string seg = "d";
-        var dentro = "/root/" + string.Join('/', Enumerable.Repeat(seg, 15)) + "/limite16.txt";   // depth 16
-        var fora = "/root/" + string.Join('/', Enumerable.Repeat(seg, 16)) + "/estouro17.txt";   // depth 17
+        var inside = "/root/" + string.Join('/', Enumerable.Repeat(seg, 15)) + "/limit16.txt";   // depth 16
+        var outside = "/root/" + string.Join('/', Enumerable.Repeat(seg, 16)) + "/overflow17.txt";   // depth 17
 
-        var fake = new FakePhysicalEnumerator(Entry(dentro), Entry(fora));
+        var fake = new FakePhysicalEnumerator(Entry(inside), Entry(outside));
 
         var result = new OrderedFileEnumerator(fake).Enumerate("/root", CancellationToken.None);
 
-        Assert.Equal(new[] { dentro }, result.Files.Select(f => f.Path).ToArray());
-        var erro = Assert.Single(result.Errors);
-        Assert.Equal(fora, erro.Path);
-        Assert.Contains("profundidade", erro.Message, StringComparison.Ordinal);
+        Assert.Equal(new[] { inside }, result.Files.Select(f => f.Path).ToArray());
+        var error = Assert.Single(result.Errors);
+        Assert.Equal(outside, error.Path);
+        Assert.Contains("depth", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Loop04_IntegracaoArvoreComCicloReal_TerminaEmTempoFinitoSemDuplicata()
+    public void Loop04_RealCycleTreeIntegration_TerminatesInFiniteTimeWithoutDuplicates()
     {
-        // Ciclo real a->b->a via symlink de diretório, passado pelo pipeline ordenado
-        // completo: termina, sem arquivo duplicado e com as folhas registradas.
-        _ = Directory.CreateDirectory(Path.Combine(_raiz, "a"));
-        _ = Directory.CreateDirectory(Path.Combine(_raiz, "b"));
-        File.WriteAllText(Path.Combine(_raiz, "a", "x.txt"), "x");
-        File.WriteAllText(Path.Combine(_raiz, "b", "y.txt"), "y");
-        File.CreateSymbolicLink(Path.Combine(_raiz, "a", "loop"), Path.Combine(_raiz, "b"));
-        File.CreateSymbolicLink(Path.Combine(_raiz, "b", "loop"), Path.Combine(_raiz, "a"));
+        // Real cycle a->b->a via directory symlinks, passed through full ordered pipeline:
+        // terminates, no duplicated files and with leaves recorded.
+        _ = Directory.CreateDirectory(Path.Combine(_root, "a"));
+        _ = Directory.CreateDirectory(Path.Combine(_root, "b"));
+        File.WriteAllText(Path.Combine(_root, "a", "x.txt"), "x");
+        File.WriteAllText(Path.Combine(_root, "b", "y.txt"), "y");
+        File.CreateSymbolicLink(Path.Combine(_root, "a", "loop"), Path.Combine(_root, "b"));
+        File.CreateSymbolicLink(Path.Combine(_root, "b", "loop"), Path.Combine(_root, "a"));
 
         var result = new OrderedFileEnumerator(new CrossPlatformEnumerator())
-            .Enumerate(_raiz, CancellationToken.None);
+            .Enumerate(_root, CancellationToken.None);
 
-        var nomesTxt = result.Files
+        var txtNames = result.Files
             .Where(f => f.Path.EndsWith(".txt", StringComparison.Ordinal))
             .Select(f => Path.GetFileName(f.Path))
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToArray();
-        Assert.Equal(new[] { "x.txt", "y.txt" }, nomesTxt);
+        Assert.Equal(new[] { "x.txt", "y.txt" }, txtNames);
         Assert.Equal(result.Files.Count, result.Telemetry.FilesEnumerated);
         Assert.Contains(result.Errors, e => e.Path.EndsWith(Path.Combine("a", "loop"), StringComparison.Ordinal));
         Assert.Contains(result.Errors, e => e.Path.EndsWith(Path.Combine("b", "loop"), StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Loop05_Profundidade_CaminhoForaDaRaiz_NuncaExcedeTeto()
+    public void Loop05_Depth_PathOutsideRoot_NeverExceedsCeiling()
     {
-        // Simula entrada cuja raiz lógica é distinta da raiz passada: código de Profundidade
-        // deve retornar 0 em vez de inflar artificialmente — caso contrário, rejeição por
-        // profundidade fere caminhos fora da raiz (segurança: falso-positivo de loop).
+        // Simulates entry whose logical root differs from supplied root: depth code
+        // must return 0 instead of artificially inflating — otherwise rejection
+        // by depth would harm paths outside root (security: false-positive loop).
         var fake = new FakePhysicalEnumerator(
             Entry("/root/real.txt"),
-            Entry("/outro/volume/salto.txt"));
+            Entry("/other/volume/jump.txt"));
 
         var result = new OrderedFileEnumerator(fake).Enumerate("/root", CancellationToken.None);
 
-        // Nenhum erro de profundidade — caminho fora da raiz não é rejeitado.
-        Assert.DoesNotContain(result.Errors, e => e.Message.Contains("profundidade", StringComparison.Ordinal));
+        // No depth error — path outside root is not rejected.
+        Assert.DoesNotContain(result.Errors, e => e.Message.Contains("depth", StringComparison.Ordinal));
         Assert.Equal(
-            new[] { "/outro/volume/salto.txt", "/root/real.txt" },
+            new[] { "/other/volume/jump.txt", "/root/real.txt" },
             result.Files.Select(f => f.Path).ToArray());
     }
 
     [Fact]
-    public void Loop06_Profundidade_RaizApenasDiretorio_TamanhoCorreto()
+    public void Loop06_Depth_RootWithTrailingSlash_CorrectDepth()
     {
-        // Raiz passada como "/root/" (com barra final) e arquivos dentro dela: depth deve
-        // ser mesurável mesmo após TrimStart do relativo.
+        // Root passed as "/root/" (with trailing slash) and files inside it: depth must
+        // be measurable even after TrimStart on relative.
         var fake = new FakePhysicalEnumerator(
             Entry("/root/d1/d2/final.txt"));
 
         var result = new OrderedFileEnumerator(fake).Enumerate("/root/", CancellationToken.None);
 
-        // Profundidade = 3 ("/d1/d2/final.txt") <= teto (16) — fica.
-        Assert.DoesNotContain(result.Errors, e => e.Message.Contains("profundidade", StringComparison.Ordinal));
+        // Depth = 3 ("/d1/d2/final.txt") <= ceiling (16) — retained.
+        Assert.DoesNotContain(result.Errors, e => e.Message.Contains("depth", StringComparison.Ordinal));
         Assert.Single(result.Files, f => f.Path.EndsWith("final.txt", StringComparison.Ordinal));
     }
 }

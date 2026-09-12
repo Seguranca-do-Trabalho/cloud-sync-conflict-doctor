@@ -3,17 +3,17 @@ namespace Doctor.Core;
 using System.Security.Cryptography;
 
 /// <summary>
-/// Gerador de operation_id baseado em 128 bits CSPRNG (T-09/R9).
+/// 128-bit CSPRNG-based operation_id generator (T-09/R9).
 /// 
-/// O id é independente de relógio e nunca colide entre lotes simultâneos.
-/// Forma: hex minúsculo de 32 caracteres (128 bits = 16 bytes).
+/// The id is clock-independent and never collides between simultaneous batches.
+/// Format: 32-character lowercase hex (128 bits = 16 bytes).
 /// </summary>
 internal static class OperationIdGenerator
 {
     private static readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
 
     /// <summary>
-    /// Gera um operation_id único baseado em entropia criptográfica.
+    /// Generates a unique operation_id based on cryptographic entropy.
     /// </summary>
     public static string Generate()
     {

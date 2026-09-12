@@ -3,16 +3,16 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T23 (t_64c4d4c0) / T24 (t_f37457ba) — Seleção de comparador por extensão
-/// case-insensitive (ADR-0011 item 1; contratos.md IDocumentComparator):
-/// .txt/.log/.ini/.cfg/.conf ⇒ texto; .md ⇒ markdown; .csv ⇒ csv; TODO o resto,
-/// inclusive SEM extensão, ⇒ BinaryFallbackComparator.
+/// T23 (t_64c4d4c0) / T24 (t_f37457ba) — Comparator selection by extension, case-insensitive
+/// (ADR-0011 item 1; contracts.md IDocumentComparator):
+/// .txt/.log/.ini/.cfg/.conf ⇒ text; .md ⇒ markdown; .csv ⇒ csv; everything else,
+/// including WITHOUT extension, ⇒ BinaryFallbackComparator.
 /// </summary>
 [Trait("Category", "Comparison")]
 public class ComparatorSelectorTests : IDisposable
 {
     private readonly string _dir;
-    private readonly List<string> _arquivos = new();
+    private readonly List<string> _files = new();
 
     public ComparatorSelectorTests()
     {
@@ -21,7 +21,7 @@ public class ComparatorSelectorTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var a in _arquivos)
+        foreach (var a in _files)
         {
             File.Delete(a);
         }
@@ -36,64 +36,64 @@ public class ComparatorSelectorTests : IDisposable
     [InlineData(".INI")]
     [InlineData(".Cfg")]
     [InlineData(".CONF")]
-    public void Sel01_ExtensaoTexto_CaseInsensitive_RoteiaParaTextComparator(string extensao)
+    public void Sel01_TextExtension_CaseInsensitive_RoutesToTextComparator(string extension)
     {
-        var (left, right) = ParComExtensao(extensao);
+        var (left, right) = PairWithExtension(extension);
 
-        var resultado = ComparatorSelector.Compare(left, right, CancellationToken.None);
+        var result = ComparatorSelector.Compare(left, right, CancellationToken.None);
 
-        Assert.Equal("text", resultado.ComparatorKind);
+        Assert.Equal("text", result.ComparatorKind);
     }
 
     [Theory]
     [InlineData(".MD")]
     [InlineData(".md")]
     [InlineData(".Md")]
-    public void Sel03_ExtensaoMarkdown_RoteiaParaMarkdownComparator(string extensao)
+    public void Sel03_MarkdownExtension_RoutesToMarkdownComparator(string extension)
     {
-        var (left, right) = ParComExtensao(extensao);
+        var (left, right) = PairWithExtension(extension);
 
-        var resultado = ComparatorSelector.Compare(left, right, CancellationToken.None);
+        var result = ComparatorSelector.Compare(left, right, CancellationToken.None);
 
-        Assert.Equal("markdown", resultado.ComparatorKind);
+        Assert.Equal("markdown", result.ComparatorKind);
     }
 
     [Theory]
     [InlineData(".CSV")]
     [InlineData(".csv")]
     [InlineData(".Csv")]
-    public void Sel04_ExtensaoCsv_RoteiaParaCsvComparator(string extensao)
+    public void Sel04_CsvExtension_RoutesToCsvComparator(string extension)
     {
-        var (left, right) = ParComExtensao(extensao);
+        var (left, right) = PairWithExtension(extension);
 
-        var resultado = ComparatorSelector.Compare(left, right, CancellationToken.None);
+        var result = ComparatorSelector.Compare(left, right, CancellationToken.None);
 
-        Assert.Equal("csv", resultado.ComparatorKind);
+        Assert.Equal("csv", result.ComparatorKind);
     }
 
     [Theory]
     [InlineData(".bin")]
     [InlineData(".docx")]
     [InlineData("")]
-    public void Sel02_ExtensaoDesconhecidaOuAusente_RoteiaParaBinaryFallback(string extensao)
+    public void Sel02_UnknownOrMissingExtension_RoutesToBinaryFallback(string extension)
     {
-        var (left, right) = ParComExtensao(extensao);
+        var (left, right) = PairWithExtension(extension);
 
-        var resultado = ComparatorSelector.Compare(left, right, CancellationToken.None);
+        var result = ComparatorSelector.Compare(left, right, CancellationToken.None);
 
-        Assert.Equal("binary", resultado.ComparatorKind);
+        Assert.Equal("binary", result.ComparatorKind);
     }
 
-    /// <summary>Cria par idêntico de arquivos com a extensão pedida.</summary>
-    private (FileEntry Left, FileEntry Right) ParComExtensao(string extensao)
+    /// <summary>Creates identical pair of files with the specified extension.</summary>
+    private (FileEntry Left, FileEntry Right) PairWithExtension(string extension)
     {
-        var nome = $"arq{extensao}";
-        var pl = Path.Combine(_dir, $"L-{nome}");
-        var pr = Path.Combine(_dir, $"R-{nome}");
+        var name = $"file{extension}";
+        var pl = Path.Combine(_dir, $"L-{name}");
+        var pr = Path.Combine(_dir, $"R-{name}");
         File.WriteAllBytes(pl, new byte[] { 0x61, 0x0A });
         File.WriteAllBytes(pr, new byte[] { 0x61, 0x0A });
-        _arquivos.Add(pl);
-        _arquivos.Add(pr);
-        return (TextComparatorTests.Entrada(pl, 2), TextComparatorTests.Entrada(pr, 2));
+        _files.Add(pl);
+        _files.Add(pr);
+        return (TextComparatorTests.Entry(pl, 2), TextComparatorTests.Entry(pr, 2));
     }
 }

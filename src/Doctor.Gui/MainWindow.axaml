@@ -8,63 +8,63 @@
         Width="860" Height="600">
 
     <Window.Styles>
-        <!-- Estilos de segurança (primary/destructive/secondary) são CENTRALIZADOS
-             no App.axaml (G2 — t_87f625aa): todas as telas herdam o mesmo vocabulário. -->
+        <!-- Safety styles (primary/destructive/secondary) are CENTRALIZED
+             in App.axaml (G2 — t_87f625aa): all screens inherit the same vocabulary. -->
     </Window.Styles>
 
     <Grid RowDefinitions="*,Auto" Margin="24">
 
         <Panel Grid.Row="0">
 
-            <!-- 1. Escolher pasta -->
+            <!-- 1. Choose Folder -->
             <StackPanel IsVisible="{Binding ShowChooseFolder}" Spacing="12">
-                <TextBlock Classes="titulo" Text="Escolher pasta" />
-                <TextBlock Text="Qual pasta você quer examinar em busca de duplicatas e conflitos de sincronização?" TextWrapping="Wrap" />
-                <TextBox Watermark="C:\Users\você\OneDrive" Text="{Binding ChosenFolder}" />
+                <TextBlock Classes="titulo" Text="Choose Folder" />
+                <TextBlock Text="Which folder do you want to scan for duplicate and sync conflict files?" TextWrapping="Wrap" />
+                <TextBox Watermark="C:\Users\you\OneDrive" Text="{Binding ChosenFolder}" />
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Button Classes="primary" Content="Escanear pasta" Command="{Binding StartScanCommand}" />
+                    <Button Classes="primary" Content="Scan Folder" Command="{Binding StartScanCommand}" />
                 </StackPanel>
-                <TextBlock Text="Demonstração: nenhum arquivo é lido; o resultado é um exemplo fixo (DEMO)." Foreground="Gray" TextWrapping="Wrap" />
+                <TextBlock Text="Demo: no files are read; the result is a fixed sample (DEMO)." Foreground="Gray" TextWrapping="Wrap" />
             </StackPanel>
 
-            <!-- 2. Escanear (progresso fake) -->
+            <!-- 2. Scanning (fake progress) -->
             <StackPanel IsVisible="{Binding ShowScanning}" Spacing="12" VerticalAlignment="Center">
-                <TextBlock Classes="titulo" Text="Escaneando…" />
+                <TextBlock Classes="titulo" Text="Scanning…" />
                 <ProgressBar Minimum="0" Maximum="100" Value="{Binding ScanProgressPercent}" Height="8" />
                 <TextBlock Text="{Binding ScanProgressPercent, StringFormat='{}{0}%'}" HorizontalAlignment="Center" />
             </StackPanel>
 
-            <!-- 3. Resumo: as 5 perguntas do §15 -->
+            <!-- 3. Summary: the 5 questions from §15 -->
             <StackPanel IsVisible="{Binding ShowSummary}" Spacing="8">
-                <TextBlock Classes="titulo" Text="Resumo" />
-                <TextBlock Text="Arquivos encontrados:" />
+                <TextBlock Classes="titulo" Text="Summary" />
+                <TextBlock Text="Files found:" />
                 <TextBlock Classes="resposta" Text="{Binding SummaryFilesFound}" />
-                <TextBlock Text="Duplicatas idênticas (cópias redundantes):" />
+                <TextBlock Text="Identical duplicates (redundant copies):" />
                 <TextBlock Classes="resposta" Text="{Binding SummaryIdenticalDuplicates}" />
-                <TextBlock Text="Divergências reais:" />
+                <TextBlock Text="Real conflicts:" />
                 <TextBlock Classes="resposta" Text="{Binding SummaryRealConflicts}" />
-                <TextBlock Text="Placeholders ignorados (nunca abertos):" />
+                <TextBlock Text="Placeholders ignored (never opened):" />
                 <TextBlock Classes="resposta" Text="{Binding SummaryPlaceholdersIgnored}" />
-                <TextBlock Text="Espaço que pode ser recuperado com segurança:" />
+                <TextBlock Text="Space that can be safely recovered:" />
                 <TextBlock Classes="resposta" Text="{Binding SummaryRecoverableSpace}" />
                 <TextBlock Foreground="Green"
-                           Text="Nenhum byte de arquivo da nuvem foi lido: placeholders ficam intocados." TextWrapping="Wrap" />
+                           Text="No cloud file bytes were read: placeholders remain untouched." TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,12,0,0">
-                    <Button Classes="primary" Content="Ver duplicatas" Command="{Binding OpenDuplicatesCommand}" />
-                    <Button Classes="secondary" Content="Ver conflitos reais" Command="{Binding OpenConflictsCommand}" />
+                    <Button Classes="primary" Content="View Duplicates" Command="{Binding OpenDuplicatesCommand}" />
+                    <Button Classes="secondary" Content="View Real Conflicts" Command="{Binding OpenConflictsCommand}" />
                 </StackPanel>
             </StackPanel>
 
-            <!-- 4. Duplicatas -->
+            <!-- 4. Duplicates -->
             <StackPanel IsVisible="{Binding ShowDuplicates}" Spacing="10">
-                <TextBlock Classes="titulo" Text="Duplicatas idênticas" />
+                <TextBlock Classes="titulo" Text="Identical Duplicates" />
                 <ItemsControl ItemsSource="{Binding Report.IdenticalDuplicates}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="engine:DuplicateGroup">
                             <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
                                 <StackPanel Spacing="4">
                                     <TextBlock FontWeight="SemiBold"
-                                               Text="{Binding SizeBytes, StringFormat='{}{0:N0} bytes cada'}" />
+                                               Text="{Binding SizeBytes, StringFormat='{}{0:N0} bytes each'}" />
                                     <TextBlock Foreground="Gray" FontSize="11"
                                                Text="{Binding Blake3Hash, StringFormat='BLAKE3 {0}'}" />
                                     <ItemsControl ItemsSource="{Binding Files}">
@@ -80,22 +80,22 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Button Classes="primary" Content="Continuar" Command="{Binding OpenConflictsCommand}" />
-                    <Button Classes="secondary" Content="Voltar ao resumo" Command="{Binding GoBackCommand}" />
+                    <Button Classes="primary" Content="Continue" Command="{Binding OpenConflictsCommand}" />
+                    <Button Classes="secondary" Content="Back to Summary" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
-            <!-- 5. Conflitos reais -->
+            <!-- 5. Real Conflicts -->
             <StackPanel IsVisible="{Binding ShowConflicts}" Spacing="10">
-                <TextBlock Classes="titulo" Text="Conflitos reais" />
+                <TextBlock Classes="titulo" Text="Real Conflicts" />
                 <ItemsControl ItemsSource="{Binding Report.RealConflicts}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="engine:ConflictGroup">
                             <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
                                 <StackPanel Spacing="4">
                                     <TextBlock FontWeight="SemiBold" Text="{Binding BaseName}" />
-                                    <TextBlock Foreground="Gray" Text="{Binding Versions.Count, StringFormat='{}{0} versões divergentes'}" />
-                                    <Button Classes="primary" Content="Comparar versões"
+                                    <TextBlock Foreground="Gray" Text="{Binding Versions.Count, StringFormat='{}{0} divergent versions'}" />
+                                    <Button Classes="primary" Content="Compare Versions"
                                             Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).CompareConflictCommand}"
                                             CommandParameter="{Binding}" HorizontalAlignment="Left" />
                                 </StackPanel>
@@ -103,12 +103,12 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <Button Classes="secondary" Content="Voltar às duplicatas" Command="{Binding GoBackCommand}" HorizontalAlignment="Left" />
+                <Button Classes="secondary" Content="Back to Duplicates" Command="{Binding GoBackCommand}" HorizontalAlignment="Left" />
             </StackPanel>
 
-            <!-- 6. Comparar -->
+            <!-- 6. Compare -->
             <StackPanel IsVisible="{Binding ShowCompare}" Spacing="10">
-                <TextBlock Classes="titulo" Text="Comparar versões" />
+                <TextBlock Classes="titulo" Text="Compare Versions" />
                 <TextBlock FontWeight="SemiBold" Text="{Binding SelectedConflict.BaseName}" />
                 <ItemsControl ItemsSource="{Binding SelectedConflict.Versions}">
                     <ItemsControl.ItemTemplate>
@@ -119,33 +119,33 @@
                                     <TextBlock Foreground="Gray" FontSize="12"
                                                Text="{Binding SizeBytes, StringFormat='{}{0:N0} bytes'}" />
                                     <TextBlock Foreground="Gray" FontSize="12"
-                                               Text="{Binding MtimeUtc, StringFormat='modificado em {0}'}" />
+                                               Text="{Binding MtimeUtc, StringFormat='modified on {0}'}" />
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <TextBlock>
-                    <Run Text="Sugestão automática: manter '" /><Run Text="{Binding SelectedVersionToKeep.Path}" /><Run Text="' (mais recente; desempate por tamanho e caminho)." />
+                    <Run Text="Auto-suggestion: keep '" /><Run Text="{Binding SelectedVersionToKeep.Path}" /><Run Text="' (newest; tiebreak by size and path)." />
                 </TextBlock>
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Button Classes="destructive" Content="Mover para quarentena as outras versões"
+                    <Button Classes="destructive" Content="Move Other Versions to Quarantine"
                             Command="{Binding QueueOtherVersionsForQuarantineCommand}" />
-                    <Button Classes="secondary" Content="Voltar aos conflitos" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Back to Conflicts" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
-            <!-- 7. Escolher ação -->
+            <!-- 7. Choose Action -->
             <StackPanel IsVisible="{Binding ShowChooseAction}" Spacing="12">
-                <TextBlock Classes="titulo" Text="Escolher ação" />
+                <TextBlock Classes="titulo" Text="Choose Action" />
                 <TextBlock TextWrapping="Wrap"
-                           Text="As versões que não serão mantidas vão para uma pasta de quarentena datada, com manifesto para restauração. Nada é descartado de imediato." />
-                <TextBlock Text="{Binding Quarantine.CountLabel, StringFormat='{}{0} itens na fila'}" />
+                           Text="Versions that will not be kept go to a dated quarantine folder, with a manifest for restoration. Nothing is discarded immediately." />
+                <TextBlock Text="{Binding Quarantine.CountLabel, StringFormat='{}{0} items in queue'}" />
 
-                <!-- Estratégias do §17: lista FIXA, apenas apresentação visual.
-                     A lógica de resolução é do EPIC 07 (scheduled) — ponto de extensão. -->
-                <TextBlock FontWeight="SemiBold" Text="Como você quer decidir entre versões?" />
-                <ItemsControl ItemsSource="{x:Static vm:MainWindowViewModel.EstrategiasResolucao}">
+                <!-- §17 Strategies: FIXED list, visual presentation only.
+                     Resolution logic belongs to EPIC 07 (scheduled) — extension point. -->
+                <TextBlock FontWeight="SemiBold" Text="How do you want to decide between versions?" />
+                <ItemsControl ItemsSource="{x:Static vm:MainWindowViewModel.ResolutionStrategies}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
                             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
@@ -157,19 +157,19 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <TextBlock Foreground="Gray" FontSize="12" TextWrapping="Wrap"
-                           Text="Empate entre versões resolvido sempre na ordem: mtime → size → path (data de modificação, depois tamanho, depois caminho)." />
+                           Text="Version tiebreak always resolved in order: mtime → size → path (modification date, then size, then path)." />
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Button Classes="destructive" Content="Mover para quarentena agora"
+                    <Button Classes="destructive" Content="Move to Quarantine Now"
                             Command="{Binding ConfirmQuarantineCommand}" />
-                    <Button Classes="secondary" Content="Repensar" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Rethink" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
-            <!-- 8. Quarentena -->
+            <!-- 8. Quarantine -->
             <StackPanel IsVisible="{Binding ShowQuarantine}" Spacing="10">
-                <TextBlock Classes="titulo" Text="Quarentena" />
+                <TextBlock Classes="titulo" Text="Quarantine" />
                 <TextBlock TextWrapping="Wrap"
-                           Text="Itens preparados para a movimentação para a quarentena (esqueleto: nenhum arquivo real é tocado):" />
+                           Text="Items prepared for quarantine move (skeleton: no real files are touched):" />
                 <ItemsControl ItemsSource="{Binding Quarantine.Paths}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
@@ -178,37 +178,37 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <Button Classes="primary" Content="Registrar movimentação para a quarentena"
+                    <Button Classes="primary" Content="Record Quarantine Move"
                             Command="{Binding OpenConfirmationFromQuarantineCommand}" />
-                    <Button Classes="secondary" Content="Voltar" Command="{Binding GoBackCommand}" />
+                    <Button Classes="secondary" Content="Back" Command="{Binding GoBackCommand}" />
                 </StackPanel>
             </StackPanel>
 
-            <!-- 9. Confirmação: manifesto fake §18 exibido ANTES da ação final.
-                 operation_id determinístico, contagem e caminho previsto. -->
+            <!-- 9. Confirmation: fake §18 manifest displayed BEFORE the final action.
+                 Deterministic operation_id, count, and expected path. -->
             <StackPanel IsVisible="{Binding ShowConfirmation}" Spacing="12" VerticalAlignment="Center">
-                <TextBlock Classes="titulo" Text="Pronto" />
+                <TextBlock Classes="titulo" Text="Done" />
                 <TextBlock TextWrapping="Wrap"
-                           Text="A movimentação para a quarentena foi registrada. Um manifesto permite restaurar qualquer item depois." />
+                           Text="The quarantine move has been recorded. A manifest allows restoring any item later." />
                 <Border BorderBrush="LightGray" BorderThickness="1" CornerRadius="6" Padding="12">
                     <StackPanel Spacing="4">
-                        <TextBlock FontWeight="SemiBold" Text="Manifesto desta operação (demonstração):" />
+                        <TextBlock FontWeight="SemiBold" Text="This operation's manifest (demonstration):" />
                         <TextBlock FontSize="12"
-                                   Text="{Binding OperationIdPrevisto, StringFormat='operation_id: {0}'}" />
+                                   Text="{Binding ExpectedOperationId, StringFormat='operation_id: {0}'}" />
                         <TextBlock FontSize="12"
-                                   Text="{Binding ConfirmacaoContagemItens, StringFormat='itens na fila: {0}'}" />
+                                   Text="{Binding ConfirmationItemCount, StringFormat='items in queue: {0}'}" />
                         <TextBlock FontSize="12"
-                                   Text="{x:Static vm:MainWindowViewModel.CaminhoQuarentenaPrevistoLabel}" />
+                                   Text="{x:Static vm:MainWindowViewModel.ExpectedQuarantinePathLabel}" />
                     </StackPanel>
                 </Border>
-                <TextBlock Foreground="Green" Text="Nenhum arquivo foi descartado — tudo permanece recuperável na quarentena." TextWrapping="Wrap" />
-                <Button Classes="primary" Content="Examinar outra pasta" Command="{Binding RestartCommand}" HorizontalAlignment="Left" />
+                <TextBlock Foreground="Green" Text="No files were discarded — everything remains recoverable in quarantine." TextWrapping="Wrap" />
+                <Button Classes="primary" Content="Browse Another Folder" Command="{Binding RestartCommand}" HorizontalAlignment="Left" />
             </StackPanel>
 
         </Panel>
 
         <TextBlock Grid.Row="1" Foreground="Gray" FontSize="11" Margin="0,12,0,0"
-                   Text="DEMO — esqueleto com motor falso; dados fictícios; nenhuma operação real em arquivos." />
+                   Text="DEMO — skeleton with fake engine; dummy data; no real file operations." />
 
     </Grid>
 </Window>

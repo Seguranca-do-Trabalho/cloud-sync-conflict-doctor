@@ -1,13 +1,13 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Resultado do scan L0→L3 do pipeline (T12 — escopo reduzido do orquestrador):
-/// grupos candidatos do Level 1 e os vereditos finais do Level 3 — duplicatas
-/// idênticas (hash completo igual em todos os membros do grupo) e conflitos reais
-/// (hash completo divergente), classe por classe, sempre em ordem canônica
-/// (<see cref="PathOrder"/>; SPEC §3, ADR-0004 regra 1). Não é o relatório final
-/// (schema v1 / IReportWriter): é o tipo de decisão serial consumido pelos testes
-/// de determinismo deste card.
+/// Pipeline L0→L3 scan result (T12 — reduced orchestrator scope):
+/// Level 1 candidate groups and Level 3 final verdicts — identical
+/// duplicates (full hash equal across all group members) and real conflicts
+/// (divergent full hash), class by class, always in canonical order
+/// (<see cref="PathOrder"/>; SPEC §3, ADR-0004 rule 1). Not the final report
+/// (schema v1 / IReportWriter): it is the serial decision type consumed by this
+/// card's determinism tests.
 /// </summary>
 public sealed record ScanResult(
     IReadOnlyList<ConflictGroup> Groups,
@@ -15,61 +15,60 @@ public sealed record ScanResult(
     IReadOnlyList<RealConflict> RealConflicts,
     IReadOnlyList<UnresolvedGroup>? UnresolvedGroups = null)
 {
-    /// <summary>Grupos recusados por hash não verificável (S11-5). Nunca nulo.</summary>
+    /// <summary>Groups rejected due to unverifiable hash (S11-5). Never null.</summary>
     public IReadOnlyList<UnresolvedGroup> UnresolvedGroups { get; init; } =
         UnresolvedGroups ?? [];
 }
 
 /// <summary>
-/// Grupo cuja decisão L3 foi recusada por impossibilidade de hash completo de ao
-/// menos um membro (S11-5 fail-closed, ameaça T-11): sem hash completo verificado,
-/// nenhuma classificação é emitida — o grupo não vira duplicata nem conflito e o
-/// par nunca é elegível a resolução/quarentena. Motivo auditável por membro.
+/// Group whose L3 decision was rejected due to inability to produce a complete hash
+/// for at least one member (S11-5 fail-closed, threat T-11): without a verified full
+/// hash, no classification is issued — the group becomes neither duplicate nor conflict
+/// and the pair is never eligible for resolution/quarantine. Reason auditable per member.
 /// </summary>
 public sealed record UnresolvedGroup(
     string NormalizedBaseName,
     long SizeBytes,
     IReadOnlyList<UnresolvedMember> Members);
 
-/// <summary>Membro sem hash completo verificável, com o motivo da recusa.</summary>
+/// <summary>Member without a verifiable full hash, with the rejection reason.</summary>
 public sealed record UnresolvedMember(string Path, string Reason);
 
 /// <summary>
-/// Classe de duplicatas idênticas (schema v1 §6.1): hash BLAKE3 completo comum +
-/// membros em ordem canônica por caminho. Forma-se apenas de grupo cujos hashes
-/// completos são TODOS iguais; grupo nunca gera entrada simultânea aqui e em
-/// <see cref="RealConflict"/> (§6.1/§6.2 — classificação por grupo mutuamente exclusiva).
+/// Identical duplicate class (schema v1 §6.1): common full BLAKE3 hash +
+/// members in canonical path order. Formed only from groups whose full hashes
+/// are ALL equal; a group never generates an entry here and in
+/// <see cref="RealConflict"/> (§6.1/§6.2 — per-group classification mutually exclusive).
 /// </summary>
 public sealed record IdenticalDuplicate(string Hash, long SizeBytes, IReadOnlyList<FileEntry> Files);
 
 /// <summary>
-/// Conflito real (schema v1 §6.2): grupo candidato com ao menos dois hashes completos
-/// distintos após o Level 2. Cobre TODOS os membros do grupo, com o hash completo
-/// individual de cada um em ordem canônica por caminho; subconjuntos internamente
-/// idênticos ficam reconstruíveis pelos hashes.
+/// Real conflict (schema v1 §6.2): candidate group with at least two distinct full hashes
+/// after Level 2. Covers ALL group members, with each member's individual full hash
+/// in canonical path order; internally identical subsets are reconstructable from hashes.
 /// </summary>
 public sealed record RealConflict(
     string NormalizedBaseName,
     long SizeBytes,
     IReadOnlyList<ConflictMember> Files);
 
-/// <summary>Membro de um conflito real: caminho canônico + hash completo individual.</summary>
+/// <summary>Member of a real conflict: canonical path + individual full hash.</summary>
 public sealed record ConflictMember(string Path, string Hash);
 
 /// <summary>
-/// Pipeline determinístico L0→L3 (SPEC §5, §11; ADR-0004; docs/contratos.md):
-/// enumera (L0), agrupa candidatos por normalized_base_name + size (L1 — Grouping),
-/// hashea parcialmente os membros de grupos com 2+ itens (L2 — IHasher.PartialHash)
-/// e aplica o hash completo BLAKE3 SOMENTE nas colisões parciais (L3 —
-/// Blake3Hasher.FullHashBlake3 via IStreamSource). Toda decisão é serial sobre
-/// coleções em ordem canônica; nenhuma decisão depende de ordem de chegada nem de
-/// ordem de término de threads (ADR-0004 regras 1-2). Placeholder nunca entra em
-/// L1: <see cref="PlaceholderGate"/> remove antes do agrupamento e a política é
-/// reclassificada em cada gate de hash (SPEC §6).
+/// Deterministic L0→L3 pipeline (SPEC §5, §11; ADR-0004; docs/contracts.md):
+/// enumerates (L0), groups candidates by normalized_base_name + size (L1 — Grouping),
+/// partially hashes members of groups with 2+ items (L2 — IHasher.PartialHash)
+/// and applies full BLAKE3 ONLY on partial collisions (L3 —
+/// Blake3Hasher.FullHashBlake3 via IStreamSource). Every decision is serial over
+/// collections in canonical order; no decision depends on arrival order or
+/// thread completion order (ADR-0004 rules 1-2). Placeholder never enters
+/// L1: <see cref="PlaceholderGate"/> removes before grouping and the policy is
+/// reclassified at each hash gate (SPEC §6).
 /// </summary>
 public sealed class ScanPipeline
 {
-    /// <summary>Sentinela de hash não verificável (S11-5): prefixo + motivo.</summary>
+    /// <summary>Unverifiable hash sentinel (S11-5): prefix + reason.</summary>
     public const string UnresolvedPrefix = "UNRESOLVED::";
 
     private readonly IFileEnumerator _enumerator;
@@ -77,14 +76,14 @@ public sealed class ScanPipeline
     private readonly IStreamSource? _streams;
     private readonly PlaceholderGate _gate;
 
-    /// <param name="enumerator">Fonte L0. Se não for <see cref="OrderedFileEnumerator"/>,
-    /// o pipeline reordena pela ordem canônica — a ordenação de saída não depende do
-    /// enumerador (SPEC §3).</param>
-    /// <param name="hasher">Hasher L2 (parcial). Em produção atravessa
-    /// <see cref="PlaceholderGuardedHasher"/>; o pipeline reclassifica por segurança.</param>
-    /// <param name="streams">Fonte única de conteúdo do L3 (contratos.md IStreamSource).
-    /// Nulo apenas quando <paramref name="hasher"/> é um double de teste que não lê
-    /// conteúdo — nesse caso o gate de abertura é o próprio hasher.</param>
+    /// <param name="enumerator">L0 source. If not <see cref="OrderedFileEnumerator"/>,
+    /// the pipeline reorders by canonical order — output ordering does not depend on the
+    /// enumerator (SPEC §3).</param>
+    /// <param name="hasher">L2 (partial) hasher. In production goes through
+    /// <see cref="PlaceholderGuardedHasher"/>; the pipeline reclassifies for safety.</param>
+    /// <param name="streams">L3 single content source (contracts.md IStreamSource).
+    /// Null only when <paramref name="hasher"/> is a test double that doesn't read
+    /// content — in that case the opening gate is the hasher itself.</param>
     public ScanPipeline(IFileEnumerator enumerator, IHasher hasher, IStreamSource? streams = null)
     {
         _enumerator = enumerator ?? throw new ArgumentNullException(nameof(enumerator));
@@ -94,31 +93,31 @@ public sealed class ScanPipeline
     }
 
     /// <summary>
-    /// Executa L0→L3 de forma determinística: mesma árvore ⇒ mesmo
-    /// <see cref="ScanResult"/> byte a byte, independentemente da ordem física de
-    /// enumeração (SPEC §20; prova automatizada em DET-03 mínimo deste card).
+    /// Runs L0→L3 deterministically: same tree ⇒ same
+    /// <see cref="ScanResult"/> byte by byte, regardless of physical enumeration
+    /// order (SPEC §20; automated proof at DET-03 minimum of this card).
     /// </summary>
     public ScanResult Run(string rootPath, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
 
-        // L0 — enumeração + ordem canônica garantida na fronteira do pipeline.
+        // L0 — enumeration + canonical order guaranteed at the pipeline boundary.
         var enumeration = _enumerator is OrderedFileEnumerator
             ? _enumerator.Enumerate(rootPath, ct)
             : new OrderedFileEnumerator(_enumerator).Enumerate(rootPath, ct);
 
-        // Gate de placeholder (SPEC §6/§21): separa fluxo seguro de Placeholders[].
+        // Placeholder gate (SPEC §6/§21): separates safe flow from Placeholders[].
         var safe = _gate.Enforce(enumeration);
 
-        // L1 — agrupamento de candidatos: serial, entrada já em ordem canônica
-        // (Grouping reordena internamente como defesa estrutural — Grouping.Group).
+        // L1 — candidate grouping: serial, input already in canonical order
+        // (Grouping reorders internally as structural defense — Grouping.Group).
         var groups = Grouping.Group(safe.Files);
 
         var identical = new List<IdenticalDuplicate>();
         var conflicts = new List<RealConflict>();
         var unresolved = new List<UnresolvedGroup>();
 
-        // L2 + L3 — decisão serial sobre grupos já ordenados (base em bytes, size).
+        // L2 + L3 — serial decision on already ordered groups (base in bytes, size).
         foreach (var group in groups)
         {
             ct.ThrowIfCancellationRequested();
@@ -127,11 +126,11 @@ public sealed class ScanPipeline
                 .Select(m => (Member: m, Partial: HashGuarded(() => _hasher.PartialHash(m, ct), m)))
                 .ToArray();
 
-            // Colisão parcial = ao menos dois membros com o MESMO hash parcial.
-            // Sem colisão parcial não há candidato a duplicata: grupo não sobrevive
-            // ao L2 e nenhum full hash acontece (ADR-0004: L3 só sobre sobreviventes).
-            // S11-5 fail-closed: hash parcial não verificável (sentinela) força o
-            // grupo inteiro para unresolved — sem decisão sobre dado ausente.
+            // Partial collision = at least two members with the SAME partial hash.
+            // Without partial collision there is no duplicate candidate: group does not
+            // survive L2 and no full hash happens (ADR-0004: L3 only on survivors).
+            // S11-5 fail-closed: unverifiable partial hash (sentinel) forces the
+            // entire group to unresolved — no decision on missing data.
             var hasUnresolvedPartial = partial.Any(p =>
                 p.Partial.StartsWith(UnresolvedPrefix, StringComparison.Ordinal));
 
@@ -156,10 +155,10 @@ public sealed class ScanPipeline
                 continue;
             }
 
-            // L3 — hash completo dos sobreviventes do L2, decidido serialmente sobre
-            // a lista ordenada (ADR-0004 regra 2). O veredito cobre TODOS os membros
-            // do grupo com hash individual (schema v1 §6.2): parcial distinto implica
-            // conteúdo distinto, então cada membro participa do registro final.
+            // L3 — full hash of L2 survivors, decided serially over the
+            // ordered list (ADR-0004 rule 2). The verdict covers ALL group
+            // members with individual hash (schema v1 §6.2): distinct partial implies
+            // distinct content, so each member participates in the final record.
             var full = new (FileEntry Member, string Full)[partial.Length];
             for (var i = 0; i < partial.Length; i++)
             {
@@ -178,9 +177,9 @@ public sealed class ScanPipeline
     }
 
     /// <summary>
-    /// Veredito por grupo, mutuamente exclusivo (schema v1 §6.1/§6.2): hashes
-    /// completos todos iguais ⇒ <see cref="IdenticalDuplicate"/>; ao menos dois
-    /// distintos ⇒ <see cref="RealConflict"/> cobrindo TODOS os membros.
+    /// Per-group verdict, mutually exclusive (schema v1 §6.1/§6.2): all full hashes
+    /// equal ⇒ <see cref="IdenticalDuplicate"/>; at least two distinct ⇒
+    /// <see cref="RealConflict"/> covering ALL members.
     /// </summary>
     private void ClassifyGroup(
         ConflictGroup group,
@@ -189,8 +188,8 @@ public sealed class ScanPipeline
         List<RealConflict> conflicts,
         List<UnresolvedGroup> unresolved)
     {
-        // S11-5 fail-closed (T-11): membro cujo hash completo não pôde ser verificado
-        // recusa a decisão do GRUPO INTEIRO — nunca classificar com dado ausente.
+        // S11-5 fail-closed (T-11): member whose full hash could not be verified
+        // rejects the ENTIRE GROUP's decision — never classify with missing data.
         var failed = full
             .Where(f => f.Full.StartsWith(UnresolvedPrefix, StringComparison.Ordinal))
             .Select(f => new UnresolvedMember(f.Member.Path, f.Full[UnresolvedPrefix.Length..]))
@@ -224,9 +223,9 @@ public sealed class ScanPipeline
     }
 
     /// <summary>
-    /// L3 via fonte única de conteúdo (contratos.md). Com stream source injetado,
-    /// <see cref="Blake3Hasher.FullHashBlake3"/> aplica o gate de placeholder antes da
-    /// abertura; sem stream source (hasher de teste), o gate já vive no hasher.
+    /// L3 via single content source (contracts.md). With injected stream source,
+    /// <see cref="Blake3Hasher.FullHashBlake3"/> applies the placeholder gate before
+    /// opening; without stream source (test hasher), the gate already lives in the hasher.
     /// </summary>
     private string FullHash(FileEntry entry, CancellationToken ct) =>
         _streams is null
@@ -234,9 +233,9 @@ public sealed class ScanPipeline
             : Blake3Hasher.FullHashBlake3(_gate, entry, ct);
 
     /// <summary>
-    /// Reclassificação defensiva no ponto de decisão (SPEC §6; ameaça T-03): marcação
-    /// L0 ausente ou stale nunca vira leitura — <see cref="PlaceholderPolicy"/> tem a
-    /// última palavra antes de qualquer hash.
+    /// Defensive reclassification at decision point (SPEC §6; threat T-03): missing or
+    /// stale L0 marking never becomes a read — <see cref="PlaceholderPolicy"/> has the
+    /// last word before any hash.
     /// </summary>
     private static string HashGuarded(Func<string> compute, FileEntry entry)
     {
@@ -252,21 +251,21 @@ public sealed class ScanPipeline
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                    or PlaceholderViolationException)
         {
-            // S11-5 fail-closed: falha de leitura/hash não aborta o scan e NUNCA
-            // produz decisão — o membro carrega o motivo como sentinela auditável
-            // consumida por ClassifyGroup (grupo inteiro vira UnresolvedGroup).
+            // S11-5 fail-closed: read/hash failure never aborts the scan and NEVER
+            // produces a decision — the member carries the reason as an auditable
+            // sentinel consumed by ClassifyGroup (entire group becomes UnresolvedGroup).
             return UnresolvedPrefix + ex.Message;
         }
     }
 
     /// <summary>
-    /// Fonte de conteúdo que recusa toda abertura: usada só para satisfazer
-    /// <see cref="PlaceholderGate"/> quando o hasher de teste não lê bytes. Qualquer
-    /// abertura aqui é bug de gate, não caminho legítimo.
+    /// Content source that refuses all openings: used only to satisfy
+    /// <see cref="PlaceholderGate"/> when the test hasher doesn't read bytes. Any
+    /// opening here is a gate bug, not a legitimate path.
     /// </summary>
     private sealed class RejectingStreamSource : IStreamSource
     {
         public Stream OpenRead(FileEntry entry) =>
-            throw new PlaceholderViolationException(entry.Path, "fonte de conteudo ausente no pipeline:");
+            throw new PlaceholderViolationException(entry.Path, "missing content source in pipeline:");
     }
 }

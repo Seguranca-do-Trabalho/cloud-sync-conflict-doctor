@@ -4,7 +4,7 @@
   "hash_version": 1,
   "normalization_rules_version": 1,
   "generated_from": {
-    "root_path": "<RAIZ>",
+    "root_path": "<ROOT>",
     "scan_started_utc": "2026-01-01T12:00:00.000Z",
     "scan_finished_utc": "2026-01-01T12:00:01.000Z"
   },
@@ -29,10 +29,10 @@
           "path": "trio/arq-trio.bin"
         },
         {
-          "path": "trio/copia1/arq-trio.bin"
+          "path": "trio/copy1/arq-trio.bin"
         },
         {
-          "path": "trio/copia2/arq-trio.bin"
+          "path": "trio/copy2/arq-trio.bin"
         }
       ]
     },
@@ -323,8 +323,8 @@
       "size_bytes": 204807,
       "files": [
         "trio/arq-trio.bin",
-        "trio/copia1/arq-trio.bin",
-        "trio/copia2/arq-trio.bin"
+        "trio/copy1/arq-trio.bin",
+        "trio/copy2/arq-trio.bin"
       ]
     }
   ],

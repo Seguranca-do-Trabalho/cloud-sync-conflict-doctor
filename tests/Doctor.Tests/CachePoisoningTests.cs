@@ -5,15 +5,15 @@ using System.Text;
 using Doctor.Core;
 
 /// <summary>
-/// T19 (t_43803664) — Identidade do cache e fail-closed (consolida S11-3 TOCTOU +
-/// S11-4 cache poisoning; threat-model T-08, regra R8; SPEC §12; ADR-0006).
+/// T19 (t_43803664) — Cache identity and fail-closed (consolidates S11-3 TOCTOU +
+/// S11-4 cache poisoning; threat-model T-08, rule R8; SPEC §12; ADR-0006).
 ///
-/// Família CACHE-POISON (6): a chave lógica é hash BLAKE3 de (path,size,mtime) —
-/// NUNCA o caminho absoluto persistido — e linha adulterada no banco jamais devolve
-/// hash (fail-closed: exceção, nunca veneno nem miss silencioso).
-/// Família CACHE-INTEGRITY (4): banco com header/colunas/schema_version/páginas
-/// violados falha NA ABERTURA em vez de reciclar silenciosamente.
-/// Família OP-ID (3): operation_id = função determinística do CONTEÚDO do ScanResult.
+/// CACHE-POISON family (6): logical key is BLAKE3 hash of (path,size,mtime) —
+/// NEVER the persisted absolute path — and tampered row in database never returns
+/// hash (fail-closed: exception, never poison or silent miss).
+/// CACHE-INTEGRITY family (4): DB with violated header/columns/schema_version/pages
+/// fails ON OPEN instead of silently recycling.
+/// OP-ID family (3): operation_id = deterministic function of ScanResult CONTENT.
 /// </summary>
 public class CachePoisoningTests : IDisposable
 {
@@ -33,9 +33,9 @@ public class CachePoisoningTests : IDisposable
     }
 
     // ==================================================================
-    // CACHE-POISON 1 — A chave deriva de BLAKE3(path,size,mtime), não do
-    // caminho puro. Vetor independente: o teste reconstrói os bytes canônicos
-    // da receita v1 e compara com o hash do produto (não reimplementa nada).
+    // CACHE-POISON 1 — Key derives from BLAKE3(path,size,mtime), not raw
+    // path. Independent vector: test reconstructs canonical bytes
+    // from recipe v1 and compares against product hash (no reimplementation).
     // ==================================================================
     [Fact]
     public void P1_ComputeKey_IsBlake3OfPathSizeMtime_NotTheRawPath()
@@ -50,12 +50,12 @@ public class CachePoisoningTests : IDisposable
             .ToLowerInvariant();
 
         Assert.Equal(64, key.Length);                    // BLAKE3 32 B ⇒ 64 hex
-        Assert.Equal(expected, key);                     // receita v1 exata
+        Assert.Equal(expected, key);                     // exact v1 recipe
     }
 
-    /// <summary>Receita v1 da chave (pinada por P1): ASCII "ccd-cache-key-v1" +
-    /// UTF-8 do caminho normalizado + size int64 big-endian + ticks UTC int64
-    /// big-endian. Domínio separado impede colisão com outros usos de BLAKE3.</summary>
+    /// <summary>Key v1 recipe (pinned by P1): ASCII "ccd-cache-key-v1" +
+    /// UTF-8 of normalized path + size int64 big-endian + ticks UTC int64
+    /// big-endian. Domain separation prevents collision with other BLAKE3 uses.</summary>
     private static byte[] CanonicalKeyBytes(string normalizedPath, long size, DateTime mtime)
     {
         using var ms = new MemoryStream();
@@ -70,8 +70,8 @@ public class CachePoisoningTests : IDisposable
     }
 
     // ==================================================================
-    // CACHE-POISON 2 — Caminhos distintos ⇒ chaves distintas; mesmo estado
-    // ⇒ MESMA chave (determinismo §3); a chave nunca contém trecho do caminho.
+    // CACHE-POISON 2 — Distinct paths ⇒ distinct keys; same state
+    // ⇒ SAME key (determinism §3); key never contains path snippet.
     // ==================================================================
     [Fact]
     public void P2_ComputeKey_DistinguishesPaths_IsDeterministic_NeverContainsPath()
@@ -83,16 +83,16 @@ public class CachePoisoningTests : IDisposable
         var k2 = CacheStore.ComputeKey("/mnt/b/relatorio.xlsx", size, mtime);
         var k1again = CacheStore.ComputeKey("/mnt/a/relatorio.xlsx", size, mtime);
 
-        Assert.NotEqual(k1, k2);                 // caminho participa da identidade
-        Assert.Equal(k1, k1again);               // mesmo estado ⇒ mesma chave
+        Assert.NotEqual(k1, k2);                 // path participates in identity
+        Assert.Equal(k1, k1again);               // same state ⇒ same key
         Assert.DoesNotContain("relatorio", k1, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("/mnt", k1, StringComparison.OrdinalIgnoreCase);
     }
 
     // ==================================================================
-    // CACHE-POISON 3 — O caminho absoluto NUNCA é persistido: grava pela API
-    // e varre os bytes crus do banco (db + wal) procurando o caminho em UTF-8
-    // e UTF-16LE. Zero ocorrências — E a entrada continua recuperável.
+    // CACHE-POISON 3 — Absolute path is NEVER persisted: writes via API
+    // and scans raw database bytes (db + wal) searching for path in UTF-8
+    // and UTF-16LE. Zero occurrences — AND entry remains retrievable.
     // ==================================================================
     [Fact]
     public void P3_UpsertByPath_AbsolutePathNeverPersistedInDatabaseBytes()
@@ -107,24 +107,24 @@ public class CachePoisoningTests : IDisposable
         }
 
         var raw = ReadDatabaseBytes();
-        Assert.True(raw.Length > 0, "banco deveria existir após Upsert");
+        Assert.True(raw.Length > 0, "database should exist after Upsert");
 
         Assert.False(ContainsSequence(raw, Encoding.UTF8.GetBytes(secretPath)),
-            "caminho absoluto vazou em UTF-8 nos bytes do banco");
+            "absolute path leaked in UTF-8 in database bytes");
         Assert.False(ContainsSequence(raw, Encoding.Unicode.GetBytes(secretPath)),
-            "caminho absoluto vazou em UTF-16LE nos bytes do banco");
+            "absolute path leaked in UTF-16LE in database bytes");
 
-        // Mesmo assim, a identidade deriva determinísticamente:
+        // Even so, identity derives deterministically:
         using var store2 = new CacheStore(_tempDbPath);
         Assert.Equal("abcdef0123456789",
             store2.TryGetByKey(secretPath, size: 12345, mtimeUtc: mtime));
     }
 
     // ==================================================================
-    // CACHE-POISON 4/5/6 — Linha envenenada FORA da API (simula usuário/
-    // malware no disco, superfície S2): hash_full trocado, size falsificado,
-    // algorithm rebaixado a MD5 ⇒ TryGetByKey LANÇA CacheCorruptedException.
-    // O veneno nunca é servido; corrupção se distingue de ausência.
+    // CACHE-POISON 4/5/6 — Row poisoned OUTSIDE the API (simulates user/
+    // disk malware, surface S2): hash_full swapped, size falsified,
+    // algorithm downgraded to MD5 => TryGetByKey THROWS CacheCorruptedException.
+    // Poison is never served; corruption is distinguished from absence.
     // ==================================================================
     [Fact]
     public void P4_PoisonedHashFull_TryGetFailsClosed()
@@ -160,13 +160,13 @@ public class CachePoisoningTests : IDisposable
 
         using var victim = new CacheStore(_tempDbPath);
 
-        // Consulta legítima (size original): linha existe mas MAC não confere ⇒ falha fechada.
+        // Legitimate query (original size): row exists but MAC does not match => fail-closed.
         var ex = Assert.Throws<CacheCorruptedException>(() =>
             victim.TryGetByKey(path, size: 2000, mtimeUtc: mtime));
         Assert.Contains("entry_mac", ex.Message);
 
-        // Consulta com o size FALSIFICADO: chave derivada difere ⇒ linha não é
-        // encontrada ⇒ null (miss ⇒ recálculo). O veneno não é servível nem assim.
+        // Query with TAMPERED size: derived key differs ⇒ row not
+        // found ⇒ null (miss ⇒ recalculation). Poison cannot be served even then.
         Assert.Null(victim.TryGetByKey(path, size: 999999, mtimeUtc: mtime));
     }
 
@@ -190,8 +190,8 @@ public class CachePoisoningTests : IDisposable
     }
 
     /// <summary>
-    /// Corrupção fora da API: UPDATE SQL direto na linha cuja chave deriva de
-    /// (path,size,mtime) — simula adulteração do arquivo SQLite no disco.
+    /// Corruption outside API: direct SQL UPDATE on row whose key derives from
+    /// (path,size,mtime) — simulates SQLite file tampering on disk.
     /// </summary>
     private void TamperRow(string path, long size, DateTime mtime, string column, string value)
     {
@@ -204,8 +204,8 @@ public class CachePoisoningTests : IDisposable
     }
 
     // ==================================================================
-    // INTEGRITY 1 — Header SQLite apagado ⇒ abertura falha fechada
-    // (nunca reciclar/recriar um banco que pode conter dados válidos).
+    // INTEGRITY 1 — Erased SQLite header ⇒ open fails closed
+    // (never recycle/recreate database that might contain valid data).
     // ==================================================================
     [Fact]
     public void I1_HeaderCorrupted_OpenFailsClosed()
@@ -222,12 +222,12 @@ public class CachePoisoningTests : IDisposable
 
         var ex = Assert.ThrowsAny<Exception>(() => _ = new CacheStore(_tempDbPath));
         Assert.True(ex is CacheCorruptedException or Microsoft.Data.Sqlite.SqliteException,
-            $"esperado fail-closed na abertura; veio {ex.GetType().Name}: {ex.Message}");
+            $"expected fail-closed on open; got {ex.GetType().Name}: {ex.Message}");
     }
 
     // ==================================================================
-    // INTEGRITY 2 — Schema adulterado (coluna entry_mac removida) ⇒
-    // abertura falha fechada: sem coluna de integridade não há cache confiável.
+    // INTEGRITY 2 — Tampered schema (entry_mac column removed) ⇒
+    // open fails closed: without integrity column there is no reliable cache.
     // ==================================================================
     [Fact]
     public void I2_DroppedIntegrityColumn_OpenFailsClosed()
@@ -253,8 +253,8 @@ public class CachePoisoningTests : IDisposable
     }
 
     // ==================================================================
-    // INTEGRITY 3 — schema_version incompatível ⇒ fail-closed nomeado
-    // (bancos de outra versão de schema não são abertos nem migrados às cegas).
+    // INTEGRITY 3 — Incompatible schema_version ⇒ named fail-closed
+    // (databases from another schema version are neither opened nor blindly migrated).
     // ==================================================================
     [Fact]
     public void I3_IncompatibleSchemaVersion_OpenFailsClosed_NamedError()
@@ -278,9 +278,9 @@ public class CachePoisoningTests : IDisposable
     }
 
     // ==================================================================
-    // INTEGRITY 4 — Corrupção profunda de página (último terço do arquivo
-    // inteiro invertido) ⇒ abertura falha fechada via verificação de
-    // integridade estrutural. Nunca abre "porque ainda parece funcionar".
+    // INTEGRITY 4 — Deep page corruption (last third of file inverted)
+    // ⇒ open fails closed via structural integrity check.
+    // Never opens just because it still seems to work.
     // ==================================================================
     [Fact]
     public void I4_PageLevelCorruption_OpenFailsClosed_StructuralCheck()
@@ -304,16 +304,16 @@ public class CachePoisoningTests : IDisposable
 
         var ex = Assert.ThrowsAny<Exception>(() => _ = new CacheStore(_tempDbPath));
         Assert.True(ex is CacheCorruptedException or Microsoft.Data.Sqlite.SqliteException,
-            $"esperado fail-closed na abertura; veio {ex.GetType().Name}: {ex.Message}");
+            $"expected fail-closed on open; got {ex.GetType().Name}: {ex.Message}");
     }
 
     // ==================================================================
-    // OPERATION_ID — fingerprint determinístico do CONTEÚDO do ScanResult
-    // (card T19: "operation_id = hash do conteudo do ScanResult").
+    // OPERATION_ID — deterministic fingerprint of ScanResult CONTENT
+    // (card T19: "operation_id = hash of ScanResult content").
     // ==================================================================
 
-    /// <summary>O1 — mesmo conteúdo ⇒ mesmo id, qualquer ordem física das
-    /// listas (ordem canônica aplicada antes do hash — §3).</summary>
+    /// <summary>O1 — same content ⇒ same id, regardless of physical order
+    /// of lists (canonical order applied before hash — §3).</summary>
     [Fact]
     public void O1_OperationId_IsContentFingerprint_IgnoringPhysicalOrder()
     {
@@ -321,11 +321,11 @@ public class CachePoisoningTests : IDisposable
         var id2 = ScanFingerprint.OperationId(SampleScanResult(shuffleMembers: true));
 
         Assert.False(string.IsNullOrWhiteSpace(id1));
-        Assert.Equal(id1, id2);                  // ordem física não decide
-        Assert.Matches("^[0-9a-f]{16}$", id1);   // 64 bits truncados, hex minúscula
+        Assert.Equal(id1, id2);                  // physical order does not decide
+        Assert.Matches("^[0-9a-f]{16}$", id1);   // 64 bits truncated, lowercase hex
     }
 
-    /// <summary>O2 — mudou conteúdo ⇒ mudou id (o id é FUNÇÃO do conteúdo).</summary>
+    /// <summary>O2 — changed content ⇒ changed id (id is a FUNCTION of content).</summary>
     [Fact]
     public void O2_OperationId_ChangesWhenScanResultContentChanges()
     {
@@ -343,8 +343,8 @@ public class CachePoisoningTests : IDisposable
         Assert.NotEqual(baseId, ScanFingerprint.OperationId(modified));
     }
 
-    /// <summary>O3 — hash divergente ⇒ id divergente (duas classificações
-    /// diferentes nunca compartilham operation_id).</summary>
+    /// <summary>O3 — divergent hash ⇒ divergent id (two distinct
+    /// classifications never share operation_id).</summary>
     [Fact]
     public void O3_OperationId_DifferentHashes_YieldDifferentIds()
     {
@@ -362,8 +362,8 @@ public class CachePoisoningTests : IDisposable
             ScanFingerprint.OperationId(other));
     }
 
-    /// <summary>ScanResult mínimo: 1 grupo, 1 duplicata idêntica (2 membros),
-    /// 1 conflito real (2 membros).</summary>
+    /// <summary>Minimal ScanResult: 1 group, 1 identical duplicate (2 members),
+    /// 1 real conflict (2 members).</summary>
     private static ScanResult SampleScanResult(bool shuffleMembers)
     {
         FileEntry Entry(string p, long s, string fid) => new()
@@ -396,7 +396,7 @@ public class CachePoisoningTests : IDisposable
 
     // ---------------- helpers ----------------
 
-    /// <summary>Lê db + wal (o que existir) após fechar a conexão.</summary>
+    /// <summary>Reads db + wal (whichever exists) after closing connection.</summary>
     private byte[] ReadDatabaseBytes()
     {
         var bytes = new List<byte>();
@@ -411,7 +411,7 @@ public class CachePoisoningTests : IDisposable
         return bytes.ToArray();
     }
 
-    /// <summary>Busca de sequência de bytes (subsequência contígua).</summary>
+    /// <summary>Byte sequence search (contiguous subsequence).</summary>
     private static bool ContainsSequence(byte[] haystack, byte[] needle)
     {
         for (var i = 0; i <= haystack.Length - needle.Length; i++)

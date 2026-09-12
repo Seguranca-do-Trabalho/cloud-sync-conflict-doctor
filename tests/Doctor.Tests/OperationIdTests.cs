@@ -4,8 +4,8 @@ using Doctor.Core;
 using Xunit;
 
 /// <summary>
-/// SEG-18 (P0): operation_id gerado por operação é único e não colide com operações anteriores.
-/// SEG-19 (P1): entropia do gerador garante non-colisão estatística.
+/// SEG-18 (P0): operation_id generated per operation is unique and does not collide with prior operations.
+/// SEG-19 (P1): generator entropy guarantees statistical non-collision.
 /// </summary>
 public class OperationIdTests : IDisposable
 {
@@ -28,79 +28,79 @@ public class OperationIdTests : IDisposable
     [Fact]
     public void Security_OperationIdUniqueAcrossOperations()
     {
-        // Cria arquivo dentro do root (requisito de contenção)
-        var arquivo1 = CriarArquivo(_root, "arquivo1.txt", new byte[] { 0x42 });
-        var arquivo2 = CriarArquivo(_root, "arquivo2.txt", new byte[] { 0x43 });
+        // Create file inside root (containment requirement)
+        var file1 = CreateFile(_root, "file1.txt", new byte[] { 0x42 });
+        var file2 = CreateFile(_root, "file2.txt", new byte[] { 0x43 });
         
         var svc = new QuarantineService();
         
-        // Operação 1
-        var plano1 = new QuarantinePlan(_root, DateTimeOffset.UtcNow);
-        var resultado1 = svc.Move(new[] { Entrada(arquivo1) }, plano1);
+        // Operation 1
+        var plan1 = new QuarantinePlan(_root, DateTimeOffset.UtcNow);
+        var result1 = svc.Move(new[] { Entry(file1) }, plan1);
         
-        Assert.NotNull(resultado1);
-        Assert.Equal("completed", resultado1.Status);
-        Assert.NotNull(resultado1.OperationId);
-        Assert.NotEmpty(resultado1.OperationId);
+        Assert.NotNull(result1);
+        Assert.Equal("completed", result1.Status);
+        Assert.NotNull(result1.OperationId);
+        Assert.NotEmpty(result1.OperationId);
         
-        // Operação 2 com arquivo diferente
-        var plano2 = new QuarantinePlan(_root, DateTimeOffset.UtcNow.AddSeconds(1));
-        var resultado2 = svc.Move(new[] { Entrada(arquivo2) }, plano2);
+        // Operation 2 with different file
+        var plan2 = new QuarantinePlan(_root, DateTimeOffset.UtcNow.AddSeconds(1));
+        var result2 = svc.Move(new[] { Entry(file2) }, plan2);
         
-        Assert.NotNull(resultado2);
-        Assert.Equal("completed", resultado2.Status);
-        Assert.NotNull(resultado2.OperationId);
-        Assert.NotEmpty(resultado2.OperationId);
+        Assert.NotNull(result2);
+        Assert.Equal("completed", result2.Status);
+        Assert.NotNull(result2.OperationId);
+        Assert.NotEmpty(result2.OperationId);
         
-        // IDs devem ser diferentes (não colidiram)
-        Assert.NotEqual(resultado1.OperationId, resultado2.OperationId);
+        // IDs must be different (no collision)
+        Assert.NotEqual(result1.OperationId, result2.OperationId);
         
-        // Ambos os manifestos devem existir
-        Assert.True(File.Exists(resultado1.ManifestPath));
-        Assert.True(File.Exists(resultado2.ManifestPath));
+        // Both manifests must exist
+        Assert.True(File.Exists(result1.ManifestPath));
+        Assert.True(File.Exists(result2.ManifestPath));
     }
 
     // ==================================================================
-    // SEG-19 — Entropia: gera IDs únicos em lote
+    // SEG-19 — Entropy: generates unique IDs in batch
     // ==================================================================
     [Fact]
     public void OperationId_Entropy_GeneratesUniqueIds()
     {
         var ids = new HashSet<string>();
-        var tamanhoEsperado = 32; // 128 bits = 32 chars hex
+        var expectedSize = 32; // 128 bits = 32 hex chars
         
         for (var i = 0; i < 100; i++)
         {
-            // Simula geração de operation_id como o sistema faria
+            // Simulates operation_id generation as the system would do it
             var id = Guid.NewGuid().ToString("N");
             
             Assert.NotNull(id);
-            Assert.Equal(tamanhoEsperado, id.Length);
-            Assert.False(ids.Contains(id), $"Colisão detectada no índice {i}: {id}");
+            Assert.Equal(expectedSize, id.Length);
+            Assert.False(ids.Contains(id), $"Collision detected at index {i}: {id}");
             ids.Add(id);
         }
         
-        Assert.Equal(100, ids.Count); // todos únicos
+        Assert.Equal(100, ids.Count); // all unique
     }
 
     // ==================================================================
     // Helpers
     // ==================================================================
     
-    private static string CriarArquivo(string root, string nome, byte[] conteudo)
+    private static string CreateFile(string root, string name, byte[] content)
     {
-        var fullPath = Path.Combine(root, nome);
-        File.WriteAllBytes(fullPath, conteudo);
+        var fullPath = Path.Combine(root, name);
+        File.WriteAllBytes(fullPath, content);
         return fullPath;
     }
 
-    private static QuarantineItem Entrada(string caminho)
+    private static QuarantineItem Entry(string path)
     {
-        var info = new FileInfo(caminho);
+        var info = new FileInfo(path);
         return new QuarantineItem(
             new FileEntry
             {
-                Path = caminho,
+                Path = path,
                 Size = info.Length,
                 MtimeUtc = info.LastWriteTimeUtc,
                 Attributes = info.Attributes,

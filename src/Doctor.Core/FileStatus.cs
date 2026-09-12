@@ -1,17 +1,17 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Status de estabilidade de um arquivo durante o scan (threat-model T-05, regra R4).
-/// Arquivos instáveis nunca entram em decisões de igualdade/divergência e nunca são
-/// gravados no cache — fail-closed: dúvida => divergência potencial.
+/// Stability status of a file during the scan (threat-model T-05, rule R4).
+/// Unstable files never enter equality/divergence decisions and are never
+/// written to the cache — fail-closed: doubt => potential divergence.
 /// </summary>
 public enum FileStatus
 {
-    /// <summary>Metadados conferidos antes e depois da leitura — estável.</summary>
+    /// <summary>Metadata verified before and after read — stable.</summary>
     Stable,
 
-    /// <summary>Metadados divergiram entre snapshot pré-leitura e pós-leitura.
-    /// O arquivo foi marcado como instável: excluído de decisões de igualdade
-    /// e nunca entra no cache (T-05/R4).</summary>
+    /// <summary>Metadata diverged between pre-read and post-read snapshot.
+    /// The file was marked as unstable: excluded from equality decisions
+    /// and never enters the cache (T-05/R4).</summary>
     Unstable,
 }

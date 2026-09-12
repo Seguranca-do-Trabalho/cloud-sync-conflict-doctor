@@ -5,23 +5,23 @@ namespace Doctor.Tests;
 /// <summary>
 /// T10 (t_99a01c53) — Hashing BLAKE3 Levels 2/3 (SPEC §8/§9; ADR-0005; test-strategy §3.6).
 ///
-/// IDs cobertos:
-///   HSH-01 PartialHash_ReadsOnlyFirst64KiBAndLast64KiB — receita v1 do ADR-0005 §3
-///          provada com arquivos de fronteira 131071/131072/131073 bytes e stream espião;
-///   HSH-05 arquivo vazio → hash de zero bytes sem nenhuma leitura; saída hex minúscula;
-///   gate de placeholder (ADR-0005 §6): PlaceholderReadException, zero bytes lidos;
-///   teste NEGATIVO de mutação: inverter a ordem das janelas produz hash DISTINTO —
-///   a ordem é parte do esquema v1 (ADR-0005 §2) e regressão de ordem é detectável.
+/// Covered IDs:
+///   HSH-01 PartialHash_ReadsOnlyFirst64KiBAndLast64KiB — ADR-0005 §3 recipe v1
+///          proven with boundary files 131071/131072/131073 bytes and spy stream;
+///   HSH-05 empty file → zero-bytes hash without any reading; lowercase hex output;
+///   placeholder gate (ADR-0005 §6): PlaceholderReadException, zero bytes read;
+///   NEGATIVE mutation test: reversing window order produces DISTINCT hash —
+///   order is part of v1 scheme (ADR-0005 §2) and order regression is detectable.
 /// </summary>
 public class Blake3HasherTests : IDisposable
 {
     private const int Kib = 1024;
-    private const int WindowBytes = 64 * Kib;        // janela v1 (ADR-0005 §3)
-    private const int WholeFileLimit = 128 * Kib;    // 131072: ≤ limite ⇒ leitura inteira
+    private const int WindowBytes = 64 * Kib;        // v1 window (ADR-0005 §3)
+    private const int WholeFileLimit = 128 * Kib;    // 131072: <= limit ⇒ read entire file
 
     private readonly List<string> _tempFiles = new();
 
-    /// <summary>Stream espiã: registra cada segmento lido como (offset, comprimento).</summary>
+    /// <summary>Spy stream: records each read segment as (offset, length).</summary>
     private sealed class SpyStream : Stream
     {
         private readonly byte[] _data;
@@ -63,17 +63,17 @@ public class Blake3HasherTests : IDisposable
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
-    /// <summary>Roda o caminho de produção sobre a stream espiã já aberta.</summary>
+    /// <summary>Runs production path over already-opened spy stream.</summary>
     private static string HashPartialViaSpy(SpyStream spy, long declaredSize) =>
         Blake3Hasher.ComputeHash(spy, declaredSize, partial: true, ct: default);
 
-    // ---- HSH-01: receita v1 nas fronteiras exatas ---------------------------
+    // ---- HSH-01: v1 recipe on exact boundaries ---------------------------
 
     [Theory]
-    [InlineData(WholeFileLimit - 1)] // 131071 ≤ limite: inteiro numa única passada
-    [InlineData(WholeFileLimit)]     // 131072 = limite: inteiro numa única passada
-    [InlineData(WholeFileLimit + 1)] // 131073 > limite: janela [0,64KiB) + [size−64KiB,size)
-    public void PartialHash_Fronteiras128KiB_ReceitaV1Exata(long size)
+    [InlineData(WholeFileLimit - 1)] // 131071 <= limit: whole file in single pass
+    [InlineData(WholeFileLimit)]     // 131072 = limit: whole file in single pass
+    [InlineData(WholeFileLimit + 1)] // 131073 > limit: window [0,64KiB) + [size-64KiB,size)
+    public void PartialHash_Boundaries128KiB_ExactV1Recipe(long size)
     {
         byte[] content = new byte[size];
         new Random(42).NextBytes(content);
@@ -81,7 +81,7 @@ public class Blake3HasherTests : IDisposable
         var spy = new SpyStream(content);
         var got = HashPartialViaSpy(spy, size);
 
-        // Esperado independente, derivado direto da receita do ADR-0005 §3:
+        // Independent expected value, derived directly from ADR-0005 §3 recipe:
         byte[] expectedBytes = size <= WholeFileLimit
             ? content[..(int)size]
             : content[0..WindowBytes].Concat(content[(int)(size - WindowBytes)..]).ToArray();
@@ -91,13 +91,13 @@ public class Blake3HasherTests : IDisposable
 
         if (size <= WholeFileLimit)
         {
-            Assert.Single(spy.Reads); // uma única passada sequencial
+            Assert.Single(spy.Reads); // single sequential pass
             Assert.Equal(size, spy.BytesReadTotal);
             Assert.Equal((0L, (int)size), spy.Reads[0]);
         }
         else
         {
-            // Duas janelas, nesta ordem, sem sobreposição e sem releitura.
+            // Two windows, in this order, without overlap or re-reading.
             Assert.Equal(2, spy.Reads.Count);
             Assert.Equal((0L, WindowBytes), spy.Reads[0]);
             Assert.Equal((size - WindowBytes, WindowBytes), spy.Reads[1]);
@@ -106,7 +106,7 @@ public class Blake3HasherTests : IDisposable
     }
 
     [Fact]
-    public void PartialHash_ArquivoGrande_LeApenas128KiB_PadraoInicioFim()
+    public void PartialHash_LargeFile_ReadsOnly128KiB_StartEndPattern()
     {
         var content = new byte[Kib * Kib]; // 1 MiB
         new Random(7).NextBytes(content);
@@ -114,41 +114,40 @@ public class Blake3HasherTests : IDisposable
         var spy = new SpyStream(content);
         var got = HashPartialViaSpy(spy, content.Length);
 
-        Assert.True(spy.BytesReadTotal <= 128 * Kib, $"leu {spy.BytesReadTotal} bytes");
+        Assert.True(spy.BytesReadTotal <= 128 * Kib, $"read {spy.BytesReadTotal} bytes");
         Assert.Equal(2, spy.Reads.Count);
         Assert.Equal((0L, WindowBytes), spy.Reads[0]);
         Assert.Equal((content.Length - WindowBytes, WindowBytes), spy.Reads[1]);
 
-        // O valor coincide com o hash das duas janelas concatenadas nesta ordem.
+        // Value matches hash of two windows concatenated in this order.
         byte[] windows = content[0..WindowBytes].Concat(content[^WindowBytes..]).ToArray();
         var expected = Convert.ToHexString(Blake3.Hasher.Hash(windows).AsSpan()).ToLowerInvariant();
         Assert.Equal(expected, got);
     }
 
-    // ---- HSH-05: vazio e hex minúsculo --------------------------------------
+    // ---- HSH-05: empty and lowercase hex --------------------------------------
 
     [Fact]
-    public void PartialHash_ArquivoVazio_HashDeZeroBytes_SemNenhumaLeitura()
+    public void PartialHash_EmptyFile_ZeroBytesHash_NoReads()
     {
         var spy = new SpyStream(Array.Empty<byte>());
         var got = HashPartialViaSpy(spy, 0);
 
-        Assert.Empty(spy.Reads); // nenhuma leitura
+        Assert.Empty(spy.Reads); // no reads
         Assert.Equal(Blake3Hasher.EmptyFileHash, got);
     }
 
     [Fact]
-    public void EmptyFileHash_Conhecido_Estavel()
+    public void EmptyFileHash_Known_Stable()
     {
-        // d697d7c1d0ba646f5e19e2eed57f6e9a90f0d70ebffa1f0b98dad92ca786e0d3 =
-        // BLAKE3 de zero bytes (referência externa da spec BLAKE3).
+        // BLAKE3 of zero bytes (external reference from BLAKE3 spec).
         Assert.Equal("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262", Blake3Hasher.EmptyFileHash);
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void Hash_EmArquivoReal_SaidaHexMinuscula64Chars(bool partial)
+    public void Hash_OnRealFile_LowercaseHexOutput64Chars(bool partial)
     {
         var path = NewTempFile(4096);
         var hasher = new Blake3Hasher();
@@ -160,10 +159,10 @@ public class Blake3HasherTests : IDisposable
         Assert.Matches("^[0-9a-f]{64}$", hex);
     }
 
-    // ---- Gate de placeholder (ADR-0005 §6; contratos.md IHasher) -------------
+    // ---- Placeholder gate (ADR-0005 §6; contracts.md IHasher) -------------
 
     [Fact]
-    public void Hash_Placeholder_LancaPlaceholderReadException_NaoAbreArquivo()
+    public void Hash_Placeholder_ThrowsPlaceholderReadException_DoesNotOpenFile()
     {
         var path = NewTempFile(2048);
         var entry = EntryFor(path) with { IsPlaceholder = true };
@@ -172,47 +171,46 @@ public class Blake3HasherTests : IDisposable
         var hasher = new Blake3Hasher(_ =>
         {
             opened = true;
-            throw new InvalidOperationException("placeholder foi aberto");
+            throw new InvalidOperationException("placeholder was opened");
         });
 
         var ex = Assert.Throws<PlaceholderReadException>(
             () => hasher.PartialHash(entry, CancellationToken.None));
         Assert.Equal(path, ex.EntryPath);
-        Assert.False(opened); // o gate precede qualquer abertura
+        Assert.False(opened); // gate precedes any opening
 
         var full = Assert.Throws<PlaceholderReadException>(
             () => hasher.FullHash(entry, CancellationToken.None));
         Assert.Equal(path, full.EntryPath);
     }
 
-    // ---- Teste NEGATIVO de mutação da ordem de concatenação ------------------
+    // ---- NEGATIVE mutation test on concatenation order ------------------
 
     [Fact]
-    public void MutacaoOrdemJanelas_MudaHash_OrdemEParteDoEsquemaV1()
+    public void MutationWindowOrder_ChangesHash_OrderIsPartOfV1Scheme()
     {
-        // Se alguém inverter a ordem das janelas (fim antes do início), o hash MUDA.
-        // Isto trava a propriedade que torna o teste de fronteira capaz de pegar
-        // regressão de ordem: ordem diferente ⇒ valor diferente ⇒ HSH-01 falha.
+        // If someone reverses the window order (end before start), the hash CHANGES.
+        // This locks down the property making boundary tests capable of detecting order regressions.
         var content = new byte[WholeFileLimit + 4096];
         new Random(9).NextBytes(content);
 
-        var inicioMaisFim = content[0..WindowBytes].Concat(content[^WindowBytes..]).ToArray();
-        var fimMaisInicio = content[^WindowBytes..].Concat(content[0..WindowBytes]).ToArray();
+        var startPlusEnd = content[0..WindowBytes].Concat(content[^WindowBytes..]).ToArray();
+        var endPlusStart = content[^WindowBytes..].Concat(content[0..WindowBytes]).ToArray();
 
-        var a = Convert.ToHexString(Blake3.Hasher.Hash(inicioMaisFim).AsSpan()).ToLowerInvariant();
-        var b = Convert.ToHexString(Blake3.Hasher.Hash(fimMaisInicio).AsSpan()).ToLowerInvariant();
+        var a = Convert.ToHexString(Blake3.Hasher.Hash(startPlusEnd).AsSpan()).ToLowerInvariant();
+        var b = Convert.ToHexString(Blake3.Hasher.Hash(endPlusStart).AsSpan()).ToLowerInvariant();
 
         Assert.NotEqual(a, b);
 
-        // E o hasher real produz exatamente "início depois fim":
+        // And the real hasher produces start then end:
         var spy = new SpyStream(content);
         Assert.Equal(a, HashPartialViaSpy(spy, content.Length));
     }
 
-    // ---- Full hash: leitura integral em uma passada --------------------------
+    // ---- Full hash: integral read in single pass --------------------------
 
     [Fact]
-    public void FullHash_LeInteiro_UmaPassada_ValorBLAKE3Integral()
+    public void FullHash_ReadsEntire_SinglePass_IntegralBLAKE3Value()
     {
         var content = new byte[300 * Kib];
         new Random(11).NextBytes(content);
@@ -220,8 +218,8 @@ public class Blake3HasherTests : IDisposable
 
         var got = Blake3Hasher.ComputeHash(spy, content.Length, partial: false, ct: default);
 
-        // "Leitura sequencial única" (ADR-0005 §3): uma passada contígua de [0, size),
-        // sem buracos e sem releitura — independente do tamanho do buffer interno.
+        // "Single sequential read" (ADR-0005 §3): contiguous pass [0, size),
+        // without holes or re-reading — independent of internal buffer size.
         long expectedOffset = 0;
         foreach (var (offset, length) in spy.Reads)
         {
@@ -235,22 +233,22 @@ public class Blake3HasherTests : IDisposable
         Assert.Equal(expected, got);
     }
 
-    // ---- EOF inesperado (TOCTOU: encolheu entre L0 e a leitura) --------------
+    // ---- Unexpected EOF (TOCTOU: shrank between L0 and read) --------------
 
     [Fact]
-    public void PartialHash_ArquivoMenorQueDeclarado_EOFInesperado_NaoSilencia()
+    public void PartialHash_FileSmallerThanDeclared_UnexpectedEOF_DoesNotSilence()
     {
-        var real = new byte[1024]; // size declarado: 300 KiB
+        var real = new byte[1024]; // declared size: 300 KiB
         var spy = new SpyStream(real);
 
         Assert.ThrowsAny<Exception>(() =>
             Blake3Hasher.ComputeHash(spy, declaredSize: 300 * Kib, partial: true, ct: default));
     }
 
-    // ---- FullHashBlake3 (escopo reduzido do orquestrador): streaming integral ----
+    // ---- FullHashBlake3 (streaming) ----
 
     [Fact]
-    public void FullHashBlake3_Arquivo300KiB_HashIntegralViaIStreamSource_DiferenteDoParcialDeJanelas()
+    public void FullHashBlake3_300KiBFile_IntegralHashViaIStreamSource_DiffersFromWindowPartial()
     {
         var content = new byte[300 * Kib];
         new Random(23).NextBytes(content);
@@ -262,52 +260,52 @@ public class Blake3HasherTests : IDisposable
 
         var full = Blake3Hasher.FullHashBlake3(source, entry, CancellationToken.None);
 
-        // Valor esperado independente: BLAKE3 do arquivo INTEIRO (ADR-0005 §4).
+        // Independent expected value: BLAKE3 of WHOLE file (ADR-0005 §4).
         var expected = Convert.ToHexString(Blake3.Hasher.Hash(content).AsSpan()).ToLowerInvariant();
         Assert.Equal(expected, full);
         Assert.Matches("^[0-9a-f]{64}$", full);
 
-        // O parcial das MESMAS janelas (receita v1) é outro valor — full cobre tudo.
-        var janelas = content[0..WindowBytes].Concat(content[^WindowBytes..]).ToArray();
-        var parcial = Convert.ToHexString(Blake3.Hasher.Hash(janelas).AsSpan()).ToLowerInvariant();
+        // Partial of SAME windows (recipe v1) is a different value — full covers everything.
+        var windows = content[0..WindowBytes].Concat(content[^WindowBytes..]).ToArray();
+        var partial = Convert.ToHexString(Blake3.Hasher.Hash(windows).AsSpan()).ToLowerInvariant();
         var hasher = new Blake3Hasher();
-        Assert.Equal(parcial, hasher.PartialHash(entry, CancellationToken.None));
-        Assert.NotEqual(parcial, full);
+        Assert.Equal(partial, hasher.PartialHash(entry, CancellationToken.None));
+        Assert.NotEqual(partial, full);
 
-        // Streaming pela fonte única de conteúdo: UMA abertura, todos os bytes lidos,
-        // sem carregar o arquivo inteiro em memória.
+        // Streaming via single content source: ONE open, all bytes read,
+        // without loading entire file into memory.
         Assert.Equal(1, source.OpenCount(path));
         Assert.Equal(content.Length, source.BytesRead(path));
     }
 
     [Fact]
-    public void ColisaoParcial_JanelasIdenticas_FullDiferente_SeparaRealConflict()
+    public void PartialCollision_IdenticalWindows_DifferentFull_SeparatesRealConflict()
     {
-        // Dois arquivos com [0,64KiB) e últimas 64KiB IDÊNTICAS e miolo diferente:
-        // o parcial (L2) colide — sobrevivem juntos no grupo — e o full (L3) os
-        // separa como RealConflict, nunca IdenticalDuplicate (SPEC §9).
+        // Two files with [0,64KiB) and last 64KiB IDENTICAL and different core:
+        // partial (L2) collides — survives together in group — and full (L3)
+        // separates as RealConflict, never IdenticalDuplicate (SPEC §9).
         var a = new byte[300 * Kib];
         new Random(31).NextBytes(a);
         var b = (byte[])a.Clone();
-        b[150 * Kib] ^= 0xFF; // divergência só no miolo, fora das duas janelas
+        b[150 * Kib] ^= 0xFF; // divergence only in core, outside both windows
         Assert.NotEqual(a[WindowBytes..^WindowBytes], b[WindowBytes..^WindowBytes]);
 
         var pathA = NewTempFileFromBytes(a);
         var pathB = NewTempFileFromBytes(b);
         var hasher = new Blake3Hasher();
 
-        var parcialA = hasher.PartialHash(EntryFor(pathA), CancellationToken.None);
-        var parcialB = hasher.PartialHash(EntryFor(pathB), CancellationToken.None);
-        Assert.Equal(parcialA, parcialB); // L2 NÃO elimina nenhum dos dois
+        var partialA = hasher.PartialHash(EntryFor(pathA), CancellationToken.None);
+        var partialB = hasher.PartialHash(EntryFor(pathB), CancellationToken.None);
+        Assert.Equal(partialA, partialB); // L2 does NOT eliminate either
 
         var source = new CountingStreamSource();
         source.Register(pathA, a);
         source.Register(pathB, b);
         var fullA = Blake3Hasher.FullHashBlake3(source, EntryFor(pathA), CancellationToken.None);
         var fullB = Blake3Hasher.FullHashBlake3(source, EntryFor(pathB), CancellationToken.None);
-        Assert.NotEqual(fullA, fullB); // L3 separa: RealConflict (§9)
+        Assert.NotEqual(fullA, fullB); // L3 separates: RealConflict (§9)
 
-        // Determinismo: repetir produz exatamente os mesmos valores.
+        // Determinism: repeating produces exactly the same values.
         Assert.Equal(fullA, Blake3Hasher.FullHashBlake3(source, EntryFor(pathA), CancellationToken.None));
         Assert.Equal(fullB, Blake3Hasher.FullHashBlake3(source, EntryFor(pathB), CancellationToken.None));
     }

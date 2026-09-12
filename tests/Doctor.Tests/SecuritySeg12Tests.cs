@@ -7,18 +7,18 @@ using Doctor.Cli;
 using Doctor.Core;
 
 /// <summary>
-/// SEG-12 (t_694bc7ce; adendo T-15 do security-audit-gate5; caso T-06 do threat-model,
-/// regra R1): a quarentena publica em &lt;raiz&gt;/ConflictDoctor/quarantine/&lt;op_id&gt;/
-/// DENTRO da raiz escaneada (ADR-0002/SPEC §18), então um segundo scan sobre a mesma raiz
-/// encontraría os payloads .dat como candidatos — poluindo o relatório e quebrando a
-/// idempotência §20. A enumeração Level 0 exclui a subárvore reservada por comparação de
-/// PREFIXO EM BYTES do caminho canônico e conta as entradas excluídas em
-/// files_excluded_conflictdoctor (schema v2, §5/§7.1 do schema-report-v1).
+/// SEG-12 (t_694bc7ce; addendum T-15 from security-audit-gate5; case T-06 from threat-model,
+/// rule R1): quarantine publishes inside &lt;root&gt;/ConflictDoctor/quarantine/&lt;op_id&gt;/
+/// INSIDE the scanned root (ADR-0002/SPEC §18), so a second scan over the same root
+/// would find the .dat payloads as candidates — polluting the report and breaking
+/// idempotency §20. Level 0 enumeration excludes the reserved subtree by comparing
+/// the canonical path PREFIX IN BYTES and counts excluded entries in
+/// files_excluded_conflictdoctor (schema v2, §5/§7.1 of schema-report-v1).
 ///
-/// Fluxo exercitado é o de produção inteiro: ScanCommand.Run compõe
+/// Flow exercised is the full production: ScanCommand.Run composes
 /// SidecarPlaceholderEnumerator(OrderedFileEnumerator(CrossPlatformEnumerator)) +
-/// ScanPipeline L0→L3 + ReportWriterJson — nenhuma peça de teste no caminho.
-/// NUNCA File.Delete: a quarentena nasce e permanece (ADR-0002).
+/// ScanPipeline L0→L3 + ReportWriterJson — no test pieces in the path.
+/// NEVER File.Delete: quarantine is born and persists (ADR-0002).
 /// </summary>
 [Collection("ScanCommand")]
 public sealed class SecuritySeg12Tests : IDisposable
@@ -39,118 +39,118 @@ public sealed class SecuritySeg12Tests : IDisposable
         }
         catch (IOException)
         {
-            // limpeza best-effort: tmp do sistema operacional recolhe depois
+            // best-effort cleanup: OS temp will reclaim later
         }
     }
 
     [Fact]
     public void Security_QuarantineInsideScannedRoot_ExcludedFromEnumeration()
     {
-        // ---- árvore inicial: par idêntico + arquivo único -----------------------------
-        var conteudoPar = "conteudo identico do par - seg12 - versao unica";
-        Directory.CreateDirectory(Caminho("docs", "backup"));
-        File.WriteAllText(Caminho("docs", "foto.txt"), conteudoPar);
-        File.WriteAllText(Caminho("docs", "backup", "foto.txt"), conteudoPar);
-        File.WriteAllText(Caminho("leiame.txt"), "arquivo unico\n");
+        // ---- initial tree: identical pair + single file -----------------------------
+        var pairContent = "identical pair content - seg12 - single version";
+        Directory.CreateDirectory(MakePath("docs", "backup"));
+        File.WriteAllText(MakePath("docs", "foto.txt"), pairContent);
+        File.WriteAllText(MakePath("docs", "backup", "foto.txt"), pairContent);
+        File.WriteAllText(MakePath("readme.txt"), "single file\n");
 
-        // Scan 1 (pré-resolução): o par aparece como duplicata (exit 2) — saneidade.
+        // Scan 1 (pre-resolution): the pair appears as duplicate (exit 2) — sanity check.
         var scan1 = ScanCommand.Run(["scan", _root, "--json"]);
         Assert.Equal(2, scan1.ExitCode);
         Assert.Contains("docs/backup/foto.txt", scan1.JsonOutput, StringComparison.Ordinal);
 
-        // ---- resolução REAL: move a duplicata para a quarentena §18 (dentro da raiz) --
-        var enumerador = new SidecarPlaceholderEnumerator(
+        // ---- REAL resolution: move the duplicate to quarantine §18 (inside root) --
+        var enumerator = new SidecarPlaceholderEnumerator(
             new OrderedFileEnumerator(new CrossPlatformEnumerator()));
-        var snapshot = enumerador.Enumerate(_root);
-        var duplicata = snapshot.Files.Single(e => e.Path == Caminho("docs", "backup", "foto.txt"));
+        var snapshot = enumerator.Enumerate(_root);
+        var duplicate = snapshot.Files.Single(e => e.Path == MakePath("docs", "backup", "foto.txt"));
 
-        var operacao = new QuarantineService().Move(
-            [new QuarantineItem(duplicata, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
+        var operation = new QuarantineService().Move(
+            [new QuarantineItem(duplicate, "IDENTICAL_DUPLICATE", "KEEP_NEWEST")],
             new QuarantinePlan(_root, new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero)));
 
-        // Pré-condição do caso T-06: a quarentena foi publicada DENTRO da raiz escaneada.
+        // Pre-condition of case T-06: quarantine was published INSIDE the scanned root.
         Assert.True(Directory.Exists(Path.Combine(
-            _root, "ConflictDoctor", "quarantine", operacao.OperationId)));
-        // Payload .dat + manifesto existem fisicamente dentro da árvore escaneada.
+            _root, "ConflictDoctor", "quarantine", operation.OperationId)));
+        // .dat payload + manifest physically exist inside the scanned tree.
         Assert.True(File.Exists(Path.Combine(
-            _root, "ConflictDoctor", "quarantine", operacao.OperationId, "payload", "0001.dat")));
+            _root, "ConflictDoctor", "quarantine", operation.OperationId, "payload", "0001.dat")));
         Assert.True(File.Exists(Path.Combine(
-            _root, "ConflictDoctor", "quarantine", operacao.OperationId, "manifest.json")));
+            _root, "ConflictDoctor", "quarantine", operation.OperationId, "manifest.json")));
 
-        // ---- dois rescans da MESMA árvore pós-resolução --------------------------------
+        // ---- two rescans of the SAME tree post-resolution --------------------------------
         var scan2 = ScanCommand.Run(["scan", _root, "--json"]);
         var scan3 = ScanCommand.Run(["scan", _root, "--json"]);
 
-        Assert.Equal(0, scan2.ExitCode); // duplicata resolvida: árvore limpa para o produto
+        Assert.Equal(0, scan2.ExitCode); // duplicate resolved: tree clean for the product
         Assert.Equal(0, scan3.ExitCode);
 
-        // 1. ZERO itens de ConflictDoctor/ no relatório — nem payload, nem manifesto,
-        //    nem qualquer entrada sob a subárvore reservada (caminhos são relativos à raiz).
+        // 1. ZERO ConflictDoctor/ items in report — no payload, no manifest,
+        //    no entry under the reserved subtree (paths are relative to root).
         Assert.DoesNotContain("ConflictDoctor", scan2.JsonOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("ConflictDoctor", scan3.JsonOutput, StringComparison.Ordinal);
 
-        // 2. Contador dedicado > 0: payload .dat + manifest.json foram excluídos e CONTADOS.
+        // 2. Dedicated counter > 0: .dat payload + manifest.json were excluded and COUNTED.
         using var doc2 = JsonDocument.Parse(scan2.JsonOutput!);
-        var excluidos = doc2.RootElement
+        var excluded = doc2.RootElement
             .GetProperty("telemetry")
             .GetProperty("files_excluded_conflictdoctor")
             .GetInt64();
-        Assert.True(excluidos >= 2, $"esperado >= 2 entradas excluidas, obtido {excluidos}");
+        Assert.True(excluded >= 2, $"expected >= 2 excluded entries, got {excluded}");
 
-        // 3. Idempotência §20: segundo scan byte-idêntico ao terceiro (máscara só nos
-        //    timestamps de parede, condição §1.6 do schema-report-v1).
-        Assert.Equal(Mascarar(scan2.JsonOutput!), Mascarar(scan3.JsonOutput!));
+        // 3. Idempotency §20: second scan byte-identical to third (mask only
+        //    wall timestamps, condition §1.6 of schema-report-v1).
+        Assert.Equal(Mask(scan2.JsonOutput!), Mask(scan3.JsonOutput!));
 
-        // Exclusão é política, não erro: nada vira ScanError (contratos.md R10).
-        var pos = enumerador.Enumerate(_root);
-        Assert.Empty(pos.Errors);
-        Assert.Equal(excluidos, pos.Telemetry.FilesExcludedConflictDoctor);
+        // Exclusion is policy, not error: nothing becomes ScanError (contracts.md R10).
+        var post = enumerator.Enumerate(_root);
+        Assert.Empty(post.Errors);
+        Assert.Equal(excluded, post.Telemetry.FilesExcludedConflictDoctor);
     }
 
     [Fact]
-    public void Security_ArvoreSemConflictDoctor_ContadorZero_ESaidaInalterada()
+    public void Security_TreeWithoutConflictDoctor_CounterZero_OutputUnchanged()
     {
-        // Árvore SEM subárvore reservada: par idêntico com MESMO nome-base (agrupamento
-        // SPEC §7 é por normalized_base_name + size — nomes distintos nunca são
-        // duplicatas; correção da run anterior deste card) + único, composição comum.
-        var conteudo = "par simples sem quarentena";
-        Directory.CreateDirectory(Caminho("dados", "backup"));
-        File.WriteAllText(Caminho("dados", "a.txt"), conteudo);
-        File.WriteAllText(Caminho("dados", "backup", "a.txt"), conteudo);
-        File.WriteAllText(Caminho("raiz.txt"), "unico\n");
+        // Tree WITHOUT reserved subtree: identical pair with SAME base name (grouping
+        // SPEC §7 is by normalized_base_name + size — distinct names are never
+        // duplicates; correction from previous run of this card) + single, common composition.
+        var content = "simple pair without quarantine";
+        Directory.CreateDirectory(MakePath("data", "backup"));
+        File.WriteAllText(MakePath("data", "a.txt"), content);
+        File.WriteAllText(MakePath("data", "backup", "a.txt"), content);
+        File.WriteAllText(MakePath("root.txt"), "single\n");
 
         var scanA = ScanCommand.Run(["scan", _root, "--json"]);
         var scanB = ScanCommand.Run(["scan", _root, "--json"]);
 
-        Assert.Equal(2, scanA.ExitCode); // o par continua sendo reportado — saída inalterada
+        Assert.Equal(2, scanA.ExitCode); // the pair continues to be reported — output unchanged
 
         using var docA = JsonDocument.Parse(scanA.JsonOutput!);
         using var docB = JsonDocument.Parse(scanB.JsonOutput!);
 
-        // Contador zerado quando não há nada a excluir.
+        // Counter zeroed when there is nothing to exclude.
         Assert.Equal(0, docA.RootElement.GetProperty("telemetry").GetProperty("files_excluded_conflictdoctor").GetInt64());
         Assert.Equal(0, docB.RootElement.GetProperty("telemetry").GetProperty("files_excluded_conflictdoctor").GetInt64());
 
-        // Enumerado = exatamente os 3 arquivos criados (nada a mais, nada a menos).
+        // Enumerated = exactly the 3 created files (no more, no less).
         Assert.Equal(3, docA.RootElement.GetProperty("telemetry").GetProperty("files_enumerated").GetInt64());
 
-        // Determinismo preservado: scans repetidos continuam byte-idênticos (§20).
-        Assert.Equal(Mascarar(scanA.JsonOutput!), Mascarar(scanB.JsonOutput!));
+        // Determinism preserved: repeated scans remain byte-identical (§20).
+        Assert.Equal(Mask(scanA.JsonOutput!), Mask(scanB.JsonOutput!));
 
-        // A duplicata segue visível no relatório — a exclusão não alcança conteúdo do usuário.
-        Assert.Contains("dados/backup/a.txt", scanA.JsonOutput!, StringComparison.Ordinal);
+        // The duplicate remains visible in the report — exclusion does not reach user content.
+        Assert.Contains("data/backup/a.txt", scanA.JsonOutput!, StringComparison.Ordinal);
     }
 
-    private string Caminho(params string[] segmentos)
+    private string MakePath(params string[] segments)
     {
-        var todos = new List<string> { _root };
-        todos.AddRange(segmentos);
-        return Path.Combine(todos.ToArray());
+        var all = new List<string> { _root };
+        all.AddRange(segments);
+        return Path.Combine(all.ToArray());
     }
 
-    /// <summary>Máscara §1.6 do schema-report-v1: só os timestamps de parede variam entre
-    /// scans reais; todo o restante deve coincidir byte a byte.</summary>
-    private static string Mascarar(string json) => Regex.Replace(
+    /// <summary>Mask §1.6 of schema-report-v1: only wall timestamps vary between
+    /// real scans; everything else must match byte for byte.</summary>
+    private static string Mask(string json) => Regex.Replace(
         json,
         "\"scan_(started|finished)_utc\": \"[^\"]+\"",
         "\"scan_$1_utc\": \"MASKED-FOR-DETERMINISM-TEST\"",

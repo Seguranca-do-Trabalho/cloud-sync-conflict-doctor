@@ -1,285 +1,286 @@
 # Threat Model — Cloud Sync Conflict Doctor
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Documento | docs/threat-model.md |
-| Card | t_e1fcbbfa (T02 — Threat model, papel: security) |
-| Data | 2026-08-22 |
-| Revisão | 1.0 |
-| Responsável | André Santo (forg3) — andre@junkyardgoodies.app |
-| Base normativa | docs/SPEC.md §2, §3, §6, §12, §18, §22, §26, §45 (GATE 5), §51, §58; ADR-0001, ADR-0002, ADR-0003 |
-| Status | Aceito como referência para GATE 5; casos T-01…T-11 são obrigatórios |
+| Document | docs/threat-model.md |
+| Card | t_e1fcbbfa (T02 — Threat model, role: security) |
+| Date | 2026-08-22 |
+| Revision | 1.0 |
+| Owner | forg3 |
+| Normative base | docs/SPEC.md §2, §3, §6, §12, §18, §22, §26, §45 (GATE 5), §51, §58; ADR-0001, ADR-0002, ADR-0003 |
+| Status | Accepted as reference for GATE 5; cases T-01…T-11 are mandatory |
 
-## 1. Escopo e método
+## 1. Scope and Method
 
-Este documento modela o que pode **destruir dados do usuário** no Cloud Sync Conflict Doctor.
-A pergunta central é a mesma da auditoria final da SPEC (§58): *pode apagar o arquivo errado,
-pode perder um arquivo durante quarantine, pode restaurar para o lugar errado, pode corromper um arquivo?*
-Cada caso abaixo é uma rota concreta até um "SIM" — e a mitigação que transforma o SIM em NÃO testado.
+This document models what can **destroy user data** in Cloud Sync Conflict Doctor.
+The central question is the same as the SPEC's final audit (§58): *can it delete the wrong file,
+can it lose a file during quarantine, can it restore to the wrong place, can it corrupt a file?*
+Each case below is a concrete path to a "YES" — and the mitigation that turns the YES into a tested NO.
 
-Método: análise por superfície de ataque, depois casos concretos com vetor, impacto, mitigação
-obrigatória e o teste que prova a mitigação. Prioridade de decisão segue §51:
+Method: attack surface analysis, then concrete cases with vector, impact, mandatory
+mitigation, and the test that proves the mitigation. Decision priority follows §51:
 correctness > safety > determinism > data preservation > performance > UX.
 
-Premissas do modelo de ameaça:
+Threat model assumptions:
 
-1. O produto roda como usuário comum, sem elevação, sem rede, sem telemetria (§26).
-2. O adversário inclui: o próprio conteúdo da árvore (nomes hostis), clientes de sincronização
-   concorrentes (OneDrive/Dropbox etc. mutando arquivos durante o scan), outros processos locais
-   (incluindo malware rodando como o mesmo usuário) e erro humano do usuário.
-3. O filesystem Windows é hostil por padrão: tudo entre o hash e o move pode mudar (TOCTOU é o
-   estado normal, não a exceção).
+1. The product runs as a regular user, no elevation, no network, no telemetry (§26).
+2. The adversary includes: the tree's own content (hostile names), competing sync
+   clients (OneDrive/Dropbox etc. mutating files during scan), other local processes
+   (including malware running as the same user), and user human error.
+3. The Windows filesystem is hostile by default: everything between hash and move can
+   change (TOCTOU is the normal state, not the exception).
 
-Ativos a proteger, em ordem:
+Assets to protect, in order:
 
 ```text
-A1. Conteúdo e existência dos arquivos do usuário (nada é apagado, corrompido ou sobrescrito)
-A2. Posicionamento dos arquivos (restore volta ao lugar certo, nunca substitui trabalho novo)
-A3. Correção do relatório (duas versões diferentes nunca classificadas como idênticas)
-A4. Economia de placeholders (nenhum byte de placeholder lido, nenhuma hidratação provocada)
-A5. Integridade dos manifestos (cadeia de evidência da quarentena ao restore)
-A6. Privacidade local-first (nenhum dado sai da máquina)
+A1. Content and existence of user files (nothing is deleted, corrupted, or overwritten)
+A2. File positioning (restore returns to correct place, never replaces new work)
+A3. Report correctness (two different versions never classified as identical)
+A4. Placeholder economy (no placeholder byte read, no hydration induced)
+A5. Manifest integrity (evidence chain from quarantine to restore)
+A6. Local-first privacy (no data leaves the machine)
 ```
 
-## 2. Superfícies de ataque
+## 2. Attack Surfaces
 
-| # | Superfície | Interação com dados | Fronteira de confiança | Risco principal |
+| # | Surface | Data Interaction | Trust Boundary | Main Risk |
 |---|---|---|---|---|
-| S1 | Scan (Level 0–3) | Leitura de metadados e conteúdo | Fora do controle: nomes de arquivos, atributos, clientes de sync concorrentes | Ler placeholder (A4); seguir reparse para fora da árvore (A6); instabilidade durante leitura corrompendo a classificação (A3) |
-| S2 | Cache SQLite | Leitura/escrita de hashes por file_id | Arquivo local modificável pelo usuário/malware; IDs NTFS recicláveis | Envenenamento de cache → falso "idêntico" → quarentena de conteúdo único (A1, A3) |
-| S3 | Quarentena (move) | Move/copy+delete controlado | Disco, volumes, ACLs, concorrência | Perda parcial ou total no meio do move; destino indevido por nome hostil (A1) |
-| S4 | Restore (move de volta) | Move de volta ao caminho original | Estado da árvore mudou desde a quarentena | Sobrescrever arquivo novo do usuário (A1, A2) — pior cenário único do produto |
-| S5 | CLI | Argumentos, stdout/JSON | Entrada do usuário e automação/RMM; nomes hostis vazando na saída | Injeção/truncamento de saída que engana automação; exit code ambíguo disparando ação errada |
-| S6 | GUI | Apresenta relatório, dispara resolução | Conteúdo do relatório é dado hostil (nomes); usuário sob pressão | Botão destrutivo indistinguível de ação segura (§37); confirmação que não mostra caminho real |
-| S7 | Atualizador (futuro) | Substitui o binário | Canal de distribuição | Update malicioso/não assinado = comprometimento total da máquina (supply chain) |
+| S1 | Scan (Level 0–3) | Metadata and content reading | Outside control: file names, attributes, competing sync clients | Read placeholder (A4); follow reparse outside tree (A6); instability during read corrupting classification (A3) |
+| S2 | SQLite Cache | Hash read/write by file_id | Local file modifiable by user/malware; recyclable NTFS IDs | Cache poisoning → false "identical" → quarantine of unique content (A1, A3) |
+| S3 | Quarantine (move) | Controlled move/copy+delete | Disk, volumes, ACLs, concurrency | Partial or total loss mid-move; unintended destination from hostile name (A1) |
+| S4 | Restore (move back) | Move back to original path | Tree state changed since quarantine | Overwrite new user file (A1, A2) — product's single worst scenario |
+| S5 | CLI | Arguments, stdout/JSON | User input and automation/RMM; hostile names leaking into output | Output injection/truncation fooling automation; ambiguous exit code triggering wrong action |
+| S6 | GUI | Shows report, triggers resolution | Report content is hostile data (names); user under pressure | Destructive button indistinguishable from safe action (§37); confirmation not showing real path |
+| S7 | Updater (future) | Replaces binary | Distribution channel | Malicious/unsigned update = total machine compromise (supply chain) |
 
-Princípio transversal: **o cache acelera, nunca decide sozinho**. Toda decisão que leva a
-quarentena exige cadeia de evidência verificada na sessão (hash atual ou tripé de cache
-estritamente validado — caso T-08).
+Cross-cutting principle: **cache accelerates, never decides alone**. Every decision leading to
+quarantine requires a verified evidence chain in the session (current hash or strictly
+validated cache tripod — case T-08).
 
-## 3. Casos concretos
+## 3. Concrete Cases
 
-Severidade: **P0** = rota direta para perda/corrupção de dados do usuário; **P1** = violação de
-invariante central (placeholder, privacidade, determinismo); **P2** = degradação confiável mas
-sem perda direta.
+Severity: **P0** = direct path to user data loss/corruption; **P1** = violation of
+central invariant (placeholder, privacy, determinism); **P2** = reliable degradation but
+no direct loss.
 
-### T-01 — Path traversal via nome de arquivo hostil — severidade P0
+### T-01 — Path traversal via hostile file name — severity P0
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Nome de arquivo criado via API `\\?\` (legal no NTFS, invisível ao Explorer): `arquivo.txt.` e `arquivo.txt ` (trailing dot/space — Win32 sem prefixo estendido resolve `arquivo.txt.`, ou seja, opera num arquivo DIFERENTE do exibido); caminhos >260 chars que truncam em APIs ANSI/legacy; Unicode hostil: U+202E (RTL override) tornando `fdp.exe` visível como `exe.pdf`, homóglifos cirílicos/latinos; nomes reservados (`CON`, `NUL`, `COM1`). |
-| Exemplo | Quarentena recebe `move("C:\sync\arquivo.txt. ", dest)` montado por concatenação sem prefixo estendido → SO move `arquivo.txt` errado; relatório exibe nome falsificado por RLO e o usuário aprova quarentena do arquivo errado achando que é outro. |
-| Impacto | Operação sobre arquivo diferente do pretendido (A1); usuário enganado na aprovação (A3); automação RMM consumindo JSON com nome truncado age errado. |
-| Mitigação obrigatória | (a) Todo caminho canonizado uma única vez na entrada (`GetFullPathName`) e convertido para forma estendida `\\?\`; proibida concatenação crua de strings de caminho — sempre combinação estrutural + re-canonização. (b) Verificação de contenção byte-a-byte: o caminho resolvido de QUALQUER operação de escrita/move deve começar pelo prefixo canônico da raiz (quarentena) — senão a operação falha fechada. (c) Nomes preservados exatamente como o filesystem os dá (sem "correção" silenciosa de dots/spaces/reservados); caracteres de controle bidi marcados no relatório. (d) Agrupamento por `normalized_base_name` opera em bytes UTF-8 exatos — sem fold visual (homóglifo é outro nome). |
-| Teste que prova | `Security_PathTraversal_HostileName_ContainedInRoot` — árvore com `evil.txt. `, nome RLO, nome com homóglifo; quarentena e restore executam e o prefixo de contenção é validado; nenhum caminho fora da raiz é tocado. Companheiros: `Security_LongPath_Over260Chars_ExtendedPrefixNoTruncation` (>260 chars, move e restore íntegros) e `Report_BidiControlChars_EscapedInJsonAndGui`. |
+| Vector | File name created via `\\?\` API (legal on NTFS, invisible to Explorer): `file.txt.` and `file.txt ` (trailing dot/space — Win32 without extended prefix resolves `file.txt.`, i.e., operates on a DIFFERENT file than displayed); paths >260 chars truncating in ANSI/legacy APIs; hostile Unicode: U+202E (RTL override) making `fdp.exe` visible as `exe.pdf`, Cyrillic/Latin homoglyphs; reserved names (`CON`, `NUL`, `COM1`). |
+| Example | Quarantine receives `move("C:\sync\file.txt. ", dest)` built by concatenation without extended prefix → OS moves wrong `file.txt`; report displays RLO-forged name and user approves quarantine of the wrong file thinking it is another. |
+| Impact | Operation on different file than intended (A1); user fooled into approval (A3); RMM automation consuming JSON with truncated name acts incorrectly. |
+| Mandatory Mitigation | (a) Every path canonicalized once at entry (`GetFullPathName`) and converted to extended form `\\?\`; raw string concatenation of path strings prohibited — always structural combination + re-canonicalization. (b) Byte-by-byte containment check: the resolved path of ANY write/move operation must start with the canonical root prefix (quarantine) — otherwise the operation fails closed. (c) Names preserved exactly as the filesystem gives them (no silent "correction" of dots/spaces/reserved); bidi control characters marked in report. (d) Grouping by `normalized_base_name` operates on exact UTF-8 bytes — no visual fold (homoglyph is a different name). |
+| Proving Test | `Security_PathTraversal_HostileName_ContainedInRoot` — tree with `evil.txt. `, RLO name, homoglyph name; quarantine and restore execute and containment prefix validated; no path outside root touched. Companions: `Security_LongPath_Over260Chars_ExtendedPrefixNoTruncation` (>260 chars, move and restore intact) and `Report_BidiControlChars_EscapedInJsonAndGui`. |
 
-### T-02 — Junction/symlink loop na enumeração — severidade P1
+### T-02 — Junction/symlink loop in enumeration — severity P1
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Junction `loop -> .` (auto-referência) ou ciclo `a -> b -> a`; symlink de diretório apontando para fora da raiz (`link -> C:\Users\outro`). Enumeração recursiva ingênua entra em ciclo infinito ou desce para fora da árvore. |
-| Exemplo | Usuário tem junction legado de migration (`Documents and Settings`); scan entra em loop, cresce memória/log sem fim e, no caso do symlink externo, hash de arquivos de terceiros vaza para o relatório local. |
-| Impacto | DoS do próprio scan (nunca termina); violação de privacidade local-first ao ler fora da raiz (A6); relatório não-determinístico dependendo de onde o ciclo é cortado. |
-| Mitigação obrigatória | Diretório com `FILE_ATTRIBUTE_REPARSE_POINT` é SEMPRE folha: registra metadados (Level 0), nunca desce — vale para junction, symlink, mount point, qualquer alvo (SPEC §6 "não seguir links/reparse"). Defesa em profundidade: guarda de visitados por `(volume_serial, file_id)` e teto de profundidade configurável com registro no relatório. Nunca decidir pela ordem de visita (determinismo §3). |
-| Teste que prova | `Security_JunctionLoop_TerminatesWithoutDescent` — árvore sintética com ciclo `a->b->a` termina em tempo finito e conta os reparse como folhas. Companheiro: `Security_ReparseDir_PointingOutsideRoot_NotEntered` (conteúdo externo nunca aparece no relatório). |
+| Vector | Junction `loop -> .` (self-reference) or cycle `a -> b -> a`; directory symlink pointing outside root (`link -> C:\Users\other`). Naive recursive enumeration enters infinite loop or descends outside the tree. |
+| Example | User has legacy junction from migration (`Documents and Settings`); scan enters loop, grows memory/log without end, and in the case of external symlink, hashes of third-party files leak into the local report. |
+| Impact | Self-DoS of the scan (never finishes); local-first privacy violation reading outside root (A6); non-deterministic report depending on where the cycle is cut. |
+| Mandatory Mitigation | Directory with `FILE_ATTRIBUTE_REPARSE_POINT` is ALWAYS a leaf: records metadata (Level 0), never descends — applies to junction, symlink, mount point, any target (SPEC §6 "don't follow links/reparse"). Defense in depth: visited guard by `(volume_serial, file_id)` and configurable depth cap with report logging. Never decide by visit order (determinism §3). |
+| Proving Test | `Security_JunctionLoop_TerminatesWithoutDescent` — synthetic tree with `a->b->a` cycle terminates in finite time and counts reparses as leaves. Companion: `Security_ReparseDir_PointingOutsideRoot_NotEntered` (external content never appears in report). |
 
-### T-03 — Reparse point disfarçado (placeholder que passa pelo gate) — severidade P1
+### T-03 — Disguised reparse point (placeholder passing the gate) — severity P1
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Placeholder cfapi (OneDrive/Files On-Demand) cujo atributo de recall só é visível com query correta; metadado em cache stale; arquivo que era regular e foi convertido em placeholder entre a enumeração e a abertura. Uma única leitura dispara hidratação: download gigabytes, custo de banda, alteração de comportamento do cliente de sync. |
-| Exemplo | Vídeo de 8 GB online-only; bug de gate abre o arquivo; `placeholder_bytes_read` vai a 8 GiB e o OneDrive baixa tudo — exatamente o dano que o produto promete não causar (A4). |
-| Impacto | Violação da invariante `placeholder_bytes_read == 0` (SPEC §6/§21); custo financeiro/material direto ao usuário; perda de confiança no produto. |
-| Mitigação obrigatória | Duplo gate: (1) atributos vindos da enumeração Level 0; (2) re-verificação IMEDIATAMENTE antes de cada abertura, na mesma chamada de decisão; qualquer bit suspeito (`OFFLINE`, `RECALL_ON_OPEN`, `RECALL_ON_DATA_ACCESS`, reparse) → classe PLACEHOLDER, zero leitura. Abertura de candidato nunca usa conveniência tipo `File.ReadAllBytes` sobre caminho — usa handle com flags explícitas; contadores `files_placeholder` e `placeholder_bytes_read` incrementados no ponto de abertura, e o teste afirma zero. |
-| Teste que prova | `Placeholder_GateBeforeOpen_ZeroBytesRead` — árvore com os quatro tipos da SPEC §21; afirmação dura `placeholder_bytes_read == 0` e nenhuma função de hash chamada sobre placeholder (spy/mock na interface de hashing). Companheiro: `Placeholder_ConvertedAfterEnumeration_IsCaughtBySecondGate`. |
+| Vector | OneDrive/Files On-Demand cfapi placeholder whose recall attribute is only visible with correct query; stale metadata in cache; file that was regular and was converted to placeholder between enumeration and opening. A single read induces hydration: gigabytes downloaded, bandwidth cost, sync client behavior change. |
+| Example | 8 GB online-only video; gate bug opens the file; `placeholder_bytes_read` goes to 8 GiB and OneDrive downloads everything — exactly the damage the product promises not to cause (A4). |
+| Impact | Violation of the `placeholder_bytes_read == 0` invariant (SPEC §6/§21); direct financial/material cost to user; loss of product trust. |
+| Mandatory Mitigation | Double gate: (1) attributes from Level 0 enumeration; (2) RE-verification IMMEDIATELY before each open, in the same decision call; any suspicious bit (`OFFLINE`, `RECALL_ON_OPEN`, `RECALL_ON_DATA_ACCESS`, reparse) → PLACEHOLDER class, zero read. Opening a candidate never uses convenience like `File.ReadAllBytes` on a path — uses handle with explicit flags; `files_placeholder` and `placeholder_bytes_read` counters incremented at open point, and the test asserts zero. |
+| Proving Test | `Placeholder_GateBeforeOpen_ZeroBytesRead` — tree with all four SPEC §21 types; hard assertion `placeholder_bytes_read == 0` and no hash function called on placeholder (spy/mock on hashing interface). Companion: `Placeholder_ConvertedAfterEnumeration_IsCaughtBySecondGate`. |
 
-### T-04 — TOCTOU entre hash e move para quarentena — severidade P0
+### T-04 — TOCTOU between hash and quarantine move — severity P0
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Janela entre calcular o hash do original e concluir o move. Outro processo (usuário, sync client, malware) troca o conteúdo no caminho: renomeia arquivo novo para o lugar ou reescreve. O manifesto registra o hash H1, mas os bytes movidos são H2. No restore, o produto devolve H2 jurando ser H1 — corrupção semântica garantida. |
-| Exemplo | `relatorio.docx` hashado como versão boa; Dropbox sincroniza versão nova no meio da janela; quarentena move a versão nova; restore futuro repõe a versão nova no lugar da boa registrada — e a "boa" se perdeu. |
-| Impacto | Perda/corrupção de dados (A1) com aparência de procedimento correto — o pior tipo de falha para um produto cujo diferencial é confiança auditável. |
-| Mitigação obrigatória | Encadear evidência, não confiar em janela: (1) abrir o candidato com partilha restrita (sem `FILE_SHARE_WRITE`, sem `FILE_SHARE_DELETE`) durante o hashing — bloqueia escritores e renomeadores durante a janela crítica; (2) mover; (3) **reabrir o arquivo NA QUARENTENA e recalcular BLAKE3**; (4) comparar com o hash pré-move; divergência → rollback (move de volta), operação marcada FALHA, nada declarado sucesso. Manifesto carrega `hash_pre_move` e `hash_post_move` — a cadeia de evidência é auditable depois. Sucesso só é declarado após (4) bater (caso T-10 completa com fsync). |
-| Teste que prova | `Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack` — hook de teste injeta troca de conteúdo entre hash e move; afirma: rollback executado, fonte intacta, operação FALHA no índice, `hash_post_move != hash_pre_move` registrado. Companheiro: `Quarantine_ShareModeExclusive_BlockWriterDuringHashWindow` (segunda escrita concorrente falha durante a janela). |
+| Vector | Window between hashing the original and completing the move. Another process (user, sync client, malware) swaps content at the path: renames new file into place or rewrites. Manifest records hash H1, but moved bytes are H2. On restore, product returns H2 swearing it is H1 — guaranteed semantic corruption. |
+| Example | `report.docx` hashed as good version; Dropbox syncs new version mid-window; quarantine moves new version; future restore puts new version in place of the recorded good — and the "good" is lost. |
+| Impact | Data loss/corruption (A1) with appearance of correct procedure — worst failure type for a product whose differentiator is auditable trust. |
+| Mandatory Mitigation | Chain evidence, don't trust the window: (1) open candidate with restricted sharing (no `FILE_SHARE_WRITE`, no `FILE_SHARE_DELETE`) during hashing — blocks writers and renamers during critical window; (2) move; (3) **reopen file IN QUARANTINE and recalculate BLAKE3**; (4) compare with pre-move hash; divergence → rollback (move back), operation marked FAILED, nothing declared success. Manifest carries `hash_pre_move` and `hash_post_move` — evidence chain auditable after. Success declared only after (4) matches (case T-10 adds fsync). |
+| Proving Test | `Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack` — test hook injects content swap between hash and move; asserts: rollback executed, source intact, operation FAILED in index, `hash_post_move != hash_pre_move` recorded. Companion: `Quarantine_ShareModeExclusive_BlockWriterDuringHashWindow` (second concurrent write fails during window). |
 
-### T-05 — Arquivo alterado durante o scan (hash não confere) — severidade P0
+### T-05 — File modified during scan (hash mismatch) — severity P0
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Usuário edita/salva enquanto o scanner lê; cliente de sync substitui o arquivo no meio da leitura. Hash parcial/full computado sobre estado híbrido (metade velho, metade novo). |
-| Exemplo | Planilha salva às 19:00:01; leitura começou 19:00:00; BLAKE3 resultante não corresponde a nenhuma versão real. Se esse hash entrar no cache (S2), o veneno persiste nos scans seguintes (combina com T-08). |
-| Impacto | Classificação errada: duas versões distintas podem parecer idênticas (A3) → resolução quarentena conteúdo único (A1); ou idênticas parecem divergentes (ruído, menos grave). |
-| Mitigação obrigatória | Snapshot de consistência por arquivo: capturar `(size, mtime, file_id)` ANTES da leitura, reler os três DEPOIS; qualquer mudança → arquivo marcado `UNSTABLE`, excluído de toda decisão de igualdade/divergência nesta sessão (re-enfileirado uma vez; persistindo, entra no relatório como instável). Hash de arquivo instável JAMAIS é gravado no cache. Regra fail-closed: dúvida sobre igualdade ⇒ tratar como divergência potencial, nunca como cópia segura para remover. |
-| Teste que prova | `Scan_FileModifiedDuringRead_MarkedUnstable_AndNeverCached` — gravação concorrente simulada no meio da leitura; afirma: status UNSTABLE, fora de grupos idênticos, cache sem entrada para o arquivo. Companheiro: `Scan_StableFile_MetadataUnchanged_ClassifiedNormally` (controle positivo). |
+| Vector | User edits/saves while scanner reads; sync client replaces file mid-read. Partial/full hash computed on hybrid state (half old, half new). |
+| Example | Spreadsheet saved at 19:00:01; read started 19:00:00; resulting BLAKE3 does not correspond to any real version. If this hash enters cache (S2), the poison persists in following scans (combines with T-08). |
+| Impact | Wrong classification: two different versions may appear identical (A3) → quarantine resolution of unique content (A1); or identical appears divergent (noise, less severe). |
+| Mandatory Mitigation | Per-file consistency snapshot: capture `(size, mtime, file_id)` BEFORE the read, recheck all three AFTER; any change → file marked `UNSTABLE`, excluded from all equality/divergence decisions in this session (re-queued once; persisting, enters report as unstable). Unstable file hash is NEVER written to cache. Fail-closed rule: doubt about equality ⇒ treat as potential divergence, never as safe copy to remove. |
+| Proving Test | `Scan_FileModifiedDuringRead_MarkedUnstable_AndNeverCached` — simulated concurrent write mid-read; asserts: UNSTABLE status, outside identical groups, no cache entry for file. Companion: `Scan_StableFile_MetadataUnchanged_ClassifiedNormally` (positive control). |
 
-### T-06 — Quarentena dentro da árvore escaneada (recursão/auto-engolir) — severidade P1
+### T-06 — Quarantine inside scanned tree (recursion/self-ingestion) — severity P1
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | ADR-0002 fixa a quarentena em `<raiz>/ConflictDoctor/quarantine/<timestamp>/` — dentro da pasta sincronizada. O próximo scan enumera as cópias em quarentena como arquivos vivos: duplicata aparece em dobro, e a resolução pode mandar para quarentena o conteúdo que JÁ ESTÁ em quarentena, empilhando lixo e poluindo manifestos. Cliente de sync ainda propaga `ConflictDoctor/` para outras máquinas, multiplicando o problema. |
-| Exemplo | Scan de `C:\Users\eu\OneDrive`; resolução move 500 duplicatas; novo scan encontra 1000 candidatos (500 vivos + 500 em quarentena); usuário resolve de novo; 500 cópias fantasma viram candidatos permanentes. |
-| Impacto | Relatório incorreto e não-idempotente (A3); risco de operações redundantes sobre conteúdo já protegido; crescimento infinito de candidatos fantasma. |
-| Mitigação obrigatória | Exclusão estrutural na enumeração: subárvore `<raiz>/ConflictDoctor/` é pulada no Level 0 por comparação de PREFIXO EM BYTES do caminho canônico (barata, determinística), com contador próprio `files_excluded_conflictdoctor` na telemetria. Segunda camada: quarentena marca seus arquivos (atributo `HIDDEN` + registro no índice) e o scanner ignora qualquer candidato presente no índice de quarentena. Terceira camada: resolução se recusa a mover arquivo cujo caminho já esteja sob o diretório de quarentena. |
-| Teste que prova | `Security_QuarantineInsideScannedRoot_ExcludedFromEnumeration` — resolve numa árvore, escaneia de novo; afirma: zero itens de `ConflictDoctor/` no relatório, `files_excluded_conflictdoctor > 0`, segundo scan byte-idêntico ao primeiro (idempotência §20). |
+| Vector | ADR-0002 places quarantine at `<root>/ConflictDoctor/quarantine/<timestamp>/` — inside the synced folder. Next scan enumerates quarantined copies as live files: duplicate appears double, and resolution may quarantine content ALREADY IN quarantine, piling trash and polluting manifests. Sync client still propagates `ConflictDoctor/` to other machines, multiplying the problem. |
+| Example | Scan of `C:\Users\me\OneDrive`; resolution moves 500 duplicates; new scan finds 1000 candidates (500 live + 500 quarantined); user resolves again; 500 phantom copies become permanent candidates. |
+| Impact | Incorrect and non-idempotent report (A3); risk of redundant operations on already-protected content; infinite phantom candidate growth. |
+| Mandatory Mitigation | Structural exclusion in enumeration: `<root>/ConflictDoctor/` subtree is skipped at Level 0 by BYTE PREFIX comparison of the canonical path (cheap, deterministic), with dedicated counter `files_excluded_conflictdoctor` in telemetry. Second layer: quarantine marks its files (HIDDEN attribute + index entry) and scanner ignores any candidate present in the quarantine index. Third layer: resolution refuses to move a file whose path is already under the quarantine directory. |
+| Proving Test | `Security_QuarantineInsideScannedRoot_ExcludedFromEnumeration` — resolve in a tree, scan again; asserts: zero `ConflictDoctor/` items in report, `files_excluded_conflictdoctor > 0`, second scan byte-identical to first (idempotency §20). |
 
-### T-07 — Restore sobrescrevendo arquivo novo — severidade P0
+### T-07 — Restore overwriting new file — severity P0
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Entre a quarentena e o restore, surge um arquivo no caminho original: usuário recriou, sync client trouxe versão de outra máquina, outra ferramenta escreveu lá. Restore ingênuo (`move` por cima) DESTRÓI o arquivo novo — perda permanente, sem quarentena, sem undo. É a única operação do produto que pode apagar dados sem passar pelo caminho de quarentena. |
-| Exemplo | `orcamento.xlsx` conflituoso vai à quarentena; o cliente de sync restaura a versão do servidor no mesmo caminho no dia seguinte; usuário clica "restaurar"; versão do servidor é sobrescrita pela quarentenada e desaparece. |
-| Impacto | Destruição irreversível de trabalho do usuário (A1, A2) — viola ADR-0002 §3 ("nunca sobrescrever") e a promessa central do produto. |
-| Mitigação obrigatória | Restore NUNCA escreve sobre destino existente, sem exceção: (1) destino ausente → move de volta, verifica hash, registra SUCESSO; (2) destino existente com hash idêntico ao manifestado → não toca no existente, registra `ALREADY_PRESENT`, não move; (3) destino existente com conteúdo diferente → move o arquivo de quarentena para caminho-irmão determinístico `base (restaurado <operation_id-curto>).ext` (nunca substitui, nunca sufixo aleatório) OU falha pedindo decisão explícita — padrão conservador: irmão + aviso. Em todos os casos o manifesto original ganha registro de desfecho append-only. Comparação sempre por hash BLAKE3, nunca por mtime/tamanho sozinhos. |
-| Teste que prova | `Restore_DestinationExists_NeverOverwrites_RestoresAsDeterministicSibling` — destino ocupado por conteúdo diferente; afirma: existente intocado byte-a-byte, quarentenado presente no irmão determinístico, desfecho registrado. Companheiros: `Restore_DestinationAbsent_MovesBackAndHashMatches` (caminho feliz) e `Restore_DestinationIdentical_AlreadyPresentNoMove`. |
+| Vector | Between quarantine and restore, a file appears at the original path: user recreated it, sync client brought version from another machine, another tool wrote there. Naive restore (`move` over) DESTROYS the new file — permanent loss, no quarantine, no undo. It is the product's only operation that can delete data without going through the quarantine path. |
+| Example | Conflicted `budget.xlsx` goes to quarantine; sync client restores server version at the same path next day; user clicks "restore"; server version overwritten by quarantined one and disappears. |
+| Impact | Irreversible destruction of user work (A1, A2) — violates ADR-0002 §3 ("never overwrite") and the product's core promise. |
+| Mandatory Mitigation | Restore NEVER writes over existing destination, no exception: (1) absent destination → move back, verify hash, record SUCCESS; (2) existing destination with identical hash to manifest → does not touch existing, records `ALREADY_PRESENT`, does not move; (3) existing destination with different content → moves quarantined file to deterministic sibling path `base (restored <short_operation_id>).ext` (never replaces, never random suffix) OR fails requesting explicit decision — conservative default: sibling + warning. In all cases the original manifest gains an append-only outcome record. Comparison always by BLAKE3 hash, never by mtime/size alone. |
+| Proving Test | `Restore_DestinationExists_NeverOverwrites_RestoresAsDeterministicSibling` — destination occupied by different content; asserts: existing untouched byte-by-byte, quarantined present at deterministic sibling, outcome recorded. Companions: `Restore_DestinationAbsent_MovesBackAndHashMatches` (happy path) and `Restore_DestinationIdentical_AlreadyPresentNoMove`. |
 
-### T-08 — Cache envenenado por reuso de file ID — severidade P0
+### T-08 — Cache poisoned by file ID reuse — severity P0
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | NTFS reutiliza file IDs após deleção. Cache chavado só por `file_id` (SPEC §12) devolve o hash do arquivo ANTIGO para um arquivo NOVO que herdou o ID. Dois conteúdos diferentes passam a compartilhar hash "em cache" → classificados como cópias idênticas. |
-| Exemplo | `contrato_v1.docx` deletado; ID reciclado por `contrato_FINAL.docx` com conteúdo distinto; cache diz hash igual ao de `contrato_copia.docx`; o doctor declara "cópias idênticas"; usuário mantém uma e quarentena a outra — conteúdo único destruído com aval do produto. |
-| Impacto | Falso "idêntico" é a rota mais barata para destruição de dados (A1, A3) e sobrevive a reinícios do processo (persistência do veneno no SQLite). |
-| Mitigação obrigatória | Chave de validade composta: entrada de cache só é usada se `(volume_serial, file_id, size, mtime_ticks, algorithm, hash_version)` casarem EXATAMENTE com o estado atual do arquivo; qualquer divergência = cache miss → rehash completo do pipeline. `mtime` com precisão nativa máxima (ticks, não segundos). `volume_serial` acompanha todo file_id (IDs só são únicos por volume). Reforço: hash vindo de cache usado em decisão de resolução gera linha de auditoria própria no relatório (`evidence: cache` vs `evidence: fresh`). Cache nunca é autoridade sozinha (princípio §2). |
-| Teste que prova | `Cache_FileIdReused_SizeMtimeDiffer_EntryInvalidated_Rehashes` — fixture simula reuso de ID com size/mtime diferentes; afirma: rehash executado, hash antigo não reaproveitado, classificação correta. Companheiro: `Cache_VolumeSerialDiffers_SameFileId_Miss` (mesmo ID em volumes distintos não colide). |
+| Vector | NTFS reuses file IDs after deletion. Cache keyed only by `file_id` (SPEC §12) returns the OLD file's hash for a NEW file that inherited the ID. Two different contents now share hash "in cache" → classified as identical copies. |
+| Example | `contract_v1.docx` deleted; ID recycled by `contract_FINAL.docx` with different content; cache says hash same as `contract_copy.docx`; doctor declares "identical copies"; user keeps one and quarantines the other — unique content destroyed with product approval. |
+| Impact | False "identical" is cheapest path to data destruction (A1, A3) and survives process restarts (poison persistence in SQLite). |
+| Mandatory Mitigation | Composite validity key: cache entry used only if `(volume_serial, file_id, size, mtime_ticks, algorithm, hash_version)` ALL match exactly current file state; any divergence = cache miss → full pipeline rehash. `mtime` at native max precision (ticks, not seconds). `volume_serial` accompanies every file ID (IDs only unique per volume). Reinforcement: cache hash used in resolution decision generates its own audit line in report (`evidence: cache` vs `evidence: fresh`). Cache is never sole authority (§2 principle). |
+| Proving Test | `Cache_FileIdReused_SizeMtimeDiffer_EntryInvalidated_Rehashes` — fixture simulates ID reuse with different size/mtime; asserts: rehash executed, old hash not reused, correct classification. Companion: `Cache_VolumeSerialDiffers_SameFileId_Miss` (same ID on different volumes does not collide). |
 
-### T-09 — Colisão de operation_id — severidade P0
+### T-09 — operation_id collision — severity P0
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Dois lotes no mesmo segundo (lote agendado + manual) geram o mesmo `operation_id` derivado de timestamp; o segundo manifesto SOBRESCREVE o primeiro. O primeiro lote perde sua cadeia de evidência: restore não sabe mais quais bytes correspondem a qual entrada — restauração ambígua sobre dados do usuário. |
-| Exemplo | Lote 01h00m00s quarentena 300 arquivos; usuário dispara outro lote no mesmo segundo; manifesto do primeiro é substituído; restore em massa do dia anterior restaura entradas cruzadas. |
-| Impacto | Corrupção da cadeia de evidência (A5) → restore errado (A1, A2); auditoria impossível (viola §2.1 item 7 — motivo/rastreio). |
-| Mitigação obrigatória | `operation_id` = 128 bits de CSPRNG (formato hex/ULID), independente de relógio; nome de arquivo do manifesto incorpora o id; escrita de manifesto é create-new: existente ⇒ FALHA FECHADA da operação (nunca overwrite, nunca append em manifesto de outro lote). Índice de operações é append-only. Relógio de parede entra só como campo informativo `timestamp`, nunca como chave. |
-| Teste que prova | `Security_OperationIdCollision_PreexistingManifestFailsClosed` — força id duplicado (injeção); afirma: segunda operação falha sem tocar o manifesto existente, primeira permanece íntegra, exit code de erro operacional. Companheiro: `OperationId_Entropy_TwoConcurrentBatches_NeverCollide`. |
+| Vector | Two batches in the same second (scheduled + manual) generate the same `operation_id` derived from timestamp; second manifest OVERWRITES the first. First batch loses its evidence chain: restore no longer knows which bytes correspond to which entry — ambiguous restoration on user data. |
+| Example | 01h00m00s batch quarantines 300 files; user triggers another batch in the same second; first manifest replaced; bulk restore from previous day restores crossed entries. |
+| Impact | Evidence chain corruption (A5) → wrong restore (A1, A2); audit impossible (violates §2.1 item 7 — reason/tracking). |
+| Mandatory Mitigation | `operation_id` = 128-bit CSPRNG (hex/ULID format), clock-independent; manifest filename incorporates the id; manifest write is create-new: existing ⇒ FAILED operation (never overwrite, never append to another batch's manifest). Operation index is append-only. Wall clock enters only as informational `timestamp` field, never as key. |
+| Proving Test | `Security_OperationIdCollision_PreexistingManifestFailsClosed` — forces duplicate ID (injection); asserts: second operation fails without touching existing manifest, first remains intact, operational error exit code. Companion: `OperationId_Entropy_TwoConcurrentBatches_NeverCollide`. |
 
-### T-10 — Disco cheio no meio do move — severidade P0
+### T-10 — Disk full mid-move — severity P0
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | Move entre volumes degrada para copy+delete. Disco da quarentena enche no meio da cópia → fragmento na quarentena; implementação ingênua já apagou a fonte, ou declara sucesso com destino truncado. Resultado: metade dos bytes em cada lado. Mesmo em rename same-volume, falta de fsync permite sucesso lógico sobre estado não persistido após queda de energia. |
-| Exemplo | Lote de 40 GB para HD externo quase cheio; cópia morre em 70%; fonte removida "porque move"; usuário perde 30% dos bytes de cada arquivo do lote. |
-| Impacto | Perda parcial silenciosa (A1) — talvez pior que perda total, porque passa despercebida até o restore. |
-| Mitigação obrigatória | Protocolo de move seguro, mesmo passo a passo: (1) copiar para `<dest>.<op-partial>` nome temporário; (2) `FlushFileBuffers` (fsync) no temporário; (3) reabrir e re-hashear o temporário (BLAKE3, cobre também T-04); (4) hash bate → rename atômico temporário→final; (5) só ENTÃO liberar a fonte (delete do temporário-fonte no caso cross-volume; no same-volume o rename já é atômico e o passo vira verificação de existência); (6) escrever manifesto + fsync do manifesto; (7) declarar sucesso. Qualquer passo falha → remover temporário, fonte INTACTA, operação FALHA no índice, exit code 1. Pré-checagem de espaço livre estimado antes do lote (rejeita lote impossível antes de tocar em qualquer arquivo). |
-| Teste que prova | `Security_DiskFullMidCopy_FailClosed_SourceIntact_NoPartialDeclaredSuccess` — quota/tempfs pequeno ou falha injetada no passo 2; afirma: fonte presente byte-a-byte, temporário removido, índice marca FALHA, exit code 1. Companheiro: `Quarantine_SuccessRequiresFsyncOfDataAndManifest` (assert de chamada de flush antes do registro de sucesso). |
+| Vector | Cross-volume move degrades to copy+delete. Quarantine disk fills mid-copy → fragment in quarantine; naive implementation already deleted source, or declares success with truncated destination. Result: half the bytes on each side. Even in same-volume rename, lack of fsync allows logical success on non-persisted state after power loss. |
+| Example | 40 GB batch to nearly full external HD; copy dies at 70%; source removed "because it's a move"; user loses 30% of bytes from each file in the batch. |
+| Impact | Silent partial loss (A1) — perhaps worse than total loss because it goes unnoticed until restore. |
+| Mandatory Mitigation | Safe move protocol, step by step: (1) copy to `<dest>.<op-partial>` temp name; (2) `FlushFileBuffers` (fsync) on temp; (3) reopen and re-hash temp (BLAKE3, also covers T-04); (4) hash matches → atomic rename temp→final; (5) ONLY THEN release source (delete temp-source in cross-volume case; in same-volume rename is already atomic and step becomes existence check); (6) write manifest + fsync manifest; (7) declare success. Any step fails → remove temp, source INTACT, operation FAILED in index, exit code 1. Pre-check of estimated free space before batch (rejects impossible batch before touching any file). |
+| Proving Test | `Security_DiskFullMidCopy_FailClosed_SourceIntact_NoPartialDeclaredSuccess` — small quota/tempfs or injected failure at step 2; asserts: source present byte-by-byte, temp removed, index marks FAILED, exit code 1. Companion: `Quarantine_SuccessRequiresFsyncOfDataAndManifest` (assert flush call before success recording). |
 
-### T-11 — Permissões NTFS negadas — severidade P2
+### T-11 — NTFS permissions denied — severity P2
 
-| Item | Detalhe |
+| Item | Detail |
 |---|---|
-| Vetor | ACL `DENY` de leitura em arquivo individual (ou herança quebrada em subárvore); enumeração vê o nome, abertura falha com `ERROR_ACCESS_DENIED`. Também: quarentena em volume/pasta com ACL que nega write ao usuário. |
-| Exemplo | Pasta `financeiro` com ACL restritiva dentro da árvore escaneada; scan não consegue hash de 12 arquivos; lote de resolução segue sem eles e o relatório cala — usuário acredita que a pasta toda foi analisada. |
-| Impacto | Silenciosamente incompleto = análise mentidosa (A3); pior variante: arquivo sem hash elegível para resolução porque "parecia duplicata pelo nome+tamanho". |
-| Mitigação obrigatória | Falha por-item explícita: erro de acesso vira status `ACCESS_DENIED` no relatório (com contadores), nunca aborta o scan inteiro nem é engolido. REGRA DURA: arquivo sem hash BLAKE3 verificado NUNCA é elegível para resolução/quarentena — sem evidência, sem remoção (fail-closed, coerente com prioridades §51). Resumo do relatório exibe "X arquivos não analisados por acesso negado" na primeira tela (§15). Produto jamais exige elevação para completar: o que o usuário não lê, o produto não decide. Exit code 3 (parcial) quando houver itens não analisados. |
-| Teste que prova | `Permissions_AccessDenied_FileReportedAndNeverQuarantineEligible` — ACL deny simulada (chmod em POSIX-fs de teste / mock de abstração de FS); afirma: status ACCESS_DENIED no relatório, arquivo fora de candidatos de resolução, exit 3 no modo parcial. Companheiro: `Scan_PartialFailures_DoNotAbortWholeScan` (demais arquivos analisados normalmente). |
+| Vector | Individual file DENY read ACL (or broken inheritance in subtree); enumeration sees name, open fails with `ERROR_ACCESS_DENIED`. Also: quarantine on volume/folder with ACL denying write to user. |
+| Example | `financial` folder with restrictive ACL inside scanned tree; scan cannot hash 12 files; resolution batch proceeds without them and report is silent — user believes the entire folder was analyzed. |
+| Impact | Silently incomplete = dishonest analysis (A3); worst variant: file without hash eligible for resolution because "it looked like a duplicate by name+size". |
+| Mandatory Mitigation | Explicit per-item failure: access error becomes `ACCESS_DENIED` status in report (with counters), never aborts entire scan nor is swallowed. HARD RULE: file without verified BLAKE3 hash is NEVER eligible for resolution/quarantine — no evidence, no removal (fail-closed, consistent with §51 priorities). Report summary displays "X files not analyzed due to denied access" on first screen (§15). Product never requires elevation to complete: what the user cannot read, the product does not decide. Exit code 3 (partial) when unanalyzed items exist. |
+| Proving Test | `Permissions_AccessDenied_FileReportedAndNeverQuarantineEligible` — simulated ACL deny (chmod on test POSIX-fs / FS abstraction mock); asserts: ACCESS_DENIED status in report, file outside resolution candidates, exit 3 in partial mode. Companion: `Scan_PartialFailures_DoNotAbortWholeScan` (remaining files analyzed normally). |
 
-## 4. Regras derivadas (obrigatórias para todo código de produto)
+## 4. Derived Rules (mandatory for all product code)
 
-Estas regras são exigências vinculantes extraídas dos casos acima. Cards de implementação
-devem citá-las; o reviewer cobra cada uma no GATE 5.
+These rules are binding requirements extracted from the cases above. Implementation
+cards must cite them; the reviewer enforces each at GATE 5.
 
 ```text
-R1  (T-06)  Quarentena fora da raiz escaneada OU, se interna, subárvore ConflictDoctor/
-            excluída da enumeração por prefixo de bytes, com contador dedicado.
+R1  (T-06)  Quarantine outside scanned root OR, if inside, ConflictDoctor/ subtree
+            excluded from enumeration by byte prefix, with dedicated counter.
 
-R2  (T-01)  Nenhum caminho manipulado como string crua: canonização única na entrada +
-            forma estendida \\?\ + verificação de contenção byte-a-byte antes de toda
-            operação de escrita/move. Proibida concatenação ad hoc de caminhos.
+R2  (T-01)  No path handled as raw string: single canonicalization at entry +
+            extended form \\?\ + byte-by-byte containment check before every
+            write/move operation. Ad-hoc path concatenation prohibited.
 
-R3  (T-02/T-03) Reparse point nunca é descido nem seguido; diretório com reparse é folha;
-            duplo gate de atributos (enumeração + re-checagem imediata pré-abertura).
+R3  (T-02/T-03) Reparse point never descended or followed; directory with reparse is leaf;
+            double attribute gate (enumeration + immediate re-check before open).
 
-R4  (T-04/T-05) Hash somente via handle com partilha restrita (sem WRITE/DELETE share);
-            metadados (size, mtime, file_id) capturados antes e conferidos depois da
-            leitura; divergência => UNSTABLE, fora de decisões, fora do cache.
+R4  (T-04/T-05) Hash only via handle with restricted sharing (no WRITE/DELETE share);
+            metadata (size, mtime, file_id) captured before and checked after
+            read; divergence => UNSTABLE, outside decisions, outside cache.
 
-R5  (T-04/T-10) Verificação pós-move por hash (BLAKE3 recalculado no destino) antes de
-            declarar sucesso; manifesto registra hash_pre_move e hash_post_move.
+R5  (T-04/T-10) Post-move verification by hash (BLAKE3 recalculated at destination) before
+            declaring success; manifest records hash_pre_move and hash_post_move.
 
-R6  (T-10)  fsync (FlushFileBuffers) dos dados E do manifesto antes de qualquer sucesso;
-            protocolo de move seguro: temp → flush → rehash → rename atômico → libera
-            fonte → manifesto → sucesso. Falha em qualquer passo: fonte intacta, FALHA.
+R6  (T-10)  fsync (FlushFileBuffers) of data AND manifest before any success;
+            safe move protocol: temp → flush → rehash → atomic rename → release
+            source → manifest → success. Failure at any step: source intact, FAILED.
 
-R7  (T-07)  Restore nunca sobrescreve: destino existente com conteúdo diverso vai para
-            irmão determinístico "(restaurado <op>)" ou falha pedindo decisão; comparação
-            por hash, nunca por mtime/tamanho isolados.
+R7  (T-07)  Restore never overwrites: existing destination with different content goes to
+            deterministic sibling "(restored <op>)" or fails requesting decision; comparison
+            by hash, never by mtime/size alone.
 
-R8  (T-08)  Cache válido somente com (volume_serial, file_id, size, mtime_ticks,
-            algorithm, hash_version) todos iguais; divergência => rehash; cache acelera,
-            nunca decide sozinho; uso de cache em decisão gera trilha de auditoria.
+R8  (T-08)  Cache valid only with (volume_serial, file_id, size, mtime_ticks,
+            algorithm, hash_version) all equal; divergence => rehash; cache accelerates,
+            never decides alone; cache use in decision generates audit trail.
 
-R9  (T-09)  operation_id de CSPRNG 128 bits; manifesto é create-new; existente => falha
-            fechada; índice de operações append-only; timestamp nunca é chave.
+R9  (T-09)  operation_id from 128-bit CSPRNG; manifest is create-new; existing => fail
+            closed; operation index append-only; timestamp never a key.
 
-R10 (T-05/T-11) Arquivo não hashável (ACL negada, UNSTABLE, indisponível) nunca é elegível
-            para resolução/quarentena; falhas por-item aparecem no relatório e no resumo
-            da primeira tela; scan parcial => exit code próprio.
+R10 (T-05/T-11) File not hashable (ACL denied, UNSTABLE, unavailable) is never eligible
+            for resolution/quarantine; per-item failures appear in report and summary
+            on first screen; partial scan => own exit code.
 
-R11 (todas) Falha em etapa destrutiva encerra o processo de forma conservadora (ADR-0002
-            §4); nada parcial permanece sem registro no índice de operações.
+R11 (all) Failure at destructive step terminates process conservatively (ADR-0002
+            §4); nothing partial remains unrecorded in operation index.
 
-R12 (T-01/S5) Escape estrito de nomes na saída JSON e na GUI; caracteres bidi marcados;
-            agrupamento por bytes UTF-8 exatos, sem fold visual/locale.
+R12 (T-01/S5) Strict name escaping in JSON output and GUI; bidi characters marked;
+            grouping by exact UTF-8 bytes, no visual/locale fold.
 ```
 
-## 5. Testes exigidos (consolidado para GATE 5)
+## 5. Required Tests (consolidated for GATE 5)
 
-Nomes canônicos em `tests/Doctor.Tests`. Os cards de implementação correspondentes devem
-criar exatamente estes testes (ou superconjunto com rastreio a este documento).
+Canonical names in `tests/Doctor.Tests`. Corresponding implementation cards must
+create exactly these tests (or superset with traceability to this document).
 
-| Teste | Prova | Caso | Prioridade |
+| Test | Proves | Case | Priority |
 |---|---|---|---|
-| `Security_PathTraversal_HostileName_ContainedInRoot` | Contenção byte-a-byte sob nomes hostis | T-01 | P0 |
-| `Security_LongPath_Over260Chars_ExtendedPrefixNoTruncation` | Sem truncamento acima de 260 chars | T-01 | P0 |
-| `Report_BidiControlChars_EscapedInJsonAndGui` | Nome RLO não engana saída | T-01 | P2 |
-| `Security_JunctionLoop_TerminatesWithoutDescent` | Ciclo termina; reparse é folha | T-02 | P1 |
-| `Security_ReparseDir_PointingOutsideRoot_NotEntered` | Nada fora da raiz é lido | T-02 | P1 |
+| `Security_PathTraversal_HostileName_ContainedInRoot` | Byte-by-byte containment under hostile names | T-01 | P0 |
+| `Security_LongPath_Over260Chars_ExtendedPrefixNoTruncation` | No truncation above 260 chars | T-01 | P0 |
+| `Report_BidiControlChars_EscapedInJsonAndGui` | RLO name does not fool output | T-01 | P2 |
+| `Security_JunctionLoop_TerminatesWithoutDescent` | Cycle terminates; reparse is leaf | T-02 | P1 |
+| `Security_ReparseDir_PointingOutsideRoot_NotEntered` | Nothing outside root is read | T-02 | P1 |
 | `Placeholder_GateBeforeOpen_ZeroBytesRead` | `placeholder_bytes_read == 0` (§21) | T-03 | P1 |
-| `Placeholder_ConvertedAfterEnumeration_IsCaughtBySecondGate` | Duplo gate funciona | T-03 | P1 |
-| `Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack` | Rollback por hash pós-move | T-04 | P0 |
-| `Quarantine_ShareModeExclusive_BlockWriterDuringHashWindow` | Janela TOCTOU minimizada | T-04 | P0 |
-| `Scan_FileModifiedDuringRead_MarkedUnstable_AndNeverCached` | Instável não classifica nem envenena cache | T-05 | P0 |
-| `Scan_StableFile_MetadataUnchanged_ClassifiedNormally` | Controle positivo do snapshot | T-05 | P1 |
-| `Security_QuarantineInsideScannedRoot_ExcludedFromEnumeration` | Idempotência do scan pós-resolução | T-06 | P1 |
-| `Restore_DestinationExists_NeverOverwrites_RestoresAsDeterministicSibling` | Nunca sobrescreve | T-07 | P0 |
-| `Restore_DestinationAbsent_MovesBackAndHashMatches` | Caminho feliz do restore | T-07 | P0 |
-| `Restore_DestinationIdentical_AlreadyPresentNoMove` | Idempotência do restore | T-07 | P1 |
-| `Cache_FileIdReused_SizeMtimeDiffer_EntryInvalidated_Rehashes` | Reuso de ID não envenena | T-08 | P0 |
-| `Cache_VolumeSerialDiffers_SameFileId_Miss` | IDs por volume não colidem | T-08 | P1 |
-| `Security_OperationIdCollision_PreexistingManifestFailsClosed` | Manifesto nunca sobrescrito | T-09 | P0 |
-| `OperationId_Entropy_TwoConcurrentBatches_NeverCollide` | Entropia do id | T-09 | P1 |
-| `Security_DiskFullMidCopy_FailClosed_SourceIntact_NoPartialDeclaredSuccess` | Falha fechada sem perda | T-10 | P0 |
-| `Quarantine_SuccessRequiresFsyncOfDataAndManifest` | Sucesso só após flush | T-10 | P0 |
-| `Permissions_AccessDenied_FileReportedAndNeverQuarantineEligible` | Sem hash, sem resolução | T-11 | P1 |
-| `Scan_PartialFailures_DoNotAbortWholeScan` | Parcial é explícito, não silencioso | T-11 | P1 |
+| `Placeholder_ConvertedAfterEnumeration_IsCaughtBySecondGate` | Double gate works | T-03 | P1 |
+| `Security_Toctou_ContentSwappedBetweenHashAndMove_PostMoveHashRollsBack` | Rollback by post-move hash | T-04 | P0 |
+| `Quarantine_ShareModeExclusive_BlockWriterDuringHashWindow` | TOCTOU window minimized | T-04 | P0 |
+| `Scan_FileModifiedDuringRead_MarkedUnstable_AndNeverCached` | Unstable does not classify or poison cache | T-05 | P0 |
+| `Scan_StableFile_MetadataUnchanged_ClassifiedNormally` | Snapshot positive control | T-05 | P1 |
+| `Security_QuarantineInsideScannedRoot_ExcludedFromEnumeration` | Scan idempotency post-resolution | T-06 | P1 |
+| `Restore_DestinationExists_NeverOverwrites_RestoresAsDeterministicSibling` | Never overwrites | T-07 | P0 |
+| `Restore_DestinationAbsent_MovesBackAndHashMatches` | Happy path restore | T-07 | P0 |
+| `Restore_DestinationIdentical_AlreadyPresentNoMove` | Restore idempotency | T-07 | P1 |
+| `Cache_FileIdReused_SizeMtimeDiffer_EntryInvalidated_Rehashes` | ID reuse does not poison | T-08 | P0 |
+| `Cache_VolumeSerialDiffers_SameFileId_Miss` | Per-volume IDs do not collide | T-08 | P1 |
+| `Security_OperationIdCollision_PreexistingManifestFailsClosed` | Manifest never overwritten | T-09 | P0 |
+| `OperationId_Entropy_TwoConcurrentBatches_NeverCollide` | ID entropy | T-09 | P1 |
+| `Security_DiskFullMidCopy_FailClosed_SourceIntact_NoPartialDeclaredSuccess` | Fail closed without loss | T-10 | P0 |
+| `Quarantine_SuccessRequiresFsyncOfDataAndManifest` | Success only after flush | T-10 | P0 |
+| `Permissions_AccessDenied_FileReportedAndNeverQuarantineEligible` | No hash, no resolution | T-11 | P1 |
+| `Scan_PartialFailures_DoNotAbortWholeScan` | Partial is explicit, not silent | T-11 | P1 |
 
-Critérios de pronto desta seção: os testes P0 bloqueiam GATE 3 (Resolution Safety) e GATE 5
-(Security); os P1 bloqueiam GATE 5; os P2 entram antes do RC.
+Section done criteria: P0 tests block GATE 3 (Resolution Safety) and GATE 5
+(Security); P1 tests block GATE 5; P2 tests enter before RC.
 
-## 6. Notas por superfície restante (CLI, GUI, atualizador)
+## 6. Notes per Remaining Surface (CLI, GUI, Updater)
 
-- **S5 CLI:** sem invocação de shell; argumentos parseados, nunca interpretados; JSON com escape
-  estrito (R12) e `report_schema_version` sempre na primeira linha lógica; exit codes estáveis
-  conforme design do CLI (0/1/2/3 da SPEC §14) — automação RMM nunca deve inferir sucesso de
-  um scan parcial. Cobertura: testes de contrato de exit code pertencem ao EPIC 09; este
-  documento fixa a exigência de que exit 3 seja emitido em qualquer scan com itens não analisados.
-- **S6 GUI:** nenhuma lógica de motor (ADR-0003); ações destrutivas visualmente inequívocas (§37);
-  diálogo de confirmação exibe caminho de origem, caminho de quarentena e hash — o usuário aprova
-  evidência, não um resumo. Nomes hostis escapados (R12). A GUI nunca oferece "apagar" — só
-  "mover para quarentena" (ADR-0002 consequências).
-- **S7 Atualizador (futuro):** ameaça de supply chain — update troca o binário e compromete tudo
-  que este modelo garantiu. Exigências mínimas quando existir: manifesto assinado Ed25519 com
-  chave pública embutida, hash do binário verificado antes de execução, sem auto-execução
-  silenciosa; canal Microsoft Store já entrega distribuição assinada. Decisão detalhada pertence
-  ao ADR de updater (EPIC 14); este documento fixa o piso de segurança.
+- **S5 CLI:** no shell invocation; arguments parsed, never interpreted; JSON with strict
+  escaping (R12) and `report_schema_version` always on first logical line; stable exit codes
+  per CLI design (0/1/2/3 from SPEC §14) — RMM automation must never infer success from
+  a partial scan. Coverage: exit code contract tests belong to EPIC 09; this
+  document fixes the requirement that exit 3 be emitted in any scan with unanalyzed items.
+- **S6 GUI:** no engine logic (ADR-0003); visually unambiguous destructive actions (§37);
+  confirmation dialog shows source path, quarantine path, and hash — user approves
+  evidence, not a summary. Hostile names escaped (R12). GUI never offers "delete" — only
+  "move to quarantine" (ADR-0002 consequences).
+- **S7 Updater (future):** supply chain threat — update replaces binary and compromises everything
+  this model guarantees. Minimum requirements when it exists: Ed25519 signed manifest with
+  embedded public key, binary hash verified before execution, no silent
+  auto-execution; Microsoft Store channel already provides signed distribution.
+  Detailed decision belongs to the updater ADR (EPIC 14); this document fixes the
+  security floor.
 
-## 7. Riscos residuais assumidos
+## 7. Assumed Residual Risks
 
-1. Malware rodando como o mesmo usuário pode fazer qualquer coisa aos arquivos — o produto não
-   defende contra adversário com privilégios do usuário; defende contra si mesmo falhando.
-2. Queda de energia entre rename atômico e fsync do manifesto pode deixar arquivo em quarentena
-   sem manifesto correspondente; mitigação: rotina de reconciliação (varredura de órfãos na
-   inicialização, entradas órfãs ficam em quarentena, nunca restauradas automaticamente) — card
-   futuro do EPIC 08.
-3. Colisão de BLAKE3 é desprezada (força bruta impraticável); a defesa real contra hash errado é
-   o snapshot de metadados (R4) e o hash pós-move (R5), que cobrem as causas plausíveis.
+1. Malware running as the same user can do anything to files — the product does not
+   defend against an adversary with user privileges; it defends against itself failing.
+2. Power loss between atomic rename and manifest fsync may leave quarantined file
+   without corresponding manifest; mitigation: reconciliation routine (orphan scan on
+   startup, orphan entries stay quarantined, never auto-restored) — future card
+   in EPIC 08.
+3. BLAKE3 collision is disregarded (brute force impractical); real defense against wrong hash is
+   the metadata snapshot (R4) and post-move hash (R5), which cover plausible causes.

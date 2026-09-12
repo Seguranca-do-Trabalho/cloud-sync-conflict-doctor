@@ -3,26 +3,26 @@ namespace Doctor.Tests;
 using Doctor.Core;
 
 /// <summary>
-/// T09 (t_349dc2c0) — PLH-04 / threat-model T-02: enumeração NUNCA atravessa reparse
-/// points de diretório (junction/symlink/mount point) — regra 4 do ADR-0004.
-/// Árvore real em tmp com ciclo de symlink: a varredura termina em tempo finito,
-/// não desce pelo ciclo e registra o reparse como folha (ScanError) e continua.
+/// T09 (t_349dc2c0) — PLH-04 / threat-model T-02: enumeration NEVER traverses directory
+/// reparse points (junction/symlink/mount point) — rule 4 of ADR-0004.
+/// Real tree in tmp with symlink cycle: the scan terminates in finite time,
+/// does not descend through the cycle and records the reparse as a leaf (ScanError) and continues.
 /// </summary>
 public class ReparseDirectoryGuardTests : IDisposable
 {
-    private readonly string _raiz;
+    private readonly string _root;
 
     public ReparseDirectoryGuardTests()
     {
-        _raiz = Path.Combine(Path.GetTempPath(), "cdt09-loop-" + Guid.NewGuid().ToString("N"));
-        _ = Directory.CreateDirectory(_raiz);
+        _root = Path.Combine(Path.GetTempPath(), "cdt09-loop-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(_root);
     }
 
     public void Dispose()
     {
         try
         {
-            Directory.Delete(_raiz, recursive: true);
+            Directory.Delete(_root, recursive: true);
         }
         catch (IOException)
         {
@@ -30,80 +30,80 @@ public class ReparseDirectoryGuardTests : IDisposable
     }
 
     private FileAttributes SymlinkAttrs(string linkPath) =>
-        File.GetAttributes(Path.Combine(_raiz, linkPath).Replace('/', Path.DirectorySeparatorChar));
+        File.GetAttributes(Path.Combine(_root, linkPath).Replace('/', Path.DirectorySeparatorChar));
 
     [Fact]
-    public void CicloDeSymlink_TerminaSemAtravessar_EContinuaOScan()
+    public void SymlinkCycle_TerminatesWithoutTraversing_ContinuesScan()
     {
-        // Árvore: normal.txt antes do ciclo, ciclo a->b->a, normal.txt depois.
-        // Se a enumeração atravessasse o ciclo, não terminaria em tempo finito.
-        _ = Directory.CreateDirectory(Path.Combine(_raiz, "a"));
-        _ = Directory.CreateDirectory(Path.Combine(_raiz, "b"));
-        File.WriteAllText(Path.Combine(_raiz, "antes.txt"), "antes");
-        File.WriteAllText(Path.Combine(_raiz, "a", "x.txt"), "xxx");
-        File.WriteAllText(Path.Combine(_raiz, "b", "y.txt"), "yyy");
-        File.WriteAllText(Path.Combine(_raiz, "depois.txt"), "depois");
-        File.CreateSymbolicLink(Path.Combine(_raiz, "a", "loop"), _raiz + "/b");
-        File.CreateSymbolicLink(Path.Combine(_raiz, "b", "loop"), _raiz + "/a");
+        // Tree: normal.txt before cycle, cycle a->b->a, normal.txt after.
+        // If enumeration traversed the cycle, it would not terminate in finite time.
+        _ = Directory.CreateDirectory(Path.Combine(_root, "a"));
+        _ = Directory.CreateDirectory(Path.Combine(_root, "b"));
+        File.WriteAllText(Path.Combine(_root, "before.txt"), "before");
+        File.WriteAllText(Path.Combine(_root, "a", "x.txt"), "xxx");
+        File.WriteAllText(Path.Combine(_root, "b", "y.txt"), "yyy");
+        File.WriteAllText(Path.Combine(_root, "after.txt"), "after");
+        File.CreateSymbolicLink(Path.Combine(_root, "a", "loop"), _root + "/b");
+        File.CreateSymbolicLink(Path.Combine(_root, "b", "loop"), _root + "/a");
 
-        var resultado = new CrossPlatformEnumerator().Enumerate(_raiz, CancellationToken.None);
+        var result = new CrossPlatformEnumerator().Enumerate(_root, CancellationToken.None);
 
-        var caminhos = resultado.Files.Select(f => f.Path).ToArray();
-        Assert.Contains(caminhos, p => p.EndsWith("antes.txt", StringComparison.Ordinal));
-        Assert.Contains(caminhos, p => p.EndsWith("depois.txt", StringComparison.Ordinal));
-        Assert.Contains(caminhos, p => p.EndsWith("x.txt", StringComparison.Ordinal));
-        Assert.Contains(caminhos, p => p.EndsWith("y.txt", StringComparison.Ordinal));
+        var paths = result.Files.Select(f => f.Path).ToArray();
+        Assert.Contains(paths, p => p.EndsWith("before.txt", StringComparison.Ordinal));
+        Assert.Contains(paths, p => p.EndsWith("after.txt", StringComparison.Ordinal));
+        Assert.Contains(paths, p => p.EndsWith("x.txt", StringComparison.Ordinal));
+        Assert.Contains(paths, p => p.EndsWith("y.txt", StringComparison.Ordinal));
 
-        // Exatamente os 4 arquivos reais: se o ciclo fosse atravessado, x/y
-        // apareceriam duplicados a cada volta (e a varredura nem terminaria).
-        Assert.Equal(4, caminhos.Count(p => p.EndsWith(".txt", StringComparison.Ordinal)));
+        // Exactly the 4 real files: if cycle were traversed, x/y would
+        // appear duplicated on each pass (and scan would not even terminate).
+        Assert.Equal(4, paths.Count(p => p.EndsWith(".txt", StringComparison.Ordinal)));
 
-        // Reparse de diretório registrado como folha (placeholders[]/erros) — nunca silencioso.
-        Assert.Contains(resultado.Errors, e => e.Path.EndsWith(Path.Combine("a", "loop"), StringComparison.Ordinal));
-        Assert.Contains(resultado.Errors, e => e.Path.EndsWith(Path.Combine("b", "loop"), StringComparison.Ordinal));
+        // Directory reparse registered as leaf (placeholders[]/errors) — never silent.
+        Assert.Contains(result.Errors, e => e.Path.EndsWith(Path.Combine("a", "loop"), StringComparison.Ordinal));
+        Assert.Contains(result.Errors, e => e.Path.EndsWith(Path.Combine("b", "loop"), StringComparison.Ordinal));
 
-        // Zero bytes lidos: enumeração não lê conteúdo; telemetria coerente.
-        Assert.Equal(0, resultado.Telemetry.PlaceholderBytesRead);
-        Assert.Equal(resultado.Files.Count, resultado.Telemetry.FilesEnumerated);
+        // Zero bytes read: enumeration does not read content; consistent telemetry.
+        Assert.Equal(0, result.Telemetry.PlaceholderBytesRead);
+        Assert.Equal(result.Files.Count, result.Telemetry.FilesEnumerated);
     }
 
     [Fact]
-    public void SymlinkDeDiretorio_ParaForaDaRaiz_NaoEhAtravessado()
+    public void DirectorySymlink_OutsideRoot_IsNotTraversed()
     {
-        // Threat-model T-02: symlink de diretório apontando para fora da raiz.
-        // Conteúdo externo NUNCA aparece no relatório (privacidade local-first).
-        var fora = Path.Combine(Path.GetTempPath(), "cdt09-fora-" + Guid.NewGuid().ToString("N"));
-        _ = Directory.CreateDirectory(fora);
-        File.WriteAllText(Path.Combine(fora, "segredo.txt"), "fora da raiz");
+        // Threat-model T-02: directory symlink pointing outside root.
+        // External content NEVER appears in report (local-first privacy).
+        var outside = Path.Combine(Path.GetTempPath(), "cdt09-outside-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "secret.txt"), "outside root");
         try
         {
-            _ = Directory.CreateDirectory(Path.Combine(_raiz, "sub"));
-            File.CreateSymbolicLink(Path.Combine(_raiz, "sub", "escape"), fora);
+            _ = Directory.CreateDirectory(Path.Combine(_root, "sub"));
+            File.CreateSymbolicLink(Path.Combine(_root, "sub", "escape"), outside);
 
-            var resultado = new CrossPlatformEnumerator().Enumerate(_raiz, CancellationToken.None);
+            var result = new CrossPlatformEnumerator().Enumerate(_root, CancellationToken.None);
 
-            Assert.DoesNotContain(resultado.Files, f => f.Path.Contains("segredo", StringComparison.Ordinal));
-            Assert.Contains(resultado.Errors, e => e.Path.EndsWith("escape", StringComparison.Ordinal));
+            Assert.DoesNotContain(result.Files, f => f.Path.Contains("secret", StringComparison.Ordinal));
+            Assert.Contains(result.Errors, e => e.Path.EndsWith("escape", StringComparison.Ordinal));
         }
         finally
         {
-            Directory.Delete(fora, recursive: true);
+            Directory.Delete(outside, recursive: true);
         }
     }
 
     [Fact]
-    public void SymlinkDeArquivo_EntraMarcadoComoPlaceholder_NuncaAtravessado()
+    public void FileSymlink_EntersMarkedAsPlaceholder_NeverTraversed()
     {
-        // SPEC §6: reparse points não são seguidos. No POSIX, symlink de ARQUIVO é o
-        // análogo: entra na lista Level 0 marcado, sem abrir o alvo.
-        File.WriteAllText(Path.Combine(_raiz, "real.txt"), "conteudo real");
-        File.CreateSymbolicLink(Path.Combine(_raiz, "atalho.txt"), Path.Combine(_raiz, "real.txt"));
+        // SPEC §6: reparse points are not followed. On POSIX, FILE symlink is the
+        // analog: enters the Level 0 list marked, without opening the target.
+        File.WriteAllText(Path.Combine(_root, "real.txt"), "real content");
+        File.CreateSymbolicLink(Path.Combine(_root, "shortcut.txt"), Path.Combine(_root, "real.txt"));
 
-        var resultado = new CrossPlatformEnumerator().Enumerate(_raiz, CancellationToken.None);
+        var result = new CrossPlatformEnumerator().Enumerate(_root, CancellationToken.None);
 
-        var atalho = Assert.Single(resultado.Files, f => f.Path.EndsWith("atalho.txt", StringComparison.Ordinal));
-        Assert.True(atalho.IsPlaceholder);
-        Assert.Equal(PlaceholderKind.ReparsePoint, atalho.PlaceholderKind);
-        Assert.Contains(resultado.Files, f => f.Path.EndsWith("real.txt", StringComparison.Ordinal));
+        var shortcut = Assert.Single(result.Files, f => f.Path.EndsWith("shortcut.txt", StringComparison.Ordinal));
+        Assert.True(shortcut.IsPlaceholder);
+        Assert.Equal(PlaceholderKind.ReparsePoint, shortcut.PlaceholderKind);
+        Assert.Contains(result.Files, f => f.Path.EndsWith("real.txt", StringComparison.Ordinal));
     }
 }

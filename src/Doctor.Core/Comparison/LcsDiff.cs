@@ -1,43 +1,43 @@
 namespace Doctor.Core;
 
 /// <summary>
-/// Motor de diff por LCS sobre sequências de linhas (SPEC §16; ADR-0011 item 5 —
-/// implementação própria ~Hirschberg, espaço linear O(n+m), tempo O(n·m), sem
-/// dependência externa; §52). Comparação de linhas exata pos-normalização
-/// (<see cref="StringComparison.Ordinal"/>, sem trim).
+/// LCS-based diff engine over line sequences (SPEC §16; ADR-0011 item 5 —
+/// own ~Hirschberg implementation, linear space O(n+m), time O(n·m), no
+/// external dependency; §52). Post-normalization exact line comparison
+/// (<see cref="StringComparison.Ordinal"/>, no trim).
 ///
-/// Saída: lista de <see cref="DiffRegion"/> que PARTICIONA os dois documentos em
-/// ordem — soma(LeftCount) == left.Count, soma(RightCount) == right.Count,
-/// posições crescentes e não sobrepostas. Blocos de substituição emitem
-/// <see cref="RegionKind.Changed"/> pareando 1:1 as primeiras min(d,r) linhas,
-/// seguidos de <see cref="RegionKind.Removed"/>/<see cref="RegionKind.Added"/>
-/// para o excedente. Determinístico: mesma entrada ⇒ mesma saída (desempate da
-/// divisão de Hirschberg sempre pelo menor índice).
+/// Output: list of <see cref="DiffRegion"/> that PARTITIONS both documents in
+/// order — sum(LeftCount) == left.Count, sum(RightCount) == right.Count,
+/// ascending non-overlapping positions. Substitution blocks emit
+/// <see cref="RegionKind.Changed"/> pairing the first min(d,r) lines 1:1,
+/// followed by <see cref="RegionKind.Removed"/>/<see cref="RegionKind.Added"/>
+/// for the excess. Deterministic: same input ⇒ same output (Hirschberg split
+/// tie always by smallest index).
 /// </summary>
 public static class LcsDiff
 {
-    private const byte Manter = 0;
-    private const byte Remover = 1;
-    private const byte Inserir = 2;
+    private const byte Keep = 0;
+    private const byte Remove = 1;
+    private const byte Insert = 2;
 
-    /// <summary>Calcula as regiões de diff entre <paramref name="left"/> e <paramref name="right"/>.</summary>
+    /// <summary>Computes diff regions between <paramref name="left"/> and <paramref name="right"/>.</summary>
     public static List<DiffRegion> Diff(IReadOnlyList<string> left, IReadOnlyList<string> right)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
 
         var ops = new List<byte>(left.Count + right.Count);
-        Alinhar(left, right, 0, left.Count, 0, right.Count, ops);
-        return ParaRegioes(ops);
+        Align(left, right, 0, left.Count, 0, right.Count, ops);
+        return ToRegions(ops);
     }
 
     /// <summary>
-    /// Divide &amp; conquista de Hirschberg: corta <paramref name="left"/> ao meio,
-    /// acha o corte ótimo de <paramref name="right"/> por duas passadas de DP com
-    /// uma linha cada e recursa. Casos-base resolvem diretamente (sem alocação de
-    /// matriz n·m). Desempate do corte sempre pelo menor índice ⇒ saída estável.
+    /// Hirschberg divide &amp; conquer: splits <paramref name="left"/> in half,
+    /// finds the optimal cut of <paramref name="right"/> by two DP passes with
+    /// one row each and recurses. Base cases resolve directly (no n·m matrix
+    /// allocation). Cut tie always by smallest index ⇒ stable output.
     /// </summary>
-    private static void Alinhar(
+    private static void Align(
         IReadOnlyList<string> a, IReadOnlyList<string> b,
         int al, int ar, int bl, int br,
         List<byte> ops)
@@ -46,7 +46,7 @@ public static class LcsDiff
         {
             for (int k = bl; k < br; k++)
             {
-                ops.Add(Inserir);
+                ops.Add(Insert);
             }
 
             return;
@@ -56,7 +56,7 @@ public static class LcsDiff
         {
             for (int k = al; k < ar; k++)
             {
-                ops.Add(Remover);
+                ops.Add(Remove);
             }
 
             return;
@@ -64,31 +64,31 @@ public static class LcsDiff
 
         if (ar - al == 1)
         {
-            string linha = a[al];
+            string line = a[al];
             int k = bl;
-            while (k < br && !string.Equals(b[k], linha, StringComparison.Ordinal))
+            while (k < br && !string.Equals(b[k], line, StringComparison.Ordinal))
             {
                 k++;
             }
 
             for (int x = bl; x < k; x++)
             {
-                ops.Add(Inserir);
+                ops.Add(Insert);
             }
 
             if (k < br)
             {
-                ops.Add(Manter);
+                ops.Add(Keep);
                 for (int x = k + 1; x < br; x++)
                 {
-                    ops.Add(Inserir);
+                    ops.Add(Insert);
                 }
             }
             else
             {
-                // Sem casamento: o pré-loop já emitiu TODAS as linhas de b como
-                // Inserir; falta apenas remover a única linha de a.
-                ops.Add(Remover);
+                // No match: the pre-loop already emitted ALL b lines as
+                // Insert; only the single a line needs Remove.
+                ops.Add(Remove);
             }
 
             return;
@@ -96,73 +96,73 @@ public static class LcsDiff
 
         if (br - bl == 1)
         {
-            string linha = b[bl];
+            string line = b[bl];
             int j = al;
-            while (j < ar && !string.Equals(a[j], linha, StringComparison.Ordinal))
+            while (j < ar && !string.Equals(a[j], line, StringComparison.Ordinal))
             {
                 j++;
             }
 
             for (int x = al; x < j; x++)
             {
-                ops.Add(Remover);
+                ops.Add(Remove);
             }
 
             if (j < ar)
             {
-                ops.Add(Manter);
+                ops.Add(Keep);
                 for (int x = j + 1; x < ar; x++)
                 {
-                    ops.Add(Remover);
+                    ops.Add(Remove);
                 }
             }
             else
             {
-                // Sem casamento: o pré-loop já emitiu TODAS as linhas de a como
-                // Remover; falta apenas inserir a única linha de b.
-                ops.Add(Inserir);
+                // No match: the pre-loop already emitted ALL a lines as
+                // Remove; only the single b line needs Insert.
+                ops.Add(Insert);
             }
 
             return;
         }
 
-        int meio = al + ((ar - al) >> 1);
+        int mid = al + ((ar - al) >> 1);
         int m = br - bl;
-        var frente = LinhaLcsFrente(a, al, meio, b, bl, br);
-        var tras = LinhaLcsTras(a, meio, ar, b, bl, br);
+        var forward = LcsForwardLine(a, al, mid, b, bl, br);
+        var backward = LcsBackwardLine(a, mid, ar, b, bl, br);
 
-        int melhor = -1;
-        int corte = bl;
+        int best = -1;
+        int cut = bl;
         for (int x = 0; x <= m; x++)
         {
-            int soma = frente[x] + tras[x];
-            if (soma > melhor)
+            int sum = forward[x] + backward[x];
+            if (sum > best)
             {
-                melhor = soma;
-                corte = bl + x;
+                best = sum;
+                cut = bl + x;
             }
         }
 
-        Alinhar(a, b, al, meio, bl, corte, ops);
-        Alinhar(a, b, meio, ar, corte, br, ops);
+        Align(a, b, al, mid, bl, cut, ops);
+        Align(a, b, mid, ar, cut, br, ops);
     }
 
     /// <summary>
-    /// Linha de DP: resultado[x] = |LCS(a[ai,af), b[bi,bi+x))|. Uma única linha de
-    /// tamanho m+1 viva por chamada — é daqui que vem o espaço linear.
+    /// DP line: result[x] = |LCS(a[ai,af), b[bi,bi+x))|. A single row of
+    /// size m+1 alive per call — this is where linear space comes from.
     /// </summary>
-    private static int[] LinhaLcsFrente(IReadOnlyList<string> a, int ai, int af, IReadOnlyList<string> b, int bi, int bf)
+    private static int[] LcsForwardLine(IReadOnlyList<string> a, int ai, int af, IReadOnlyList<string> b, int bi, int bf)
     {
         int m = bf - bi;
         var prev = new int[m + 1];
         var cur = new int[m + 1];
         for (int i = ai; i < af; i++)
         {
-            string linha = a[i];
+            string line = a[i];
             cur[0] = 0;
             for (int x = 1; x <= m; x++)
             {
-                cur[x] = string.Equals(linha, b[bi + x - 1], StringComparison.Ordinal)
+                cur[x] = string.Equals(line, b[bi + x - 1], StringComparison.Ordinal)
                     ? prev[x - 1] + 1
                     : Math.Max(prev[x], cur[x - 1]);
             }
@@ -174,21 +174,21 @@ public static class LcsDiff
     }
 
     /// <summary>
-    /// Espelho reverso da DP: resultado[x] = |LCS(a[ai,af), b[bi+x, bf))|.
-    /// Permite casar as duas metades no corte ótimo sem segunda matriz n·m.
+    /// Reverse DP mirror: result[x] = |LCS(a[ai,af), b[bi+x, bf))|.
+    /// Allows matching the two halves at the optimal cut without a second n·m matrix.
     /// </summary>
-    private static int[] LinhaLcsTras(IReadOnlyList<string> a, int ai, int af, IReadOnlyList<string> b, int bi, int bf)
+    private static int[] LcsBackwardLine(IReadOnlyList<string> a, int ai, int af, IReadOnlyList<string> b, int bi, int bf)
     {
         int m = bf - bi;
         var prev = new int[m + 1];
         var cur = new int[m + 1];
         for (int i = af - 1; i >= ai; i--)
         {
-            string linha = a[i];
+            string line = a[i];
             cur[m] = 0;
             for (int x = m - 1; x >= 0; x--)
             {
-                cur[x] = string.Equals(linha, b[bi + x], StringComparison.Ordinal)
+                cur[x] = string.Equals(line, b[bi + x], StringComparison.Ordinal)
                     ? prev[x + 1] + 1
                     : Math.Max(prev[x], cur[x + 1]);
             }
@@ -200,36 +200,36 @@ public static class LcsDiff
     }
 
     /// <summary>
-    /// Converte a sequência de operações em regiões particionadas. Cada bloco máximo
-    /// de operações não-Manter vira até três regiões: <see cref="RegionKind.Changed"/>
-    /// (par 1:1 das primeiras min(d,i) linhas), depois o excedente como
-    /// <see cref="RegionKind.Removed"/> ou <see cref="RegionKind.Added"/>.
+    /// Converts the operation sequence into partitioned regions. Each maximal block
+    /// of non-Keep operations becomes up to three regions: <see cref="RegionKind.Changed"/>
+    /// (1:1 pair of the first min(d,i) lines), then the excess as
+    /// <see cref="RegionKind.Removed"/> or <see cref="RegionKind.Added"/>.
     /// </summary>
-    private static List<DiffRegion> ParaRegioes(List<byte> ops)
+    private static List<DiffRegion> ToRegions(List<byte> ops)
     {
-        var regioes = new List<DiffRegion>();
+        var regions = new List<DiffRegion>();
         int li = 0, ri = 0, i = 0;
         while (i < ops.Count)
         {
-            if (ops[i] == Manter)
+            if (ops[i] == Keep)
             {
-                int inicio = i;
-                while (i < ops.Count && ops[i] == Manter)
+                int start = i;
+                while (i < ops.Count && ops[i] == Keep)
                 {
                     i++;
                 }
 
-                int c = i - inicio;
-                regioes.Add(new DiffRegion(RegionKind.Equal, li, c, ri, c));
+                int c = i - start;
+                regions.Add(new DiffRegion(RegionKind.Equal, li, c, ri, c));
                 li += c;
                 ri += c;
                 continue;
             }
 
-            int leftInicio = li, rightInicio = ri, dels = 0, ins = 0;
-            while (i < ops.Count && ops[i] != Manter)
+            int leftStart = li, rightStart = ri, dels = 0, ins = 0;
+            while (i < ops.Count && ops[i] != Keep)
             {
-                if (ops[i] == Remover)
+                if (ops[i] == Remove)
                 {
                     dels++;
                     li++;
@@ -246,19 +246,19 @@ public static class LcsDiff
             int p = Math.Min(dels, ins);
             if (p > 0)
             {
-                regioes.Add(new DiffRegion(RegionKind.Changed, leftInicio, p, rightInicio, p));
+                regions.Add(new DiffRegion(RegionKind.Changed, leftStart, p, rightStart, p));
             }
 
             if (dels > p)
             {
-                regioes.Add(new DiffRegion(RegionKind.Removed, leftInicio + p, dels - p, rightInicio + p, 0));
+                regions.Add(new DiffRegion(RegionKind.Removed, leftStart + p, dels - p, rightStart + p, 0));
             }
             else if (ins > p)
             {
-                regioes.Add(new DiffRegion(RegionKind.Added, leftInicio + p, 0, rightInicio + p, ins - p));
+                regions.Add(new DiffRegion(RegionKind.Added, leftStart + p, 0, rightStart + p, ins - p));
             }
         }
 
-        return regioes;
+        return regions;
     }
 }

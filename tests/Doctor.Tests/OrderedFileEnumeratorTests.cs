@@ -3,17 +3,17 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T07 — Scan Level 0 sobre enumerador físico fake (ordem arbitrária):
-/// (1) toda entrada com atributo placeholder sai marcada IsPlaceholder;
-/// (2) NENHUM byte é lido durante a enumeração — provado pelo contador
-///     de ReadBytes no próprio enumerador fake;
-/// (3) determinismo: ordens físicas de inserção distintas produzem a mesma lista ordenada.
+/// T07 — Level 0 scan over fake physical enumerator (arbitrary order):
+/// (1) every entry with placeholder attribute exits with IsPlaceholder marked;
+/// (2) NO byte is read during enumeration — proved by the ReadBytes
+///     counter in the fake enumerator itself;
+/// (3) determinism: distinct physical insertion orders produce the same sorted list.
 /// </summary>
 public class OrderedFileEnumeratorTests
 {
     /// <summary>
-    /// Simula o filesystem físico: entrega entradas em ordem arbitrária e conta acessos
-    /// a conteúdo. Se qualquer etapa da enumeração ordenada tentar ler bytes, o contador sobe.
+    /// Simulates physical filesystem: delivers entries in arbitrary order and counts
+    /// content accesses. If any step of the ordered enumeration tries to read bytes, the counter rises.
     /// </summary>
     private sealed class FakePhysicalEnumerator : IFileEnumerator
     {
@@ -29,7 +29,7 @@ public class OrderedFileEnumeratorTests
                 Errors: Array.Empty<ScanError>(),
                 Telemetry: new ScanTelemetry());
 
-        /// <summary>Método que representaria leitura de conteúdo — a enumeração NUNCA pode chamar.</summary>
+        /// <summary>Method that would represent content reading — enumeration must NEVER call it.</summary>
         public byte[] ReadBytes(FileEntry entry)
         {
             ReadBytesCallCount++;
@@ -49,7 +49,7 @@ public class OrderedFileEnumeratorTests
         };
 
     [Fact]
-    public void Scan_MarcaTodosPlaceholders_E_NuncaLeConteudo()
+    public void Scan_MarksAllPlaceholders_AndNeverReadsContent()
     {
         var fake = new FakePhysicalEnumerator(
             Entry("/root/normal.txt", 100),
@@ -65,12 +65,12 @@ public class OrderedFileEnumeratorTests
             Assert.Equal(e.Attributes != FileAttributes.Normal, e.IsPlaceholder));
         Assert.Equal(4, result.Files.Count(e => e.IsPlaceholder));
         Assert.Equal(0, result.Telemetry.PlaceholderBytesRead);
-        // Prova central do card: zero leitura de conteúdo na enumeração Level 0.
+        // Core proof of the card: zero content reads in Level 0 enumeration.
         Assert.Equal(0, fake.ReadBytesCallCount);
     }
 
     [Fact]
-    public void Scan_OrdensFisicasDistintas_SaidaIdentica()
+    public void Scan_DistinctPhysicalOrders_IdenticalOutput()
     {
         FileEntry[] entries =
         [
@@ -86,11 +86,11 @@ public class OrderedFileEnumeratorTests
 
         Assert.Equal(run1.Files.Select(e => e.Path), run2.Files.Select(e => e.Path));
         Assert.Equal(run1.Files.Select(e => e.Path), run3.Files.Select(e => e.Path));
-        Assert.Equal(run1.Files, run2.Files); // igualdade completa record-a-record
+        Assert.Equal(run1.Files, run2.Files); // complete record-by-record equality
     }
 
     [Fact]
-    public void Scan_SaidaOrdenadaByteAByte()
+    public void Scan_OutputSortedByteByByte()
     {
         var fake = new FakePhysicalEnumerator(
             Entry("/root/z.txt"),

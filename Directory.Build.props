@@ -1,31 +1,36 @@
 <Project>
 
   <!--
-    Define o simbolo WINDOWS quando a compilacao acontece em Windows.
+    Define the WINDOWS symbol when building on Windows.
 
-    POR QUE ISTO EXISTE
-    O codigo usa `#if WINDOWS` em tres lugares (CrossPlatformEnumerator,
-    WindowsNativeEnumerator e os testes nativos), mas NADA definia esse simbolo:
-    os projetos tem TargetFramework net8.0 (nao net8.0-windows), e nao havia
-    Directory.Build.props. Consequencias medidas antes desta correcao:
+    WHY THIS EXISTS
+    The code uses `#if WINDOWS` in three places (CrossPlatformEnumerator,
+    WindowsNativeEnumerator, and native tests), but NOTHING defined this symbol:
+    the projects have TargetFramework net8.0 (not net8.0-windows), and there was no
+    Directory.Build.props. Measured consequences before this fix:
 
-      - CrossPlatformEnumerator caia sempre no ramo #else e chamava
-        LinuxFileId.GetInode(), um P/Invoke de lstat(2). No Windows isso lanca
-        DllNotFoundException ('libc'), o catch engolia o erro e DESCARTAVA o
-        arquivo: a enumeracao devolvia ZERO arquivos numa arvore com 2.
-      - O corpo nativo inteiro de WindowsNativeEnumerator (P/Invoke
-        FindFirstFileExW, entregue no commit 42ed47c/T23) nunca era compilado.
-      - Os quatro testes de WindowsNativeEnumeratorTests começam com
-        `#if !WINDOWS return; #endif`, entao retornavam de imediato e passavam
-        sem exercitar nada — em qualquer plataforma, inclusive no runner
-        Windows do CI. O compilador avisava (CS0162, codigo inacessivel).
+      - CrossPlatformEnumerator always fell into the #else branch and called
+        LinuxFileId.GetInode(), a P/Invoke of lstat(2). On Windows this throws
+        DllNotFoundException ('libc'), the catch swallowed the error and DISCARDED the
+        file: the enumeration returned ZERO files in a tree with 2.
+      - The entire native body of WindowsNativeEnumerator (P/Invoke
+        FindFirstFileExW, delivered in commit 42ed47c/T23) was never compiled.
+      - The four WindowsNativeEnumeratorTests start with
+        `#if !WINDOWS return; #endif`, so they returned immediately and passed
+        without exercising anything — on any platform, including the Windows
+        CI runner. The compiler warned (CS0162, unreachable code).
 
-    Efeito: 29 dos 541 testes falhavam no Windows, todos por essa raiz unica.
+    Effect: 29 of the 541 tests failed on Windows, all from this single root cause.
 
-    A condicao usa $(OS), avaliado pelo MSBuild na maquina que compila. Em
-    Linux o simbolo NAO e definido e tudo segue pelo caminho POSIX, preservando
-    o job linux do CI.
+    The condition uses $(OS), evaluated by MSBuild on the build machine. On
+    Linux the symbol is NOT defined and everything follows the POSIX path, preserving
+    the Linux CI job.
   -->
+  <PropertyGroup>
+    <Authors>forg3</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
     <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
   </PropertyGroup>

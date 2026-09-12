@@ -5,11 +5,11 @@
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>cobertura</Format>
-          <!-- Thresholds por módulo (linhas): falha o build se abaixo. -->
-          <!-- Docs/test-strategy.md §7: Core>=85%, Cli>=75%, Gui ViewModels>=60%. -->
-          <!-- A CLI não existe mais no repo (fusão em EPIC 09); threshold Cli omitido. -->
+          <!-- Module thresholds (lines): fails the build if below. -->
+          <!-- docs/test-strategy.md §7: Core>=85%, Cli>=75%, Gui ViewModels>=60%. -->
+          <!-- The CLI is no longer in repo (merged in EPIC 09); Cli threshold omitted. -->
           <CollectionThreshold>0.85</CollectionThreshold>
-          <!-- Exclusões: views/code-behind e código gerado. -->
+          <!-- Exclusions: views/code-behind and generated code. -->
           <Exclude>[xunit.*]*</Exclude>
           <ExcludeByFile>**/obj/**,**/bin/**</ExcludeByFile>
         </Configuration>

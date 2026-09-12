@@ -4,76 +4,76 @@ using System.Globalization;
 using Doctor.Core;
 
 /// <summary>
-/// T16 — resultado testável da execução do comando scan (skill
-/// tdd-deterministic-tooling: CLI como camada fina, run(argv) -> (exit_code, texto);
-/// terminal nunca é necessário para testar).
+/// T16 — testable result of the scan command execution (skill
+/// tdd-deterministic-tooling: CLI as a thin layer, run(argv) -> (exit_code, text);
+/// terminal is never needed for testing).
 /// </summary>
 /// <param name="ExitCode">
-/// 0 sem anomalias, 1 erro operacional, 2 duplicatas/conflitos, 3 parcial (SPEC §14).
+/// 0 no anomalies, 1 operational error, 2 duplicates/conflicts, 3 partial (SPEC §14).
 /// </param>
-/// <param name="JsonOutput">JSON v1 completo quando --json; nulo nos demais modos.</param>
-/// <param name="HumanText">Texto humano (--quiet: vazio); nulo no modo JSON.</param>
+/// <param name="JsonOutput">Full v1 JSON when --json; null in other modes.</param>
+/// <param name="HumanText">Human text (--quiet: empty); null in JSON mode.</param>
 public sealed record CliResult(int ExitCode, string? JsonOutput, string? HumanText);
 
 /// <summary>
-/// Comando 'conflictdoctor scan &lt;path&gt; [--json] [--quiet]' sobre o pipeline
-/// existente (ScanPipeline L0→L3 + ReportWriterJson v1). Nenhuma decisão nova de
-/// domínio: a CLI só compõe, formata e traduz o veredito em exit code estável.
+/// Command 'conflictdoctor scan &lt;path&gt; [--json] [--quiet]' over the existing
+/// pipeline (ScanPipeline L0→L3 + ReportWriterJson v1). No new domain decisions:
+/// the CLI only composes, formats, and translates the verdict into a stable exit code.
 ///
-/// Contratos respeitados:
-/// - ADR-0002: nenhuma API de deleção — a CLI apenas lê e escreve o relatório;
-/// - ADR-0003: relatório determinístico; timestamps vivem só em generated_from;
-/// - contratos.md R10: erro individual de acesso não aborta o scan; com anomalia
-///   E arquivos pulados o veredito é parcial (exit 3), senão 0/2;
-/// - falha fechada: qualquer exceção do domínio vira exit 1 com mensagem única,
-///   nunca stack trace cru.
+/// Contracts respected:
+/// - ADR-0002: no deletion API — the CLI only reads and writes the report;
+/// - ADR-0003: deterministic report; timestamps only in generated_from;
+/// - contracts.md R10: individual access error does not abort the scan; with anomaly
+///   AND skipped files the verdict is partial (exit 3), otherwise 0/2;
+/// - fail-closed: any domain exception becomes exit 1 with a single message,
+///   never a raw stack trace.
 /// </summary>
 public static class ScanCommand
 {
     /// <summary>
-    /// Fonte L0 de produção (T12/T13): convenção de sidecar (T04) sobre a ordenação
-    /// canônica sobre a enumeração física multiplataforma. Injetável para testes.
+    /// Production L0 source (T12/T13): sidecar convention (T04) over canonical ordering
+    /// over cross-platform physical enumeration. Injectable for tests.
     /// </summary>
     public static Func<string, EnumerationResult> DefaultEnumeration { get; set; } =
         root => new SidecarPlaceholderEnumerator(
-            new OrderedFileEnumerator(EnumeradorDaPlataforma())).Enumerate(root);
+            new OrderedFileEnumerator(PlatformEnumerator())).Enumerate(root);
 
     /// <summary>
-    /// Escolhe o enumerador Level 0 conforme o sistema operacional.
+    /// Selects the Level 0 enumerator based on the operating system.
     ///
-    /// A producao instanciava SEMPRE o CrossPlatformEnumerator, apesar do
-    /// WindowsNativeEnumerator existir justamente para o Windows (ADR-0004,
-    /// card T23). Isso importava muito mais do que desempenho:
+    /// Production always instantiated CrossPlatformEnumerator, even though
+    /// WindowsNativeEnumerator exists specifically for Windows (ADR-0004,
+    /// card T23). This affected much more than performance:
     ///
-    /// O CrossPlatformEnumerator obtem o file id por lstat(2) — um P/Invoke de
-    /// libc que so existe no POSIX. No Windows ele nao tem de onde tirar um id
-    /// real e devolve "0" para TODOS os arquivos. Como OrderedFileEnumerator
-    /// usa a chave (VolumeId, FileId) para detectar ciclo de reparse point, o
-    /// primeiro arquivo entrava e todos os seguintes eram rejeitados como
-    /// "caminho volta ao mesmo inode ja visitado". Na pratica, um scan no
-    /// Windows enxergava um unico arquivo por volume.
+    /// CrossPlatformEnumerator obtains the file id via lstat(2) — a P/Invoke of
+    /// libc that only exists on POSIX. On Windows it has no source for a real id
+    /// and returns "0" for ALL files. Since OrderedFileEnumerator uses the
+    /// (VolumeId, FileId) key to detect reparse point cycles, the first file
+    /// entered and all subsequent ones were rejected as "path loops back to
+    /// the same inode already visited". In practice, a scan on Windows
+    /// saw only one file per volume.
     ///
-    /// O enumerador nativo obtem o FileId NTFS de 128 bits real
-    /// (GetFileInformationByHandleEx / FILE_ID_INFO) e o numero de serie do
-    /// volume, que e o par correto para essa deteccao.
+    /// The native enumerator obtains the real 128-bit NTFS FileId
+    /// (GetFileInformationByHandleEx / FILE_ID_INFO) and the volume serial
+    /// number, which is the correct pair for this detection.
     /// </summary>
-    internal static IFileEnumerator EnumeradorDaPlataforma() =>
+    internal static IFileEnumerator PlatformEnumerator() =>
         OperatingSystem.IsWindows()
             ? new WindowsNativeEnumerator()
             : new CrossPlatformEnumerator();
 
     public static CliResult Run(string[] args)
     {
-        // ---- gramática fechada antes de qualquer uso (skill tdd-deterministic-tooling)
-        // 'scan' é subcomando obrigatório e consumido explicitamente (T16).
+        // ---- closed grammar before any use (skill tdd-deterministic-tooling)
+        // 'scan' is a mandatory subcommand consumed explicitly (T16).
         if (args.Length == 0 || !string.Equals(args[0], "scan", StringComparison.Ordinal))
         {
-            return Operacional("uso invalido: comando desconhecido. sintaxe: conflictdoctor scan <caminho> --json --quiet");
+            return Operational("invalid usage: unknown command. syntax: conflictdoctor scan <path> --json --quiet");
         }
 
         var json = false;
         var quiet = false;
-        string? raiz = null;
+        string? root = null;
 
         for (var i = 1; i < args.Length; i++)
         {
@@ -88,101 +88,101 @@ public static class ScanCommand
                 quiet = true;
             }
             else if (!string.Equals(arg, "scan", StringComparison.Ordinal)
-                     && raiz is null
+                     && root is null
                      && !arg.StartsWith('-'))
             {
-                raiz = arg;
+                root = arg;
             }
             else
             {
-                return Operacional($"uso invalido: '{arg}'. sintaxe: conflictdoctor scan <caminho> --json --quiet");
+                return Operational($"invalid usage: '{arg}'. syntax: conflictdoctor scan <path> --json --quiet");
             }
         }
 
-        if (raiz is null)
+        if (root is null)
         {
-            return Operacional("uso invalido: caminho obrigatorio. sintaxe: conflictdoctor scan <caminho> --json --quiet");
+            return Operational("invalid usage: path required. syntax: conflictdoctor scan <path> --json --quiet");
         }
 
-        if (!Directory.Exists(raiz))
+        if (!Directory.Exists(root))
         {
-            var pai = Path.GetDirectoryName(Path.GetFullPath(raiz));
-            return Operacional(Directory.Exists(pai)
-                ? $"raiz nao e um diretorio: {raiz}"
-                : $"raiz inexistente: {raiz}");
+            var parent = Path.GetDirectoryName(Path.GetFullPath(root));
+            return Operational(Directory.Exists(parent)
+                ? $"root is not a directory: {root}"
+                : $"root does not exist: {root}");
         }
 
         try
         {
-            return ExecutarScan(raiz, json, quiet);
+            return ExecuteScan(root, json, quiet);
         }
         catch (OperationCanceledException)
         {
-            return Operacional("scan cancelado");
+            return Operational("scan cancelled");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                    or PlaceholderViolationException or PlaceholderReadException)
         {
-            // Falha fechada: erro operacional com mensagem única — nada parcial sem registro.
-            return Operacional($"falha no scan: {ex.Message}");
+            // Fail-closed: operational error with a single message — nothing partial without a record.
+            return Operational($"scan failed: {ex.Message}");
         }
     }
 
-    private static CliResult ExecutarScan(string raiz, bool json, bool quiet)
+    private static CliResult ExecuteScan(string root, bool json, bool quiet)
     {
-        var iniciou = DateTimeOffset.UtcNow;
+        var started = DateTimeOffset.UtcNow;
 
-        // ---- L0 único (sidecar-aware): fonte da verdade de arquivos, erros e placeholders
-        var l0 = DefaultEnumeration(raiz);
+        // ---- single L0 (sidecar-aware): source of truth for files, errors and placeholders
+        var l0 = DefaultEnumeration(root);
 
-        // ---- L1→L3 sobre a MESMA lista já marcada e ordenada ---------------------------
-        // O pipeline reordena internamente (defesa estrutural) e sua projeção consulta
-        // PlaceholderPolicy.Classify — endurecido no T16 para tratar a marcação feita na
-        // ORIGEM (sidecar T04 hoje, hook nativo amanhã) como autoridade máxima. Assim a
-        // marca de placeholder simulado sobrevive ao wrap interno e NENHUM byte de
-        // placeholder é lido (PLH-01), sem tradução artificial de bits.
-        var resultado = new ScanPipeline(
+        // ---- L1→L3 over the SAME already-marked and ordered list ---------------------------
+        // The pipeline reorders internally (structural defense) and its projection queries
+        // PlaceholderPolicy.Classify — hardened in T16 to treat marking done at the
+        // SOURCE (sidecar T04 today, native hook tomorrow) as the ultimate authority. This way
+        // the simulated placeholder mark survives the internal wrap and NO placeholder
+        // byte is read (PLH-01), without artificial bit translation.
+        var result = new ScanPipeline(
             new ReplayMarkedEnumerator(l0.Files),
             new PlaceholderGuardedHasher(new Blake3Hasher()),
-            new FileStreamSource()).Run(raiz);
+            new FileStreamSource()).Run(root);
 
-        // ---- telemetria exata: contadores derivados das decisões registradas ------------
-        // Parcial (L2) rodou para todo membro de grupo com 2+ itens; completo (L3) só
-        // para membros dos grupos com veredito. Receita de bytes do ADR-0005 via
-        // constantes do hasher (nunca números soltos).
-        var membrosL2 = resultado.Groups
+        // ---- exact telemetry: counters derived from recorded decisions ------------
+        // Partial (L2) ran for every group member with 2+ items; full (L3) only
+        // for members of groups with a verdict. Byte recipe from ADR-0005 via
+        // hasher constants (never loose numbers).
+        var membersL2 = result.Groups
             .Where(g => g.Members.Count >= 2)
             .SelectMany(g => g.Members)
             .ToArray();
-        // L3 cobre TODOS os membros dos grupos com veredito; o size do membro de um
-        // conflito é o size do grupo (agrupamento é por size — Grouping.Group).
-        var tamanhosL3 = resultado.IdenticalDuplicates
+        // L3 covers ALL members of groups with a verdict; the size of a conflict
+        // member is the group size (grouping is by size — Grouping.Group).
+        var sizesL3 = result.IdenticalDuplicates
             .SelectMany(d => d.Files.Select(f => f.Size))
-            .Concat(resultado.RealConflicts.SelectMany(c => c.Files.Select(_ => c.SizeBytes)))
+            .Concat(result.RealConflicts.SelectMany(c => c.Files.Select(_ => c.SizeBytes)))
             .ToArray();
 
         var telemetry = l0.Telemetry with
         {
             FilesSkipped = l0.Errors.Count,
-            FilesPartialHashed = membrosL2.Length,
-            FilesFullHashed = tamanhosL3.Length,
-            BytesReadPartial = membrosL2.Sum(BytesParciais),
-            BytesReadFull = tamanhosL3.Sum(),
+            FilesPartialHashed = membersL2.Length,
+            FilesFullHashed = sizesL3.Length,
+            BytesReadPartial = membersL2.Sum(PartialBytes),
+            BytesReadFull = sizesL3.Sum(),
         };
 
-        var terminou = DateTimeOffset.UtcNow;
+        var finished = DateTimeOffset.UtcNow;
         var placeholders = PlaceholderReport.Records(l0.Files);
 
-        // ---- veredito em exit code estável (SPEC §14) ------------------------------------
-        var anomalias = resultado.IdenticalDuplicates.Count + resultado.RealConflicts.Count;
-        var pulados = l0.Errors.Count;
+        // ---- verdict in stable exit code (SPEC §14) ------------------------------------
+        var anomalies = result.IdenticalDuplicates.Count + result.RealConflicts.Count;
+        var skipped = l0.Errors.Count;
 
         int exitCode;
-        if (anomalias > 0 && pulados > 0)
+        if (anomalies > 0 && skipped > 0)
         {
             exitCode = Program.ExitCodes.Partial;
         }
-        else if (anomalias > 0)
+        else if (anomalies > 0)
         {
             exitCode = Program.ExitCodes.AnomaliesFound;
         }
@@ -193,38 +193,38 @@ public static class ScanCommand
 
         if (json)
         {
-            using var saida = new MemoryStream();
-            new ReportWriterJson().Write(resultado, telemetry, placeholders, raiz, iniciou, terminou, saida);
-            return new CliResult(exitCode, System.Text.Encoding.UTF8.GetString(saida.ToArray()), null);
+            using var output = new MemoryStream();
+            new ReportWriterJson().Write(result, telemetry, placeholders, root, started, finished, output);
+            return new CliResult(exitCode, System.Text.Encoding.UTF8.GetString(output.ToArray()), null);
         }
 
         return new CliResult(exitCode, null, quiet
             ? string.Empty
-            : FormatTexto(resultado, placeholders, l0.Errors, exitCode));
+            : FormatText(result, placeholders, l0.Errors, exitCode));
     }
 
-    /// <summary>Receita v1 do ADR-0005: ≤ WholeFileLimitBytes lê o inteiro; acima,
-    /// as duas janelas de WindowBytes numa única abertura.</summary>
-    private static long BytesParciais(FileEntry f) =>
+    /// <summary>ADR-0005 recipe v1: ≤ WholeFileLimitBytes reads the whole file; above,
+    /// the two WindowBytes windows in a single open.</summary>
+    private static long PartialBytes(FileEntry f) =>
         f.Size <= Blake3Hasher.WholeFileLimitBytes
             ? f.Size
             : 2L * Blake3Hasher.WindowBytes;
 
-    private static CliResult Operacional(string mensagem) =>
-        new(Program.ExitCodes.OperationalError, null, mensagem);
+    private static CliResult Operational(string message) =>
+        new(Program.ExitCodes.OperationalError, null, message);
 
-    private static string FormatTexto(
+    private static string FormatText(
         ScanResult r,
         IReadOnlyList<PlaceholderRecord> placeholders,
-        IReadOnlyList<ScanError> erros,
+        IReadOnlyList<ScanError> errors,
         int exitCode)
     {
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine(CultureInfo.InvariantCulture, $"scan concluido: {r.Groups.Count} grupo(s) candidato(s)");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"scan completed: {r.Groups.Count} candidate group(s)");
 
         foreach (var dup in r.IdenticalDuplicates)
         {
-            sb.AppendLine(CultureInfo.InvariantCulture, $"duplicata identica [{dup.SizeBytes} B] hash {dup.Hash[..12]}…");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"identical duplicate [{dup.SizeBytes} B] hash {dup.Hash[..12]}…");
             foreach (var f in dup.Files)
             {
                 sb.AppendLine(CultureInfo.InvariantCulture, $"  {f.Path}");
@@ -233,7 +233,7 @@ public static class ScanCommand
 
         foreach (var c in r.RealConflicts)
         {
-            sb.AppendLine(CultureInfo.InvariantCulture, $"conflito real: {c.NormalizedBaseName} [{c.SizeBytes} B]");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"real conflict: {c.NormalizedBaseName} [{c.SizeBytes} B]");
             foreach (var m in c.Files)
             {
                 sb.AppendLine(CultureInfo.InvariantCulture, $"  {m.Path} (hash {m.Hash[..12]}…)");
@@ -242,21 +242,21 @@ public static class ScanCommand
 
         if (placeholders.Count > 0)
         {
-            sb.AppendLine(CultureInfo.InvariantCulture, $"placeholders listados (nao lidos): {placeholders.Count}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"placeholders listed (not read): {placeholders.Count}");
         }
 
-        if (erros.Count > 0)
+        if (errors.Count > 0)
         {
-            sb.AppendLine(CultureInfo.InvariantCulture, $"arquivos pulados por erro de acesso: {erros.Count}");
-            foreach (var erro in erros)
+            sb.AppendLine(CultureInfo.InvariantCulture, $"files skipped due to access error: {errors.Count}");
+            foreach (var error in errors)
             {
-                sb.AppendLine(CultureInfo.InvariantCulture, $"  {erro.Path} ({erro.Message})");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"  {error.Path} ({error.Message})");
             }
         }
 
         if (exitCode == Program.ExitCodes.Partial)
         {
-            sb.AppendLine("STATUS: PARCIAL — anomalias encontradas e houve arquivos pulados.");
+            sb.AppendLine("STATUS: PARTIAL — anomalies found and files were skipped.");
         }
 
         return sb.ToString().TrimEnd();

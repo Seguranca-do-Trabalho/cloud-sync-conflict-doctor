@@ -7,10 +7,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 /// <summary>
-/// 合同 do gravador de relatorio v1 (schema-report-v1.md).
-/// Recebe o resultado serial do pipeline + telemetria + placeholders + metadados
-/// de tempo/caminho e produz JSON estrito RFC 8259, UTF-8 sem BOM, indent 2,
-/// chaves na ordem EXATA declarada do schema, newline final.
+/// v1 report writer contract (schema-report-v1.md).
+/// Receives the pipeline serial result + telemetry + placeholders + time/path
+/// metadata and produces strict RFC 8259 JSON, UTF-8 without BOM, indent 2,
+/// keys in the schema's EXACT declared order, trailing newline.
 /// </summary>
 public interface IReportWriter
 {
@@ -25,13 +25,13 @@ public interface IReportWriter
 }
 
 /// <summary>
-/// Gravador JSON v1 (schema-report-v1.md §2). Usa System.Text.Json com
-/// WriteIndented=true, JavaScriptEncoder.Default e POCO
-/// cuja ordem de propriedades replica o schema. Anexa \n final; codificacao
-/// UTF-8 sem BOM. Encoder ESTRITO (S11-1/SEG-03, R12): escapa caracteres de
-/// controle bidi (U+202E etc.) e todo não-ASCII — nenhum byte que reordene a
-/// renderização do consumidor sai cru no relatório; nomes permanecem byte-exatos
-/// no decode UTF-8.
+/// v1 JSON writer (schema-report-v1.md §2). Uses System.Text.Json with
+/// WriteIndented=true, JavaScriptEncoder.Default and POCO
+/// whose property order replicates the schema. Appends final \n; UTF-8
+/// encoding without BOM. STRICT encoder (S11-1/SEG-03, R12): escapes bidi
+/// control characters (U+202E etc.) and all non-ASCII — no byte that reorders
+/// the consumer's rendering appears raw in the report; names remain byte-exact
+/// in UTF-8 decode.
 /// </summary>
 public sealed class ReportWriterJson : IReportWriter
 {
@@ -61,9 +61,9 @@ public sealed class ReportWriterJson : IReportWriter
 
         var report = new ReportDoc
         {
-            // SEG-12: campo novo em telemetry (files_excluded_conflictdoctor) ⇒ bump
-            // obrigatório por §7.1 do schema-report-v1 (política conservadora: bump em
-            // mudança aditiva; consumidores são estritos e consomem exatamente uma versão).
+            // SEG-12: new field in telemetry (files_excluded_conflictdoctor) ⇒ mandatory
+            // bump per schema-report-v1 §7.1 (conservative policy: bump on
+            // additive change; consumers are strict and consume exactly one version).
             ReportSchemaVersion = 2,
             Algorithm = "BLAKE3",
             HashVersion = 1,
@@ -78,8 +78,8 @@ public sealed class ReportWriterJson : IReportWriter
             {
                 FilesEnumerated = telemetry.FilesEnumerated,
                 FilesPlaceholder = telemetry.FilesPlaceholder,
-                // SEG-12 (T-15): subárvore reservada excluída na fronteira canônica L0,
-                // contada aqui — política, não erro (R10); idempotência §20 entre rescans.
+                // SEG-12 (T-15): reserved subtree excluded at L0 canonical boundary,
+                // counted here — policy, not error (R10); idempotency §20 across rescans.
                 FilesExcludedConflictDoctor = telemetry.FilesExcludedConflictDoctor,
                 FilesSkipped = telemetry.FilesSkipped,
                 FilesPartialHashed = telemetry.FilesPartialHashed,
@@ -164,7 +164,7 @@ public sealed class ReportWriterJson : IReportWriter
     {
         [JsonPropertyName("files_enumerated")] public long FilesEnumerated { get; init; }
         [JsonPropertyName("files_placeholder")] public long FilesPlaceholder { get; init; }
-        // SEG-12 (T-15): posição declarada no schema v2 §5 — logo após files_placeholder.
+        // SEG-12 (T-15): declared position in schema v2 §5 — right after files_placeholder.
         [JsonPropertyName("files_excluded_conflictdoctor")] public long FilesExcludedConflictDoctor { get; init; }
         [JsonPropertyName("files_skipped")] public long FilesSkipped { get; init; }
         [JsonPropertyName("files_partial_hashed")] public long FilesPartialHashed { get; init; }

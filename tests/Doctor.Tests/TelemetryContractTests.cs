@@ -4,10 +4,10 @@ using Xunit;
 namespace Doctor.Tests;
 
 /// <summary>
-/// Contrato da telemetria do scanner (card T06, SPEC §10 + benchmark-harness §6):
-/// um enumerador falso produz contadores por arquivo, o coletor agrega com Merge
-/// e o gate de segurança placeholder_bytes_read permanece zero quando nenhum byte
-/// de placeholder é lido.
+/// Scanner telemetry contract (card T06, SPEC §10 + benchmark-harness §6):
+/// a false enumerator produces per-file counters, the collector aggregates with Merge,
+/// and the placeholder_bytes_read safety gate remains zero when no placeholder
+/// byte is read.
 /// </summary>
 public class TelemetryContractTests
 {
@@ -21,13 +21,13 @@ public class TelemetryContractTests
             FilesFullHashed = !placeholder && bytesReadFull > 0 ? 1 : 0,
             BytesReadPartial = bytesReadPartial,
             BytesReadFull = bytesReadFull,
-            PlaceholderBytesRead = 0, // placeholders nunca têm conteúdo acessado
+            PlaceholderBytesRead = 0, // placeholders never have content accessed
         };
 
     [Fact]
     public void Merge_SumsPerFileCounters_AndKeepsInvariants()
     {
-        // Fake enumerator: 4 entradas — 1 placeholder, 1 skipped, 1 hash parcial, 1 hash completo.
+        // Fake enumerator: 4 entries — 1 placeholder, 1 skipped, 1 partial hash, 1 full hash.
         var perFile = new[]
         {
             FromFile(placeholder: true),
@@ -48,7 +48,7 @@ public class TelemetryContractTests
         Assert.Equal(2, total.FilesPartialHashed);
         Assert.Equal(1, total.FilesFullHashed);
 
-        // Invariantes normais do contrato (Telemetry.cs): partição de arquivos e de bytes.
+        // Normal contract invariants (Telemetry.cs): file and byte partitioning.
         Assert.Equal(total.FilesEnumerated,
             total.FilesPlaceholder + total.FilesSkipped + total.FilesPartialHashed);
         Assert.True(total.FilesFullHashed <= total.FilesPartialHashed);
@@ -59,8 +59,8 @@ public class TelemetryContractTests
     [Fact]
     public void Gate_PlaceholderBytesRead_IsZeroByDefault_AndSurvivesMergeWithoutViolation()
     {
-        var a = new ScanTelemetry(); // default: gate em zero
-        var b = FromFile(placeholder: true); // placeholder processado sem ler nada
+        var a = new ScanTelemetry(); // default: gate at zero
+        var b = FromFile(placeholder: true); // placeholder processed without reading anything
 
         Assert.Equal(0, a.PlaceholderBytesRead);
         Assert.Equal(0, b.PlaceholderBytesRead);
@@ -70,11 +70,11 @@ public class TelemetryContractTests
     [Fact]
     public void Gate_PlaceholderBytesRead_Propagates_WhenAnyOperandViolates()
     {
-        var violacao = new ScanTelemetry { PlaceholderBytesRead = 512 };
-        var limpo = FromFile(placeholder: false, bytesReadFull: 1024);
+        var violation = new ScanTelemetry { PlaceholderBytesRead = 512 };
+        var clean = FromFile(placeholder: false, bytesReadFull: 1024);
 
-        var mesclado = violacao.Merge(limpo);
+        var merged = violation.Merge(clean);
 
-        Assert.Equal(512, mesclado.PlaceholderBytesRead); // rodada seria reprovada no harness §6
+        Assert.Equal(512, merged.PlaceholderBytesRead); // run would fail in harness §6
     }
 }

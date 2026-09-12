@@ -3,23 +3,23 @@ namespace Doctor.Core;
 using System.IO.Enumeration;
 
 /// <summary>
-/// Enumeração Level 0 multiplataforma (SPEC §5): varredura recursiva que traz os
-/// metadados no próprio diretorio entry — sem chamada stat extra por arquivo.
-/// Nunca lê conteúdo. NUNCA atravessa reparse points de diretório (junction,
-/// symlink, mount point — regra 4 do ADR-0004, threat-model T-02, PLH-04): o
-/// diretório com reparse é FOLHA, registrado em <see cref="EnumerationResult.Errors"/>
-/// e a varredura continua. Symlinks de ARQUIVO entram como entrada marcada
-/// ReparsePoint (análogo POSIX de reparse point — SPEC §6). A marcação de placeholder
-/// é exclusivamente via <see cref="PlaceholderPolicy"/>.
-/// A ordem física é a que o filesystem entregar: a ordenação canônica é
-/// responsabilidade exclusiva de <see cref="OrderedFileEnumerator"/>.
+/// Level 0 cross-platform enumeration (SPEC §5): recursive scan that brings
+/// metadata in the directory entry itself — no extra stat call per file.
+/// Never reads content. NEVER crosses directory reparse points (junction,
+/// symlink, mount point — ADR-0004 rule 4, threat-model T-02, PLH-04): the
+/// directory with reparse is a LEAF, recorded in <see cref="EnumerationResult.Errors"/>
+/// and the scan continues. FILE symlinks enter as entries marked
+/// ReparsePoint (POSIX analogue of reparse point — SPEC §6). Placeholder
+/// marking is exclusively via <see cref="PlaceholderPolicy"/>.
+/// Physical order is whatever the filesystem delivers: canonical ordering is
+/// the exclusive responsibility of <see cref="OrderedFileEnumerator"/>.
 ///
-/// Nota de implementação: usa <see cref="FileSystemEnumerator{TResult}"/> direto
-/// (e não FileSystemEnumerable+options) porque só o override de ShouldRecurseIntoEntry
-/// garante não-descida em reparse: com AttributesToSkip=0 (exigido para os symlinks de
-/// ARQUIVO aparecerem marcados), o comportamento padrão do .NET decide a recursão de
-/// symlink de diretório seguindo o alvo e entra em ciclos — observado no T09
-/// (84 entradas num ciclo a→b→a; conteúdo externo à raiz vazou para a lista).
+/// Implementation note: uses <see cref="FileSystemEnumerator{TResult}"/> directly
+/// (not FileSystemEnumerable+options) because only the ShouldRecurseIntoEntry
+/// override guarantees non-descent into reparse: with AttributesToSkip=0 (required
+/// for FILE symlinks to appear marked), .NET's default behavior recurses into
+/// directory symlinks following the target and enters cycles — observed in T09
+/// (84 entries in a cycle a→b→a; external content outside root leaked into the list).
 /// </summary>
 public sealed class CrossPlatformEnumerator : IFileEnumerator
 {
@@ -28,7 +28,7 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
         var files = new List<FileEntry>();
         var errors = new List<ScanError>();
 
-        using var enumerator = new Enumerador(rootPath, errors);
+        using var enumerator = new NativeEnumerator(rootPath, errors);
         while (enumerator.MoveNext())
         {
             ct.ThrowIfCancellationRequested();
@@ -38,12 +38,12 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
             }
         }
 
-        // Folhas reparse registradas durante a descida + falhas de acesso individual:
-        // erro nunca aborta o scan (contratos.md R10).
-        errors.AddRange(enumerator.ErrosDeAcesso);
+        // Reparse leaves registered during descent + individual access failures:
+        // error never aborts the scan (contracts.md R10).
+        errors.AddRange(enumerator.AccessErrors);
 
-        // Telemetria derivada da lista final (nunca de contadores incrementais
-        // dependentes de ordem física) — mesmo contrato do OrderedFileEnumerator.
+        // Telemetry derived from the final list (never from incremental counters
+        // dependent on physical order) — same contract as OrderedFileEnumerator.
         var telemetry = new ScanTelemetry
         {
             FilesEnumerated = files.Count,
@@ -54,38 +54,38 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
     }
 
     /// <summary>
-    /// Varredura física: recursão bloqueada em qualquer diretório com bit de reparse
-    /// (decisão centralizada nos bits de <see cref="PlaceholderPolicy"/>) — o ciclo
-    /// nunca é iniciado, porque a descida é recusada na entrada do diretório.
+    /// Physical scan: recursion blocked at any directory with the reparse bit
+    /// (centralized decision in <see cref="PlaceholderPolicy"/> bits) — the cycle
+    /// is never started because descent is refused at the directory entry.
     /// </summary>
-    private sealed class Enumerador : FileSystemEnumerator<FileEntry?>
+    private sealed class NativeEnumerator : FileSystemEnumerator<FileEntry?>
     {
-        private readonly List<ScanError> _erros;
+        private readonly List<ScanError> _accessErrors;
 
-        public Enumerador(string root, List<ScanError> erros)
+        public NativeEnumerator(string root, List<ScanError> accessErrors)
             : base(root, options: new EnumerationOptions
             {
                 RecurseSubdirectories = true,
                 IgnoreInaccessible = true,
-                AttributesToSkip = 0, // nada filtrado: placeholders são MARCADOS, não ocultos
+                AttributesToSkip = 0, // nothing filtered: placeholders are MARKED, not hidden
             })
-            => _erros = erros;
+            => _accessErrors = accessErrors;
 
-        public List<ScanError> ErrosDeAcesso { get; } = new();
+        public List<ScanError> AccessErrors { get; } = new();
 
         /// <summary>
-        /// Regra 4 do ADR-0004: diretório com reparse point é SEMPRE folha —
-        /// registrado e nunca descido. Vale para junction, symlink de diretório,
-        /// mount point, qualquer alvo.
+        /// ADR-0004 rule 4: directory with reparse point is ALWAYS a leaf —
+        /// registered and never descended into. Applies to junction, directory
+        /// symlink, mount point, any target.
         /// </summary>
         protected override bool ShouldRecurseIntoEntry(ref FileSystemEntry entry)
         {
-            // Decisão centralizada: os bits "não tocar" vivem na PlaceholderPolicy.
+            // Centralized decision: the "do not touch" bits live in PlaceholderPolicy.
             if (PlaceholderPolicy.IsPlaceholder(entry.Attributes))
             {
-                _erros.Add(new ScanError(
+                _accessErrors.Add(new ScanError(
                     entry.ToFullPath(),
-                    "reparse point de diretorio (junction/symlink) nao atravessado - folha registrada (ADR-0004 regra 4; threat-model T-02)"));
+                    "directory reparse point (junction/symlink) not crossed — leaf registered (ADR-0004 rule 4; threat-model T-02)"));
                 return false;
             }
 
@@ -98,42 +98,42 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
             {
                 if (entry.IsDirectory)
                 {
-                    return null; // somente arquivos na lista Level 0 (reparse de diretório já virou folha registrada)
+                    return null; // only files in Level 0 list (directory reparse already became a registered leaf)
                 }
 
-                // Identidade do arquivo, decidida em TEMPO DE EXECUCAO.
+                // File identity, decided at RUNTIME.
                 //
-                // Antes isto era um `#if WINDOWS`, e os dois ramos estavam errados
-                // no Windows:
+                // Previously this was a `#if WINDOWS`, and both branches were wrong
+                // on Windows:
                 //
-                //   - o ramo compilado (`#else`) chamava LinuxFileId.GetInode(),
-                //     um P/Invoke de lstat(2). No Windows lanca
-                //     DllNotFoundException('libc'); o catch abaixo engolia o erro
-                //     e DESCARTAVA o arquivo — a enumeracao devolvia zero
-                //     arquivos numa arvore povoada.
-                //   - o ramo pretendido (`#if WINDOWS`) devolvia "0" para TODOS
-                //     os arquivos. Como OrderedFileEnumerator usa (VolumeId,
-                //     FileId) para detectar ciclo, o primeiro arquivo entrava e
-                //     todos os demais eram rejeitados como "mesmo inode".
+                //   - the compiled branch (`#else`) called LinuxFileId.GetInode(),
+                //     a P/Invoke of lstat(2). On Windows it threw
+                //     DllNotFoundException('libc'); the catch below swallowed the error
+                //     and DISCARDED the file — the enumeration returned zero
+                //     files in a populated tree.
+                //   - the intended branch (`#if WINDOWS`) returned "0" for ALL
+                //     files. Since OrderedFileEnumerator uses (VolumeId,
+                //     FileId) to detect cycles, the first file entered and
+                //     all others were rejected as "same inode".
                 //
-                // O simbolo WINDOWS nunca era definido (TFM net8.0), entao o
-                // primeiro ramo era o que valia — em ambas as plataformas.
-                // A decisao agora e por OperatingSystem, que nao depende de
-                // simbolo de compilacao.
+                // The WINDOWS symbol was never defined (TFM net8.0), so the
+                // first branch was what applied — on both platforms.
+                // The decision is now by OperatingSystem, which doesn't depend on
+                // compilation symbols.
                 string fileId = OperatingSystem.IsWindows()
-                    ? IdentidadeDeCaminho(entry.ToFullPath())
+                    ? PathIdentity(entry.ToFullPath())
                     : LinuxFileId.GetInode(entry.ToFullPath());
 
-                // Marcação de placeholder NA ORIGEM (SPEC §6, defesa em profundidade):
-                // este enumerador é utilizável cru (testes, harness); quem o consumir
-                // via OrderedFileEnumerator recebe a policy reaplicada (idempotente).
+                // Placeholder marking AT THE ORIGIN (SPEC §6, defense in depth):
+                // this enumerator is usable raw (tests, harness); consumers using
+                // OrderedFileEnumerator get the policy reapplied (idempotent).
                 var built = new FileEntry
                 {
                     Path = entry.ToFullPath(),
                     Size = entry.Length,
                     MtimeUtc = entry.LastWriteTimeUtc,
                     Attributes = entry.Attributes,
-                    VolumeId = Environment.MachineName, // identificação local estável; NTFS volume GUID chega com o enumerador nativo
+                    VolumeId = Environment.MachineName, // stable local identification; NTFS volume GUID comes with the native enumerator
                     FileId = fileId,
                 };
                 return built with
@@ -144,36 +144,36 @@ public sealed class CrossPlatformEnumerator : IFileEnumerator
             }
             catch (Exception ex)
             {
-                // Erro individual não aborta o scan — registrado pelo chamador via Errors.
-                ErrosDeAcesso.Add(new ScanError(entry.ToFullPath(), ex.Message));
+                // Individual error never aborts the scan — recorded by caller via Errors.
+                AccessErrors.Add(new ScanError(entry.ToFullPath(), ex.Message));
                 return null;
             }
         }
 
         /// <summary>
-        /// Identidade derivada do caminho canônico, para Windows.
+        /// Identity derived from canonical path, for Windows.
         ///
-        /// Este enumerador não tem como obter o FileId NTFS sem abrir um handle
-        /// por arquivo, o que violaria o orçamento de E/S do SPEC §5. Em
-        /// produção o Windows usa <c>WindowsNativeEnumerator</c>, que traz o
-        /// FileId de 128 bits da própria enumeração, sem custo extra.
+        /// This enumerator cannot obtain the NTFS FileId without opening a handle
+        /// per file, which would violate the SPEC §5 I/O budget. In
+        /// production Windows uses <c>WindowsNativeEnumerator</c>, which gets the
+        /// 128-bit FileId from the enumeration itself, with no extra cost.
         ///
-        /// Aqui a identidade é o caminho normalizado: garante que arquivos
-        /// distintos tenham chaves distintas — o que basta para a deduplicação
-        /// de <c>OrderedFileEnumerator</c> não colapsar a lista. A limitação
-        /// honesta é que dois hard links para o mesmo inode aparecem como
-        /// entradas separadas; a detecção de ciclo por reparse point continua
-        /// coberta pela regra 4 do ADR-0004, que trata diretório com reparse
-        /// como folha e nunca desce nele.
+        /// Here the identity is the normalized path: ensures distinct files
+        /// have distinct keys — which suffices for <c>OrderedFileEnumerator</c>
+        /// deduplication not to collapse the list. The honest limitation
+        /// is that two hard links to the same inode appear as
+        /// separate entries; cycle detection via reparse point is still
+        /// covered by ADR-0004 rule 4, which treats a directory with reparse
+        /// as a leaf and never descends into it.
         /// </summary>
-        private static string IdentidadeDeCaminho(string caminho)
+        private static string PathIdentity(string path)
         {
-            var canônico = caminho
+            var canonical = path
                 .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
-                .ToLowerInvariant();   // NTFS é case-insensitive
+                .ToLowerInvariant();   // NTFS is case-insensitive
             return "path:" + Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(canônico))).ToLowerInvariant();
+                    System.Text.Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
         }
     }
 }

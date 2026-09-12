@@ -3,8 +3,8 @@ using Doctor.Core;
 namespace Doctor.Tests;
 
 /// <summary>
-/// T07 — Ordem canônica do produto: bytes UTF-8 do caminho (StringComparer.Ordinal),
-/// nunca locale nem OrdinalIgnoreCase (SPEC §3, ADR-0003, docs/contratos.md PathOrder).
+/// T07 — Product canonical order: UTF-8 bytes of the path (StringComparer.Ordinal),
+/// never locale nor OrdinalIgnoreCase (SPEC §3, ADR-0003, docs/contracts.md PathOrder).
 /// </summary>
 public class PathOrderTests
 {
@@ -21,15 +21,15 @@ public class PathOrderTests
     [Fact]
     public void Sort_ByteWiseOrdinal_AdversarialNames()
     {
-        // Ordinal byte-a-byte: 'B'(0x42) < '_'(0x5F) < 'Z'(0x5A)? NÃO — 'Z' = 0x5A < '_' = 0x5F.
-        // Ordem esperada por bytes UTF-8: 'B' < 'Z' < '_' < 'a' < 'a-agudo'.
+        // Ordinal byte-by-byte: 'B'(0x42) < '_'(0x5F) < 'Z'(0x5A)? NO — 'Z' = 0x5A < '_' = 0x5F.
+        // Expected order by UTF-8 bytes: 'B' < 'Z' < '_' < 'a' < 'a-acute'.
         var input = new[] { "a", "_", "B", "á", "Z" };
         var expected = new[] { "B", "Z", "_", "a", "á" };
 
         var sorted = input.Select(Entry).OrderBy(e => e, PathOrder.Comparer).Select(e => e.Path).ToArray();
 
         Assert.Equal(expected, sorted);
-        // Prova de que a escolha NÃO é OrdinalIgnoreCase (que daria 'a' antes de 'B').
+        // Proof that the choice is NOT OrdinalIgnoreCase (which would put 'a' before 'B').
         Assert.NotEqual(
             input.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToArray(),
             sorted);

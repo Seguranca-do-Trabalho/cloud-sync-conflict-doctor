@@ -4,26 +4,26 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <!-- P/Invoke lstat com ponteiro direto (card T07): evita marshaling de struct
-         grande e mantém layout binário explícito. -->
+    <!-- P/Invoke lstat with a direct pointer (card T07): avoids marshaling a large
+         struct and keeps the binary layout explicit. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>12</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Versão pinada em Directory.Packages.props (ADR-0005 §1; risco R9). -->
+    <!-- Pinned version in Directory.Packages.props (ADR-0005 §1; risk R9). -->
     <PackageReference Include="Blake3" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Cache incremental (SPEC §12; ADR-0001/ADR-0006): versão PINADA em
+    <!-- Incremental cache (SPEC §12; ADR-0001/ADR-0006): version PINNED in
          Directory.Packages.props (supply chain R9; ADR-0006 §1). -->
     <PackageReference Include="Microsoft.Data.Sqlite" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Testes provam a receita v1 segmento a segmento via streams espiãs e
-         inspecionam linhas cruas do cache (família CACHE). -->
+    <!-- Tests prove the v1 recipe segment-by-segment via spy streams and
+         inspect raw cache lines (CACHE family). -->
     <InternalsVisibleTo Include="Doctor.Tests" />
   </ItemGroup>
 
